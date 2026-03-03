@@ -1,0 +1,20 @@
+meta {
+  name: DeleteCategories
+  type: http
+  seq: 3
+}
+
+delete {
+  url: http://localhost:8080/api/v1/categories/{8be0f6f9-e5ae-46ec-b6fd-387b7d6fd91c}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb2xsZWN0aW9uSWQiOiJwYmNfMjk2NDg0OTEyNiIsImV4cCI6MTc3MjMzOTU3NiwiaWQiOiI1ajJ6YzZhbnZrNTQ1NXkiLCJyZWZyZXNoYWJsZSI6dHJ1ZSwidHlwZSI6ImF1dGgifQ.9vBTlnTUq0U3nkwu05c8Evj18zl1a16qv4VnhyPcc8A
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

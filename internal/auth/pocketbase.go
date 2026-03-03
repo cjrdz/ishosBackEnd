@@ -1,0 +1,398 @@
+// Package auth wraps PocketBase as an embedded auth engine for the Chi API.
+//
+// PocketBase is used as a Go library — NOT as an HTTP server. It provides:
+//   - Employee auth collection with email/password authentication
+//   - Password hashing and verification
+//   - JWT token generation and validation
+//   - Employee record management (CRUD)
+//
+// The Chi API on the main port uses the PBAuth wrapper to validate Bearer
+// tokens and manage employee records without making any HTTP calls —
+// everything goes through PocketBase's Go API against its embedded SQLite DB.
+package auth
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/rs/zerolog/log"
+)
+
+// PBAuth holds the embedded PocketBase instance used for authentication
+// and employee management.
+type PBAuth struct {
+	App *pocketbase.PocketBase
+}
+
+// New creates and bootstraps a new PocketBase instance.
+//
+// After calling New() the PocketBase database is ready and the "employees"
+// auth collection is guaranteed to exist. The PocketBase HTTP server is NOT
+// started — only the Go API is available.
+func New(dataDir string) (*PBAuth, error) {
+	app := pocketbase.NewWithConfig(pocketbase.Config{
+		DefaultDataDir: dataDir,
+	})
+
+	// Bootstrap initialises the PocketBase database and internal state
+	// without starting the HTTP server.
+	if err := app.Bootstrap(); err != nil {
+		return nil, fmt.Errorf("pocketbase bootstrap: %w", err)
+	}
+
+	pb := &PBAuth{App: app}
+
+	// Ensure the employees auth collection exists.
+	if err := pb.ensureEmployeesCollection(); err != nil {
+		return nil, fmt.Errorf("ensure employees collection: %w", err)
+	}
+
+	return pb, nil
+}
+
+// ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+// Login validates an employee's email and password, then generates a
+// PocketBase-compatible JWT auth token.
+//
+// This is called from the Chi auth handler (POST /api/v1/auth/login) and
+// does NOT make any HTTP requests — everything goes through PocketBase's
+// embedded SQLite DB.
+func (pb *PBAuth) Login(email, password string) (string, *core.Record, error) {
+	record, err := pb.App.FindAuthRecordByEmail("employees", email)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid credentials")
+	}
+
+	if !record.ValidatePassword(password) {
+		return "", nil, fmt.Errorf("invalid credentials")
+	}
+
+	token, err := pb.GenerateAuthToken(record)
+	if err != nil {
+		return "", nil, fmt.Errorf("generate token: %w", err)
+	}
+
+	return token, record, nil
+}
+
+// GenerateAuthToken creates a PocketBase-compatible JWT auth token for the
+// given record. It delegates to PocketBase's built-in Record.NewAuthToken()
+// which handles signing, claims and duration automatically.
+//
+// The generated token is fully compatible with ValidateToken / FindAuthRecordByToken.
+func (pb *PBAuth) GenerateAuthToken(record *core.Record) (string, error) {
+	token, err := record.NewAuthToken()
+	if err != nil {
+		return "", fmt.Errorf("create auth token: %w", err)
+	}
+	return token, nil
+}
+
+// ValidateToken checks a PocketBase auth token and returns the corresponding
+// employee record. Returns nil if the token is invalid or expired.
+//
+// This is called from the Chi auth middleware and does NOT make any HTTP
+// requests — it validates directly against PocketBase's embedded SQLite DB.
+func (pb *PBAuth) ValidateToken(token string) (*core.Record, error) {
+	record, err := pb.App.FindAuthRecordByToken(token, core.TokenTypeAuth)
+	if err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
+// ---------------------------------------------------------------------------
+// Employee CRUD
+// ---------------------------------------------------------------------------
+
+// FindEmployeeByID returns an employee record by its PocketBase record ID.
+func (pb *PBAuth) FindEmployeeByID(id string) (*core.Record, error) {
+	return pb.App.FindRecordById("employees", id)
+}
+
+// ListEmployees returns all employee/admin records.
+func (pb *PBAuth) ListEmployees() ([]*core.Record, error) {
+	return pb.App.FindRecordsByFilter(
+		"employees",
+		"role = 'admin' || role = 'employee'",
+		"",
+		200,
+		0,
+	)
+}
+
+// CreateEmployee creates a new employee in the PocketBase auth collection.
+// PocketBase handles password hashing internally.
+func (pb *PBAuth) CreateEmployee(email, password, name, phone, role string, disabled bool) (*core.Record, error) {
+	collection, err := pb.App.FindCollectionByNameOrId("employees")
+	if err != nil {
+		return nil, fmt.Errorf("find employees collection: %w", err)
+	}
+
+	record := core.NewRecord(collection)
+	record.SetEmail(email)
+	record.SetPassword(password)
+	record.Set("name", name)
+	record.Set("phone", phone)
+	record.Set("role", role)
+	record.Set("disabled", disabled)
+
+	if err := pb.App.Save(record); err != nil {
+		return nil, fmt.Errorf("save employee: %w", err)
+	}
+
+	return record, nil
+}
+
+// UpdateEmployee updates mutable employee fields.
+// Password is optional; when omitted the current password remains unchanged.
+func (pb *PBAuth) UpdateEmployee(id string, email, password, name, phone, role *string, disabled *bool) (*core.Record, error) {
+	record, err := pb.App.FindRecordById("employees", id)
+	if err != nil {
+		return nil, fmt.Errorf("find employee: %w", err)
+	}
+
+	if email != nil {
+		record.SetEmail(strings.TrimSpace(*email))
+	}
+	if password != nil && strings.TrimSpace(*password) != "" {
+		record.SetPassword(*password)
+	}
+	if name != nil {
+		record.Set("name", strings.TrimSpace(*name))
+	}
+	if phone != nil {
+		record.Set("phone", strings.TrimSpace(*phone))
+	}
+	if role != nil {
+		record.Set("role", strings.TrimSpace(*role))
+	}
+	if disabled != nil {
+		record.Set("disabled", *disabled)
+	}
+
+	if err := pb.App.Save(record); err != nil {
+		return nil, fmt.Errorf("save employee: %w", err)
+	}
+
+	return record, nil
+}
+
+// DeactivateEmployee disables an employee account so they can no longer log in.
+// The record is not deleted — only its "disabled" flag is set.
+// Existing tokens are effectively invalidated because the middleware checks
+// the disabled flag on every request.
+func (pb *PBAuth) DeactivateEmployee(id string) error {
+	record, err := pb.App.FindRecordById("employees", id)
+	if err != nil {
+		return fmt.Errorf("find employee: %w", err)
+	}
+
+	record.Set("disabled", true)
+
+	if err := pb.App.Save(record); err != nil {
+		return fmt.Errorf("save employee: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteEmployee permanently removes an employee record.
+func (pb *PBAuth) DeleteEmployee(id string) error {
+	record, err := pb.App.FindRecordById("employees", id)
+	if err != nil {
+		return fmt.Errorf("find employee: %w", err)
+	}
+
+	if err := pb.App.Delete(record); err != nil {
+		return fmt.Errorf("delete employee: %w", err)
+	}
+
+	return nil
+}
+
+// StartAdminUI starts PocketBase's built-in HTTP server (admin dashboard + API)
+// on the given address (e.g. "0.0.0.0:8090").
+//
+// This is intended for development only so you can manage the employees
+// collection, inspect auth tokens, etc. via http://localhost:<port>/_/.
+//
+// The method blocks until the server is shut down, so call it in a goroutine:
+//
+//	go func() {
+//	    if err := pb.StartAdminUI("127.0.0.1:8090", []string{"http://localhost:8090"}); err != nil {
+//	        log.Error().Err(err).Msg("PocketBase admin UI stopped")
+//	    }
+//	}()
+//
+// Bootstrap must have been called before (New already does this).
+func (pb *PBAuth) StartAdminUI(httpAddr string, allowedOrigins []string) error {
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"http://localhost:8090"}
+	}
+
+	err := apis.Serve(pb.App, apis.ServeConfig{
+		HttpAddr:        httpAddr,
+		ShowStartBanner: true,
+		AllowedOrigins:  allowedOrigins,
+	})
+
+	// apis.Serve returns http.ErrServerClosed on graceful shutdown — not an error.
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+// Close cleanly shuts down the PocketBase app.
+func (pb *PBAuth) Close() error {
+	if pb.App != nil {
+		if err := pb.App.ResetBootstrapState(); err != nil {
+			return fmt.Errorf("reset bootstrap state: %w", err)
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap: employees auth collection
+// ---------------------------------------------------------------------------
+
+// ensureEmployeesCollection creates the "employees" auth collection if it does
+// not already exist. The collection stores admin and employee accounts with
+// email/password authentication and custom role, name, phone fields.
+func (pb *PBAuth) ensureEmployeesCollection() error {
+	if existing, err := pb.App.FindCollectionByNameOrId("employees"); err == nil {
+		if pb.ensureEmployeesCollectionFields(existing) {
+			if err := pb.App.Save(existing); err != nil {
+				return fmt.Errorf("update employees collection fields: %w", err)
+			}
+		}
+		log.Debug().Msg("Employees auth collection already exists")
+		return nil
+	}
+
+	log.Info().Msg("Creating 'employees' auth collection...")
+
+	collection := core.NewAuthCollection("employees")
+	collection.Name = "employees"
+
+	pb.ensureEmployeesCollectionFields(collection)
+
+	if err := pb.App.Save(collection); err != nil {
+		return fmt.Errorf("create employees collection: %w", err)
+	}
+
+	log.Info().Msg("Employees auth collection created successfully")
+	return nil
+}
+
+func (pb *PBAuth) ensureEmployeesCollectionFields(collection *core.Collection) bool {
+	changed := false
+
+	if collection.Fields.GetByName("name") == nil {
+		collection.Fields.Add(&core.TextField{
+			Name:     "name",
+			Required: false,
+			Max:      200,
+		})
+		changed = true
+	}
+
+	if collection.Fields.GetByName("phone") == nil {
+		collection.Fields.Add(&core.TextField{
+			Name:     "phone",
+			Required: false,
+			Max:      20,
+		})
+		changed = true
+	}
+
+	if collection.Fields.GetByName("role") == nil {
+		collection.Fields.Add(&core.SelectField{
+			Name:      "role",
+			Required:  true,
+			Values:    []string{"admin", "employee"},
+			MaxSelect: 1,
+		})
+		changed = true
+	}
+
+	if collection.Fields.GetByName("disabled") == nil {
+		collection.Fields.Add(&core.BoolField{
+			Name: "disabled",
+		})
+		changed = true
+	}
+
+	return changed
+}
+
+// ---------------------------------------------------------------------------
+// Record helpers
+// ---------------------------------------------------------------------------
+
+// RoleFromRecord extracts the role string from a PocketBase employee record.
+func RoleFromRecord(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+	return record.GetString("role")
+}
+
+// RecordID returns the PocketBase record ID string.
+func RecordID(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+	return record.Id
+}
+
+// IsDisabled checks whether an employee record is disabled.
+func IsDisabled(record *core.Record) bool {
+	if record == nil {
+		return true
+	}
+	return record.GetBool("disabled")
+}
+
+// ---------------------------------------------------------------------------
+// Context helpers
+// ---------------------------------------------------------------------------
+
+// contextKey is an unexported type for context keys in this package.
+type contextKey string
+
+const authRecordKey contextKey = "pb_auth_record"
+const roleKey contextKey = "pb_role"
+
+// WithRecord stores the PocketBase auth record in the request context.
+func WithRecord(ctx context.Context, record *core.Record) context.Context {
+	return context.WithValue(ctx, authRecordKey, record)
+}
+
+// GetRecord retrieves the PocketBase auth record from context.
+func GetRecord(ctx context.Context) (*core.Record, bool) {
+	r, ok := ctx.Value(authRecordKey).(*core.Record)
+	return r, ok
+}
+
+// WithRole stores the resolved role string in context.
+func WithRole(ctx context.Context, role string) context.Context {
+	return context.WithValue(ctx, roleKey, role)
+}
+
+// GetRole retrieves the role string from context.
+func GetRole(ctx context.Context) string {
+	r, _ := ctx.Value(roleKey).(string)
+	return r
+}
