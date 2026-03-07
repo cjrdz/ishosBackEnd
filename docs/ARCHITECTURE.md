@@ -12,7 +12,7 @@ This backend follows a layered Go architecture:
 
 - **Chi HTTP server** (`cmd/api/main.go`, `internal/server/server.go`)
 - **Ent ORM** with PostgreSQL for business data (via `database/sql` + `pgx` stdlib)
-- **Neon pooler compatibility layer** in server bootstrap (`default_query_exec_mode=simple_protocol` auto-applied on `-pooler` hosts)
+- **Neon direct endpoint recommended** for stable query execution (avoid `-pooler` hosts for this API runtime)
 - **PocketBase embedded library** for auth and employee accounts
 - **Optional PocketBase Admin UI server** (separate port, disabled by default; enabled via `ENABLE_PB_ADMIN_UI`)
 - **Supabase Storage** for product image storage
@@ -22,7 +22,7 @@ This backend follows a layered Go architecture:
 
 1. Request enters Chi router.
 2. Global middleware runs (`RequestID`, `RealIP`, `Recovery`, `Logger`, `CORS`).
-3. Route-specific middleware runs (`RequireSession`, `RequireAdmin`, `OptionalAuth`, rate-limit).
+3. Route-specific middleware runs (`RequireSession`, `OptionalSession`, rate-limit; role checks when applicable).
 4. Handler validates input and delegates to service.
 5. Service executes business logic and calls repository.
 6. Repository performs Ent database operations.

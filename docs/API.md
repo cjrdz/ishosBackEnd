@@ -573,7 +573,7 @@ Employees are stored in the PocketBase `employees` auth collection (embedded SQL
 | List employees               | GET    | `/api/v1/employees`                |
 | Create employee              | POST   | `/api/v1/employees`                |
 | Update employee              | PATCH  | `/api/v1/employees/{id}`           |
-| Deactivate employee          | POST   | `/api/v1/employees/{id}/deactivate`|
+| Deactivate employee          | PATCH  | `/api/v1/employees/{id}/deactivate`|
 | Permanently delete employee  | DELETE | `/api/v1/employees/{id}`           |
 
 ### POST `/api/v1/employees` — Create
@@ -629,7 +629,7 @@ Body (all fields optional):
 
 Response `200 OK`: returns the updated employee.
 
-### POST `/api/v1/employees/{id}/deactivate` — Deactivate
+### PATCH `/api/v1/employees/{id}/deactivate` — Deactivate
 
 Sets the employee record's `disabled` flag to `true`. The employee can no longer log in because the auth middleware checks the disabled flag on every request. The record is preserved.
 

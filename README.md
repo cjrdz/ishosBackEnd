@@ -379,30 +379,6 @@ Customer submits order
 
 ## Deployment
 
-### Railway
-
-1. Push to GitHub
-2. Connect repo in Railway dashboard
-3. Set all required environment variables
-4. Start command: `./server`
-5. Add a persistent volume mounted at `/app/pb_data` for PocketBase auth data
-6. Update `ALLOWED_ORIGINS` to your production frontend URL
-
-### Render
-
-1. Connect repo → New Web Service
-2. Build command: `go build -o server ./cmd/api`
-3. Start command: `./server`
-4. Add a persistent disk mounted at `/app/pb_data`
-5. Set environment variables
-
-### Fly.io
-
-1. Create a volume for PocketBase data: `fly volumes create pb_data --size 1`
-2. Mount the volume at `/app/pb_data` in `fly.toml`
-3. Set environment variables via `fly secrets set`
-4. Deploy with `fly deploy`
-
 ### Production Notes
 
 - **PocketBase data persistence**: PocketBase stores auth data in SQLite at `pb_data/`. This directory **must** be on a persistent volume in production.

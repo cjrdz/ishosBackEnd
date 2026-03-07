@@ -24,7 +24,7 @@ This project uses PocketBase as an embedded Go library. The optional PocketBase 
 ## Auth Route Overview
 
 - `POST /api/v1/auth/login`
-- `GET /api/v1/auth/session`
+- `GET /api/v1/auth/session` (uses optional-session middleware; returns 401 when token is missing/invalid)
 - `POST /api/v1/auth/logout`
 
 ## Employee Management
@@ -34,5 +34,5 @@ Admin-only endpoints:
 - `GET /api/v1/employees`
 - `POST /api/v1/employees`
 - `PATCH /api/v1/employees/{id}`
-- `POST /api/v1/employees/{id}/deactivate`
+- `PATCH /api/v1/employees/{id}/deactivate`
 - `DELETE /api/v1/employees/{id}` (permanent delete)

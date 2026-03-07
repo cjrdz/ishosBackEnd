@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -75,7 +75,7 @@ func main() {
 	cfg := config.Load()
 
 	// Connect to database
-	drv, err := sql.Open("postgres", cfg.DatabaseURL)
+	drv, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}

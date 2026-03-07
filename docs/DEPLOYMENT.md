@@ -14,6 +14,12 @@ go build -o server ./cmd/api
 - `PB_DATA_DIR` (default `./pb_data`)
 - `ALLOWED_ORIGINS`
 
+`DATABASE_URL` note:
+
+- Prefer the Neon direct host (no `-pooler` in hostname) for this API service.
+- Example: `postgres://user:pass@ep-xxx.us-east-2.aws.neon.tech/db?sslmode=require`
+- If you see intermittent errors like `unnamed prepared statement does not exist`, verify you are not using the Neon pooler endpoint.
+
 Optional:
 
 - `PORT` (default `8080`)
