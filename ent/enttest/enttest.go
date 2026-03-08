@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
+	"github.com/cjrdz/ishosBackEnd/ent"
 	// required by schema hooks.
-	_ "github.com/cjrdz/ishosFactory-backend/ent/runtime"
+	_ "github.com/cjrdz/ishosBackEnd/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/cjrdz/ishosFactory-backend/ent/migrate"
+	"github.com/cjrdz/ishosBackEnd/ent/migrate"
 )
 
 type (

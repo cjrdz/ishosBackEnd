@@ -10,7 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosFactory-backend/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
 	"github.com/google/uuid"
 )
 

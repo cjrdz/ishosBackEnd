@@ -9,7 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/cjrdz/ishosFactory-backend/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
 	"github.com/google/uuid"
 )
 

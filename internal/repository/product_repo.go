@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
-	"github.com/cjrdz/ishosFactory-backend/ent/category"
-	"github.com/cjrdz/ishosFactory-backend/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/product"
 )
 
 type ProductRepository struct {

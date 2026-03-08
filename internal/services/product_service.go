@@ -5,8 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
-	"github.com/cjrdz/ishosFactory-backend/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
 type ProductService struct {

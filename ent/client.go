@@ -9,18 +9,18 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/cjrdz/ishosFactory-backend/ent/migrate"
+	"github.com/cjrdz/ishosBackEnd/ent/migrate"
 	"github.com/google/uuid"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/cjrdz/ishosFactory-backend/ent/category"
-	"github.com/cjrdz/ishosFactory-backend/ent/order"
-	"github.com/cjrdz/ishosFactory-backend/ent/orderitem"
-	"github.com/cjrdz/ishosFactory-backend/ent/product"
-	"github.com/cjrdz/ishosFactory-backend/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/order"
+	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
 )
 
 // Client is the client that holds all ent builders.

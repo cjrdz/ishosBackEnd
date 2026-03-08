@@ -18,7 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 	storage "github.com/supabase-community/storage-go"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
 var ErrInvalidImageType = errors.New("invalid image type")

@@ -20,8 +20,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/auth"
-	"github.com/cjrdz/ishosFactory-backend/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
 func main() {

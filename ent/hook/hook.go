@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
+	"github.com/cjrdz/ishosBackEnd/ent"
 )
 
 // The CategoryFunc type is an adapter to allow the use of ordinary

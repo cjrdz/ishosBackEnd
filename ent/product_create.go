@@ -10,9 +10,9 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosFactory-backend/ent/category"
-	"github.com/cjrdz/ishosFactory-backend/ent/orderitem"
-	"github.com/cjrdz/ishosFactory-backend/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/google/uuid"
 )
 

@@ -21,9 +21,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/auth"
-	"github.com/cjrdz/ishosFactory-backend/internal/validator"
-	"github.com/cjrdz/ishosFactory-backend/pkg/response"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/validator"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 // EmployeeHandler manages employee records in the PocketBase "employees"

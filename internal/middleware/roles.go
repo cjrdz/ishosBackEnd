@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 )
 
 // RequireAdmin blocks requests from non-admin roles.

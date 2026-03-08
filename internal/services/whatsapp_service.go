@@ -15,7 +15,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
 type WhatsAppService struct {

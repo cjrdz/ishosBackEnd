@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosFactory-backend/ent/category"
-	"github.com/cjrdz/ishosFactory-backend/ent/predicate"
+	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/predicate"
 )
 
 // CategoryDelete is the builder for deleting a Category entity.

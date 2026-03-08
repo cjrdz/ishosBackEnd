@@ -14,10 +14,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
-	"github.com/cjrdz/ishosFactory-backend/internal/repository"
-	"github.com/cjrdz/ishosFactory-backend/internal/validator"
-	"github.com/cjrdz/ishosFactory-backend/pkg/response"
+	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/validator"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type CategoryHandler struct {

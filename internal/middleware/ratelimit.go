@@ -8,7 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 )
 
 // OrderRateLimiter tracks order creation attempts in memory.

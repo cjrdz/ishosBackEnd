@@ -19,10 +19,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
-	"github.com/cjrdz/ishosFactory-backend/ent/category"
-	"github.com/cjrdz/ishosFactory-backend/ent/product"
-	"github.com/cjrdz/ishosFactory-backend/internal/config"
+	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/product"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
 // seedCategory matches the JSON shape from products_category.json

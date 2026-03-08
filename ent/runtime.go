@@ -5,12 +5,12 @@ package ent
 import (
 	"time"
 
-	"github.com/cjrdz/ishosFactory-backend/ent/category"
-	"github.com/cjrdz/ishosFactory-backend/ent/order"
-	"github.com/cjrdz/ishosFactory-backend/ent/orderitem"
-	"github.com/cjrdz/ishosFactory-backend/ent/product"
-	"github.com/cjrdz/ishosFactory-backend/ent/ratelimit"
-	"github.com/cjrdz/ishosFactory-backend/ent/schema"
+	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/order"
+	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/schema"
 	"github.com/google/uuid"
 )
 

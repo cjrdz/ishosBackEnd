@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
-	"github.com/cjrdz/ishosFactory-backend/ent/predicate"
+	"github.com/cjrdz/ishosBackEnd/ent/predicate"
 	"github.com/google/uuid"
 )
 

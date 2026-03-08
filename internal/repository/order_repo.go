@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
-	entOrder "github.com/cjrdz/ishosFactory-backend/ent/order"
-	entOrderItem "github.com/cjrdz/ishosFactory-backend/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/ent"
+	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
+	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
 )
 
 type OrderRepository struct {

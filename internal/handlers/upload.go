@@ -6,9 +6,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/config"
-	"github.com/cjrdz/ishosFactory-backend/internal/services"
-	"github.com/cjrdz/ishosFactory-backend/pkg/response"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type UploadHandler struct {

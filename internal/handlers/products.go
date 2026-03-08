@@ -11,12 +11,12 @@ import (
 	"github.com/lib/pq"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/ent"
-	"github.com/cjrdz/ishosFactory-backend/internal/config"
-	"github.com/cjrdz/ishosFactory-backend/internal/repository"
-	"github.com/cjrdz/ishosFactory-backend/internal/services"
-	"github.com/cjrdz/ishosFactory-backend/internal/validator"
-	"github.com/cjrdz/ishosFactory-backend/pkg/response"
+	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
+	"github.com/cjrdz/ishosBackEnd/internal/validator"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type ProductHandler struct {

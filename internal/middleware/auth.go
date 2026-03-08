@@ -7,7 +7,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosFactory-backend/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 )
 
 // PBAuth is the Chi middleware that validates sessions with PocketBase.

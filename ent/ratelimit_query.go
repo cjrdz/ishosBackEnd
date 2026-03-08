@@ -11,8 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosFactory-backend/ent/predicate"
-	"github.com/cjrdz/ishosFactory-backend/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/predicate"
+	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
 	"github.com/google/uuid"
 )
 

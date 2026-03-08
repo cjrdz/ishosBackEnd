@@ -1,11 +1,11 @@
-module github.com/cjrdz/ishosFactory-backend
+module github.com/cjrdz/ishosBackEnd
 
 go 1.24.0
 
 require (
 	// ORM
 	entgo.io/ent v0.14.1
-	// Router
+	// Router	
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 
