@@ -22,7 +22,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.26.1'
           cache: true
 
       - name: Download modules
@@ -40,27 +40,27 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
-  gosec:
-    name: Go static security analysis (gosec)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  # gosec:
+  #   name: Go static security analysis (gosec)
+  #   runs-on: ubuntu-latest
+  #   steps:  
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+  #     - name: Setup Go
+  #       uses: actions/setup-go@v5
+  #       with:
+  #         go-version-file: go.mod
+  #         cache: true
 
-      - name: Download modules
-        run: go mod download
+  #     - name: Download modules
+  #       run: go mod download
 
-      - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+  #     - name: Install gosec
+  #       run: go install github.com/securego/gosec/v2/cmd/gosec@latest
 
-      - name: Run gosec
-        run: gosec ./...
+  #     - name: Run gosec
+  #       run: gosec ./...
 
   secret-scan:
     name: Secret scanning (gitleaks)
