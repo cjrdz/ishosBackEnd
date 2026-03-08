@@ -514,7 +514,7 @@ Response `200 OK`:
 
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "token": "<your-jwt-token>",
   "employee": {
     "id": "pb-record-id",
     "email": "admin@ishos.com",
