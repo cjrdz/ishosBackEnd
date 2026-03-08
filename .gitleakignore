@@ -1,0 +1,6 @@
+# Gitleaks ignore patterns for false positives and intentional examples
+
+# Documentation files contain example API responses with truncated/dummy tokens
+# These are not real secrets and are safe to commit
+docs/API.md
+README.md

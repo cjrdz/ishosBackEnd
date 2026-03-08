@@ -49,7 +49,7 @@ func main() {
 
 	record, err := pb.CreateEmployee(*email, *password, *name, *phone, "admin", false)
 	if err != nil {
-		pb.Close()
+		_ = pb.Close()
 		log.Fatal().Err(err).Str("email", *email).Msg("Failed to create admin employee")
 	}
 
@@ -60,6 +60,6 @@ func main() {
 		Str("role", record.GetString("role")).
 		Msg("✅ Admin employee created successfully")
 
-	pb.Close()
+	_ = pb.Close()
 	log.Info().Msg("You can now log in via POST /api/v1/auth/login")
 }

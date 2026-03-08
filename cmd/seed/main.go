@@ -85,7 +85,7 @@ func main() {
 
 	// Run migrations first
 	if err := db.Schema.Create(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		log.Fatal().Err(err).Msg("Failed to run migrations")
 	}
 	log.Info().Msg("Migrations complete")
@@ -205,7 +205,7 @@ func main() {
 			Msg("Product created")
 	}
 
-	db.Close()
+	_ = db.Close()
 	log.Info().
 		Int("categories", len(seedCategories)).
 		Int("products", len(seedProducts)).

@@ -76,7 +76,7 @@ func main() {
 	// ── Server (Chi router + Ent database) ───────────────────────────────
 	srv, err := server.New(pb, cfg)
 	if err != nil {
-		pb.Close()
+		_ = pb.Close()
 		log.Fatal().Err(err).Msg("Failed to initialise server")
 	}
 
@@ -117,7 +117,7 @@ func main() {
 	}
 
 	srv.Close()
-	pb.Close()
+	_ = pb.Close()
 	log.Info().Msg("Server exited cleanly")
 }
 

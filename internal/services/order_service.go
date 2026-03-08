@@ -2,9 +2,10 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -363,5 +364,10 @@ func (s *OrderService) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func generateOrderNumber() string {
-	return fmt.Sprintf("ORD-%s-%04d", time.Now().Format("20060102"), rand.Intn(9000)+1000)
+	randomNum, err := rand.Int(rand.Reader, big.NewInt(9000))
+	if err != nil {
+		// Fallback: use sequential number based on time
+		randomNum = big.NewInt(int64(time.Now().Nanosecond() % 9000))
+	}
+	return fmt.Sprintf("ORD-%s-%04d", time.Now().Format("20060102"), randomNum.Int64()+1000)
 }
