@@ -6,11 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
@@ -30,10 +32,12 @@ type Server struct {
 // New creates a new Server instance with all dependencies initialized.
 func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	// ── Database connection ──────────────────────────────────────────────
-	drv, err := sql.Open("pgx", cfg.DatabaseURL)
+	pgCfg, err := pgx.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, fmt.Errorf("failed to parse database url: %w", err)
 	}
+
+	drv := sql.OpenDB(dialect.Postgres, stdlib.OpenDB(*pgCfg))
 
 	// Create Ent client
 	client := ent.NewClient(ent.Driver(drv))

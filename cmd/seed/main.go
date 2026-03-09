@@ -13,8 +13,10 @@ import (
 	"os"
 	"time"
 
+	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -75,10 +77,11 @@ func main() {
 	cfg := config.Load()
 
 	// Connect to database
-	drv, err := sql.Open("pgx", cfg.DatabaseURL)
+	pgCfg, err := pgx.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to database")
+		log.Fatal().Err(err).Msg("Failed to parse database URL")
 	}
+	drv := sql.OpenDB(dialect.Postgres, stdlib.OpenDB(*pgCfg))
 	db := ent.NewClient(ent.Driver(drv))
 
 	ctx := context.Background()

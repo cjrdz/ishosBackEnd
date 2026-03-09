@@ -2,7 +2,7 @@ name: Security
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["feature", "secondary"]
   pull_request:
   schedule:
     - cron: "0 5 * * 1"
@@ -12,33 +12,33 @@ permissions:
   contents: read
 
 jobs:
-  # govulncheck:
-  #   name: Go dependency CVE scan (govulncheck)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
+  govulncheck:
+    name: Go dependency CVE scan (govulncheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  #     - name: Setup Go
-  #       uses: actions/setup-go@v5
-  #       with:
-  #         go-version: '1.26.1'
-  #         cache: true
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache: true
 
-  #     - name: Download modules
-  #       run: go mod download
+      - name: Download modules
+        run: go mod download
 
-  #     - name: Verify modules
-  #       run: go mod verify
+      - name: Verify modules
+        run: go mod verify
 
-  #     - name: Build packages
-  #       run: go build ./...
+      - name: Build packages
+        run: go build ./...
 
-  #     - name: Install govulncheck
-  #       run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
-  #     - name: Run govulncheck
-  #       run: govulncheck ./...
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   gosec:
     name: Go static security analysis (gosec)
@@ -74,26 +74,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # container-scan:
-  #   name: Container image scan (Trivy)
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
+  container-scan:
+    name: Container image scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  #     - name: Build container image
-  #       run: docker build -t ishosbackend:ci .
+      - name: Build container image
+        run: docker build -t ishosbackend:ci .
 
-  #     - name: Scan image for HIGH/CRITICAL vulnerabilities
-  #       run: |
-  #         docker run --rm \
-  #           -v /var/run/docker.sock:/var/run/docker.sock \
-  #           -v ${{ github.workspace }}:/workspace \
-  #           aquasec/trivy:0.56.1 image \
-  #           --format table \
-  #           --exit-code 1 \
-  #           --ignore-unfixed \
-  #           --scanners vuln \
-  #           --pkg-types os,library \
-  #           --severity HIGH,CRITICAL \
-  #           ishosbackend:ci
+      - name: Scan image for HIGH/CRITICAL vulnerabilities
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${{ github.workspace }}:/workspace \
+            aquasec/trivy:0.56.1 image \
+            --format table \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --scanners vuln \
+            --pkg-types os,library \
+            --severity HIGH,CRITICAL \
+            ishosbackend:ci
