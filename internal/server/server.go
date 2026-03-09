@@ -44,7 +44,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	log.Info().Msg("Connected to PostgreSQL database")
 
 	// ── Initialize handlers ──────────────────────────────────────────────
-	authHandler := handlers.NewAuthHandler(pb)
+	authHandler := handlers.NewAuthHandler(pb, cfg)
 	employeeHandler := handlers.NewEmployeeHandler(pb)
 	categoryHandler := handlers.NewCategoryHandler(client)
 	productHandler := handlers.NewProductHandler(client, cfg)

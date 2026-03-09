@@ -112,9 +112,17 @@ func (a *PBAuth) OptionalSession(next http.Handler) http.Handler {
 	})
 }
 
-// extractBearerToken reads the token from the Authorization header.
-// Expected format: "Bearer <token>"
+// extractBearerToken reads the token from either:
+// 1. HttpOnly cookie named "auth_token" (preferred - XSS safe)
+// 2. Authorization header with "Bearer <token>" format (fallback)
 func extractBearerToken(r *http.Request) string {
+	// First try to get token from HttpOnly cookie (preferred)
+	cookie, err := r.Cookie("auth_token")
+	if err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+
+	// Fallback to Authorization header
 	header := r.Header.Get("Authorization")
 	if header == "" {
 		return ""

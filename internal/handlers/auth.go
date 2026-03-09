@@ -6,14 +6,18 @@
 //     Body: { "email": "admin@ishos.com", "password": "secret" }
 //     → This handler validates credentials via PocketBase's Go API.
 //     → Returns a PocketBase-compatible JWT token + employee data.
+//     → Sets HttpOnly cookie for secure token storage.
 //
-//  2. Frontend stores the JWT token.
+//  2. Frontend can use:
+//     - HttpOnly cookie (automatic, most secure) — sent with every request
+//     - Authorization Bearer header (fallback) — for API clients
 //
-//  3. Frontend sends requests with Authorization: Bearer <token>.
+//  3. Protected routes use the PBAuth Chi middleware which validates
+//     the token via:
+//     - HttpOnly cookie (preferred)
+//     - Authorization: Bearer <token> header (fallback)
 //
-//  4. Protected routes use the PBAuth Chi middleware which validates
-//     the token via PocketBase's Go API (no HTTP calls) and stores
-//     the employee record and role in the request context.
+//  4. Middleware stores the employee record and role in request context.
 //
 //  5. GetSession reads the employee info from request context.
 
@@ -21,21 +25,24 @@ package handlers
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 // AuthHandler provides login, session inspection and logout endpoints.
 type AuthHandler struct {
-	pb *auth.PBAuth
+	pb  *auth.PBAuth
+	cfg *config.Config
 }
 
-func NewAuthHandler(pb *auth.PBAuth) *AuthHandler {
-	return &AuthHandler{pb: pb}
+func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config) *AuthHandler {
+	return &AuthHandler{pb: pb, cfg: cfg}
 }
 
 // Login authenticates an employee via email/password and returns a JWT token.
@@ -77,6 +84,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	log.Info().Str("email", body.Email).Str("role", auth.RoleFromRecord(record)).Msg("Login successful")
 
+	// Set HttpOnly cookie with the auth token
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,                                // Prevent JS access (XSS protection)
+		Secure:   h.cfg.Env == "production",           // HTTPS only in production
+		SameSite: http.SameSiteLaxMode,                // CSRF protection
+		MaxAge:   int((7 * 24 * time.Hour).Seconds()), // 7 days
+	})
+
 	response.JSON(w, http.StatusOK, map[string]any{
 		"token": token,
 		"employee": map[string]any{
@@ -110,15 +128,25 @@ func (h *AuthHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout is a helper endpoint. With PocketBase token-based auth the frontend
-// simply discards the JWT — there is no server-side session to destroy.
+// Logout clears the auth token cookie and returns a confirmation message.
 //
-// This endpoint exists for frontend convenience and returns a confirmation
-// message. If needed you can extend it to add the token to a deny-list.
+// With PocketBase token-based auth the token validity is time-based.
+// This endpoint clears the HttpOnly cookie on the client side.
 //
 // POST /api/v1/auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Clear the auth_token cookie by setting MaxAge to -1
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   h.cfg.Env == "production",
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1, // This tells the browser to delete the cookie
+	})
+
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "Logged out successfully. Discard the token on the client.",
+		"message": "Logged out successfully.",
 	})
 }
