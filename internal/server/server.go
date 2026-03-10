@@ -130,7 +130,11 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			// Orders management
 			protected.Get("/orders", orderHandler.List)
 			protected.Get("/orders/{id}", orderHandler.Get)
+			protected.Patch("/orders/{id}", orderHandler.Update)
+			protected.Post("/orders/{id}/approve", orderHandler.Approve)
+			protected.Post("/orders/{id}/reject", orderHandler.Reject)
 			protected.Patch("/orders/{id}/status", orderHandler.UpdateStatus)
+			protected.Patch("/orders/{id}/notes", orderHandler.UpdateNotes)
 			protected.Delete("/orders/{id}", orderHandler.Delete)
 
 			// Upload
