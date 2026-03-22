@@ -16,7 +16,9 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
@@ -28,8 +30,12 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// Addon is the client for interacting with the Addon builders.
+	Addon *AddonClient
 	// Category is the client for interacting with the Category builders.
 	Category *CategoryClient
+	// Flavor is the client for interacting with the Flavor builders.
+	Flavor *FlavorClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
 	// OrderItem is the client for interacting with the OrderItem builders.
@@ -49,7 +55,9 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.Addon = NewAddonClient(c.config)
 	c.Category = NewCategoryClient(c.config)
+	c.Flavor = NewFlavorClient(c.config)
 	c.Order = NewOrderClient(c.config)
 	c.OrderItem = NewOrderItemClient(c.config)
 	c.Product = NewProductClient(c.config)
@@ -146,7 +154,9 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:       ctx,
 		config:    cfg,
+		Addon:     NewAddonClient(cfg),
 		Category:  NewCategoryClient(cfg),
+		Flavor:    NewFlavorClient(cfg),
 		Order:     NewOrderClient(cfg),
 		OrderItem: NewOrderItemClient(cfg),
 		Product:   NewProductClient(cfg),
@@ -170,7 +180,9 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:       ctx,
 		config:    cfg,
+		Addon:     NewAddonClient(cfg),
 		Category:  NewCategoryClient(cfg),
+		Flavor:    NewFlavorClient(cfg),
 		Order:     NewOrderClient(cfg),
 		OrderItem: NewOrderItemClient(cfg),
 		Product:   NewProductClient(cfg),
@@ -181,7 +193,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Category.
+//		Addon.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -203,28 +215,32 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.Category.Use(hooks...)
-	c.Order.Use(hooks...)
-	c.OrderItem.Use(hooks...)
-	c.Product.Use(hooks...)
-	c.RateLimit.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.Addon, c.Category, c.Flavor, c.Order, c.OrderItem, c.Product, c.RateLimit,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.Category.Intercept(interceptors...)
-	c.Order.Intercept(interceptors...)
-	c.OrderItem.Intercept(interceptors...)
-	c.Product.Intercept(interceptors...)
-	c.RateLimit.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.Addon, c.Category, c.Flavor, c.Order, c.OrderItem, c.Product, c.RateLimit,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AddonMutation:
+		return c.Addon.mutate(ctx, m)
 	case *CategoryMutation:
 		return c.Category.mutate(ctx, m)
+	case *FlavorMutation:
+		return c.Flavor.mutate(ctx, m)
 	case *OrderMutation:
 		return c.Order.mutate(ctx, m)
 	case *OrderItemMutation:
@@ -235,6 +251,155 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RateLimit.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AddonClient is a client for the Addon schema.
+type AddonClient struct {
+	config
+}
+
+// NewAddonClient returns a client for the Addon from the given config.
+func NewAddonClient(c config) *AddonClient {
+	return &AddonClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `addon.Hooks(f(g(h())))`.
+func (c *AddonClient) Use(hooks ...Hook) {
+	c.hooks.Addon = append(c.hooks.Addon, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `addon.Intercept(f(g(h())))`.
+func (c *AddonClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Addon = append(c.inters.Addon, interceptors...)
+}
+
+// Create returns a builder for creating a Addon entity.
+func (c *AddonClient) Create() *AddonCreate {
+	mutation := newAddonMutation(c.config, OpCreate)
+	return &AddonCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Addon entities.
+func (c *AddonClient) CreateBulk(builders ...*AddonCreate) *AddonCreateBulk {
+	return &AddonCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AddonClient) MapCreateBulk(slice any, setFunc func(*AddonCreate, int)) *AddonCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AddonCreateBulk{err: fmt.Errorf("calling to AddonClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AddonCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AddonCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Addon.
+func (c *AddonClient) Update() *AddonUpdate {
+	mutation := newAddonMutation(c.config, OpUpdate)
+	return &AddonUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AddonClient) UpdateOne(_m *Addon) *AddonUpdateOne {
+	mutation := newAddonMutation(c.config, OpUpdateOne, withAddon(_m))
+	return &AddonUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AddonClient) UpdateOneID(id uuid.UUID) *AddonUpdateOne {
+	mutation := newAddonMutation(c.config, OpUpdateOne, withAddonID(id))
+	return &AddonUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Addon.
+func (c *AddonClient) Delete() *AddonDelete {
+	mutation := newAddonMutation(c.config, OpDelete)
+	return &AddonDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AddonClient) DeleteOne(_m *Addon) *AddonDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AddonClient) DeleteOneID(id uuid.UUID) *AddonDeleteOne {
+	builder := c.Delete().Where(addon.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AddonDeleteOne{builder}
+}
+
+// Query returns a query builder for Addon.
+func (c *AddonClient) Query() *AddonQuery {
+	return &AddonQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAddon},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Addon entity by its id.
+func (c *AddonClient) Get(ctx context.Context, id uuid.UUID) (*Addon, error) {
+	return c.Query().Where(addon.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AddonClient) GetX(ctx context.Context, id uuid.UUID) *Addon {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryProducts queries the products edge of a Addon.
+func (c *AddonClient) QueryProducts(_m *Addon) *ProductQuery {
+	query := (&ProductClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(addon.Table, addon.FieldID, id),
+			sqlgraph.To(product.Table, product.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, addon.ProductsTable, addon.ProductsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *AddonClient) Hooks() []Hook {
+	return c.hooks.Addon
+}
+
+// Interceptors returns the client interceptors.
+func (c *AddonClient) Interceptors() []Interceptor {
+	return c.inters.Addon
+}
+
+func (c *AddonClient) mutate(ctx context.Context, m *AddonMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AddonCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AddonUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AddonUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AddonDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Addon mutation op: %q", m.Op())
 	}
 }
 
@@ -293,8 +458,8 @@ func (c *CategoryClient) Update() *CategoryUpdate {
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *CategoryClient) UpdateOne(ca *Category) *CategoryUpdateOne {
-	mutation := newCategoryMutation(c.config, OpUpdateOne, withCategory(ca))
+func (c *CategoryClient) UpdateOne(_m *Category) *CategoryUpdateOne {
+	mutation := newCategoryMutation(c.config, OpUpdateOne, withCategory(_m))
 	return &CategoryUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
@@ -311,8 +476,8 @@ func (c *CategoryClient) Delete() *CategoryDelete {
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *CategoryClient) DeleteOne(ca *Category) *CategoryDeleteOne {
-	return c.DeleteOneID(ca.ID)
+func (c *CategoryClient) DeleteOne(_m *Category) *CategoryDeleteOne {
+	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
@@ -347,16 +512,16 @@ func (c *CategoryClient) GetX(ctx context.Context, id uuid.UUID) *Category {
 }
 
 // QueryProducts queries the products edge of a Category.
-func (c *CategoryClient) QueryProducts(ca *Category) *ProductQuery {
+func (c *CategoryClient) QueryProducts(_m *Category) *ProductQuery {
 	query := (&ProductClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := ca.ID
+		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(category.Table, category.FieldID, id),
 			sqlgraph.To(product.Table, product.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, category.ProductsTable, category.ProductsColumn),
 		)
-		fromV = sqlgraph.Neighbors(ca.driver.Dialect(), step)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
 	}
 	return query
@@ -384,6 +549,155 @@ func (c *CategoryClient) mutate(ctx context.Context, m *CategoryMutation) (Value
 		return (&CategoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Category mutation op: %q", m.Op())
+	}
+}
+
+// FlavorClient is a client for the Flavor schema.
+type FlavorClient struct {
+	config
+}
+
+// NewFlavorClient returns a client for the Flavor from the given config.
+func NewFlavorClient(c config) *FlavorClient {
+	return &FlavorClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `flavor.Hooks(f(g(h())))`.
+func (c *FlavorClient) Use(hooks ...Hook) {
+	c.hooks.Flavor = append(c.hooks.Flavor, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `flavor.Intercept(f(g(h())))`.
+func (c *FlavorClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Flavor = append(c.inters.Flavor, interceptors...)
+}
+
+// Create returns a builder for creating a Flavor entity.
+func (c *FlavorClient) Create() *FlavorCreate {
+	mutation := newFlavorMutation(c.config, OpCreate)
+	return &FlavorCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Flavor entities.
+func (c *FlavorClient) CreateBulk(builders ...*FlavorCreate) *FlavorCreateBulk {
+	return &FlavorCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *FlavorClient) MapCreateBulk(slice any, setFunc func(*FlavorCreate, int)) *FlavorCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &FlavorCreateBulk{err: fmt.Errorf("calling to FlavorClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*FlavorCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &FlavorCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Flavor.
+func (c *FlavorClient) Update() *FlavorUpdate {
+	mutation := newFlavorMutation(c.config, OpUpdate)
+	return &FlavorUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *FlavorClient) UpdateOne(_m *Flavor) *FlavorUpdateOne {
+	mutation := newFlavorMutation(c.config, OpUpdateOne, withFlavor(_m))
+	return &FlavorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *FlavorClient) UpdateOneID(id uuid.UUID) *FlavorUpdateOne {
+	mutation := newFlavorMutation(c.config, OpUpdateOne, withFlavorID(id))
+	return &FlavorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Flavor.
+func (c *FlavorClient) Delete() *FlavorDelete {
+	mutation := newFlavorMutation(c.config, OpDelete)
+	return &FlavorDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *FlavorClient) DeleteOne(_m *Flavor) *FlavorDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *FlavorClient) DeleteOneID(id uuid.UUID) *FlavorDeleteOne {
+	builder := c.Delete().Where(flavor.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &FlavorDeleteOne{builder}
+}
+
+// Query returns a query builder for Flavor.
+func (c *FlavorClient) Query() *FlavorQuery {
+	return &FlavorQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeFlavor},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Flavor entity by its id.
+func (c *FlavorClient) Get(ctx context.Context, id uuid.UUID) (*Flavor, error) {
+	return c.Query().Where(flavor.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *FlavorClient) GetX(ctx context.Context, id uuid.UUID) *Flavor {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryProducts queries the products edge of a Flavor.
+func (c *FlavorClient) QueryProducts(_m *Flavor) *ProductQuery {
+	query := (&ProductClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(flavor.Table, flavor.FieldID, id),
+			sqlgraph.To(product.Table, product.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, flavor.ProductsTable, flavor.ProductsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *FlavorClient) Hooks() []Hook {
+	return c.hooks.Flavor
+}
+
+// Interceptors returns the client interceptors.
+func (c *FlavorClient) Interceptors() []Interceptor {
+	return c.inters.Flavor
+}
+
+func (c *FlavorClient) mutate(ctx context.Context, m *FlavorMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&FlavorCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&FlavorUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&FlavorUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&FlavorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Flavor mutation op: %q", m.Op())
 	}
 }
 
@@ -442,8 +756,8 @@ func (c *OrderClient) Update() *OrderUpdate {
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *OrderClient) UpdateOne(o *Order) *OrderUpdateOne {
-	mutation := newOrderMutation(c.config, OpUpdateOne, withOrder(o))
+func (c *OrderClient) UpdateOne(_m *Order) *OrderUpdateOne {
+	mutation := newOrderMutation(c.config, OpUpdateOne, withOrder(_m))
 	return &OrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
@@ -460,8 +774,8 @@ func (c *OrderClient) Delete() *OrderDelete {
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *OrderClient) DeleteOne(o *Order) *OrderDeleteOne {
-	return c.DeleteOneID(o.ID)
+func (c *OrderClient) DeleteOne(_m *Order) *OrderDeleteOne {
+	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
@@ -496,16 +810,16 @@ func (c *OrderClient) GetX(ctx context.Context, id uuid.UUID) *Order {
 }
 
 // QueryItems queries the items edge of a Order.
-func (c *OrderClient) QueryItems(o *Order) *OrderItemQuery {
+func (c *OrderClient) QueryItems(_m *Order) *OrderItemQuery {
 	query := (&OrderItemClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := o.ID
+		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(order.Table, order.FieldID, id),
 			sqlgraph.To(orderitem.Table, orderitem.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, order.ItemsTable, order.ItemsColumn),
 		)
-		fromV = sqlgraph.Neighbors(o.driver.Dialect(), step)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
 	}
 	return query
@@ -591,8 +905,8 @@ func (c *OrderItemClient) Update() *OrderItemUpdate {
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *OrderItemClient) UpdateOne(oi *OrderItem) *OrderItemUpdateOne {
-	mutation := newOrderItemMutation(c.config, OpUpdateOne, withOrderItem(oi))
+func (c *OrderItemClient) UpdateOne(_m *OrderItem) *OrderItemUpdateOne {
+	mutation := newOrderItemMutation(c.config, OpUpdateOne, withOrderItem(_m))
 	return &OrderItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
@@ -609,8 +923,8 @@ func (c *OrderItemClient) Delete() *OrderItemDelete {
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *OrderItemClient) DeleteOne(oi *OrderItem) *OrderItemDeleteOne {
-	return c.DeleteOneID(oi.ID)
+func (c *OrderItemClient) DeleteOne(_m *OrderItem) *OrderItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
@@ -645,32 +959,32 @@ func (c *OrderItemClient) GetX(ctx context.Context, id uuid.UUID) *OrderItem {
 }
 
 // QueryOrder queries the order edge of a OrderItem.
-func (c *OrderItemClient) QueryOrder(oi *OrderItem) *OrderQuery {
+func (c *OrderItemClient) QueryOrder(_m *OrderItem) *OrderQuery {
 	query := (&OrderClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := oi.ID
+		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(orderitem.Table, orderitem.FieldID, id),
 			sqlgraph.To(order.Table, order.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, orderitem.OrderTable, orderitem.OrderColumn),
 		)
-		fromV = sqlgraph.Neighbors(oi.driver.Dialect(), step)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
 	}
 	return query
 }
 
 // QueryProduct queries the product edge of a OrderItem.
-func (c *OrderItemClient) QueryProduct(oi *OrderItem) *ProductQuery {
+func (c *OrderItemClient) QueryProduct(_m *OrderItem) *ProductQuery {
 	query := (&ProductClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := oi.ID
+		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(orderitem.Table, orderitem.FieldID, id),
 			sqlgraph.To(product.Table, product.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, orderitem.ProductTable, orderitem.ProductColumn),
 		)
-		fromV = sqlgraph.Neighbors(oi.driver.Dialect(), step)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
 	}
 	return query
@@ -756,8 +1070,8 @@ func (c *ProductClient) Update() *ProductUpdate {
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *ProductClient) UpdateOne(pr *Product) *ProductUpdateOne {
-	mutation := newProductMutation(c.config, OpUpdateOne, withProduct(pr))
+func (c *ProductClient) UpdateOne(_m *Product) *ProductUpdateOne {
+	mutation := newProductMutation(c.config, OpUpdateOne, withProduct(_m))
 	return &ProductUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
@@ -774,8 +1088,8 @@ func (c *ProductClient) Delete() *ProductDelete {
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *ProductClient) DeleteOne(pr *Product) *ProductDeleteOne {
-	return c.DeleteOneID(pr.ID)
+func (c *ProductClient) DeleteOne(_m *Product) *ProductDeleteOne {
+	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
@@ -810,32 +1124,64 @@ func (c *ProductClient) GetX(ctx context.Context, id uuid.UUID) *Product {
 }
 
 // QueryCategory queries the category edge of a Product.
-func (c *ProductClient) QueryCategory(pr *Product) *CategoryQuery {
+func (c *ProductClient) QueryCategory(_m *Product) *CategoryQuery {
 	query := (&CategoryClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := pr.ID
+		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(product.Table, product.FieldID, id),
 			sqlgraph.To(category.Table, category.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, product.CategoryTable, product.CategoryColumn),
 		)
-		fromV = sqlgraph.Neighbors(pr.driver.Dialect(), step)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
 	}
 	return query
 }
 
 // QueryOrderItems queries the order_items edge of a Product.
-func (c *ProductClient) QueryOrderItems(pr *Product) *OrderItemQuery {
+func (c *ProductClient) QueryOrderItems(_m *Product) *OrderItemQuery {
 	query := (&OrderItemClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := pr.ID
+		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(product.Table, product.FieldID, id),
 			sqlgraph.To(orderitem.Table, orderitem.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, product.OrderItemsTable, product.OrderItemsColumn),
 		)
-		fromV = sqlgraph.Neighbors(pr.driver.Dialect(), step)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryFlavors queries the flavors edge of a Product.
+func (c *ProductClient) QueryFlavors(_m *Product) *FlavorQuery {
+	query := (&FlavorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(product.Table, product.FieldID, id),
+			sqlgraph.To(flavor.Table, flavor.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, product.FlavorsTable, product.FlavorsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryAddons queries the addons edge of a Product.
+func (c *ProductClient) QueryAddons(_m *Product) *AddonQuery {
+	query := (&AddonClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(product.Table, product.FieldID, id),
+			sqlgraph.To(addon.Table, addon.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, product.AddonsTable, product.AddonsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
 	}
 	return query
@@ -921,8 +1267,8 @@ func (c *RateLimitClient) Update() *RateLimitUpdate {
 }
 
 // UpdateOne returns an update builder for the given entity.
-func (c *RateLimitClient) UpdateOne(rl *RateLimit) *RateLimitUpdateOne {
-	mutation := newRateLimitMutation(c.config, OpUpdateOne, withRateLimit(rl))
+func (c *RateLimitClient) UpdateOne(_m *RateLimit) *RateLimitUpdateOne {
+	mutation := newRateLimitMutation(c.config, OpUpdateOne, withRateLimit(_m))
 	return &RateLimitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
 }
 
@@ -939,8 +1285,8 @@ func (c *RateLimitClient) Delete() *RateLimitDelete {
 }
 
 // DeleteOne returns a builder for deleting the given entity.
-func (c *RateLimitClient) DeleteOne(rl *RateLimit) *RateLimitDeleteOne {
-	return c.DeleteOneID(rl.ID)
+func (c *RateLimitClient) DeleteOne(_m *RateLimit) *RateLimitDeleteOne {
+	return c.DeleteOneID(_m.ID)
 }
 
 // DeleteOneID returns a builder for deleting the given entity by its id.
@@ -1002,9 +1348,9 @@ func (c *RateLimitClient) mutate(ctx context.Context, m *RateLimitMutation) (Val
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Category, Order, OrderItem, Product, RateLimit []ent.Hook
+		Addon, Category, Flavor, Order, OrderItem, Product, RateLimit []ent.Hook
 	}
 	inters struct {
-		Category, Order, OrderItem, Product, RateLimit []ent.Interceptor
+		Addon, Category, Flavor, Order, OrderItem, Product, RateLimit []ent.Interceptor
 	}
 )

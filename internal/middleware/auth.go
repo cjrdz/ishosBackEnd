@@ -43,6 +43,12 @@ func (a *PBAuth) RequireSession(next http.Handler) http.Handler {
 			return
 		}
 
+		if auth.IsTokenRevoked(token) {
+			log.Warn().Msg("PocketBase auth: revoked token")
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+
 		record, err := a.pb.ValidateToken(token)
 		if err != nil || record == nil {
 			log.Warn().Err(err).Msg("PocketBase auth: invalid or expired token")
@@ -88,6 +94,12 @@ func (a *PBAuth) OptionalSession(next http.Handler) http.Handler {
 		}
 
 		// Token provided - try to validate it
+		if auth.IsTokenRevoked(token) {
+			log.Debug().Msg("PocketBase auth: revoked token in optional auth")
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		record, err := a.pb.ValidateToken(token)
 		if err != nil || record == nil {
 			// Invalid token - log but continue as public request

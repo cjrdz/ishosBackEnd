@@ -32,10 +32,6 @@ func (Product) Fields() []ent.Field {
 			Nillable(),
 		field.Bool("is_available").
 			Default(true),
-		// stock_status: "in_stock" | "out_of_stock" | "discontinued"
-		field.Enum("stock_status").
-			Values("in_stock", "out_of_stock", "discontinued").
-			Default("in_stock"),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -54,11 +50,15 @@ func (Product) Edges() []ent.Edge {
 			Required(),
 		// Product can appear in many order items
 		edge.To("order_items", OrderItem.Type),
+		// Product can have many flavors
+		edge.To("flavors", Flavor.Type),
+		// Product can have many addons
+		edge.To("addons", Addon.Type),
 	}
 }
 
 func (Product) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("is_available", "stock_status"),
+		index.Fields("is_available"),
 	}
 }

@@ -1,23 +1,21 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/sql"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/database"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers"
 	appmiddleware "github.com/cjrdz/ishosBackEnd/internal/middleware"
 )
@@ -31,24 +29,26 @@ type Server struct {
 
 // New creates a new Server instance with all dependencies initialized.
 func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
-	// ── Database connection ──────────────────────────────────────────────
-	pgCfg, err := pgx.ParseConfig(cfg.DatabaseURL)
+	client, rawDB, err := database.OpenClient(cfg.DatabaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse database url: %w", err)
+		return nil, fmt.Errorf("failed to open database client: %w", err)
 	}
 
-	drv := sql.OpenDB(dialect.Postgres, stdlib.OpenDB(*pgCfg))
-
-	// Create Ent client
-	client := ent.NewClient(ent.Driver(drv))
-	log.Info().Msg("Connected to PostgreSQL database")
+	if err := database.EnsureSchema(context.Background(), client, rawDB); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to migrate database schema: %w", err)
+	}
+	log.Info().Msg("Connected to PostgreSQL database and verified schema")
 
 	// ── Initialize handlers ──────────────────────────────────────────────
 	authHandler := handlers.NewAuthHandler(pb, cfg)
 	employeeHandler := handlers.NewEmployeeHandler(pb)
 	categoryHandler := handlers.NewCategoryHandler(client)
 	productHandler := handlers.NewProductHandler(client, cfg)
+	flavorHandler := handlers.NewFlavorHandler(client)
+	addonHandler := handlers.NewAddonHandler(client)
 	uploadHandler := handlers.NewUploadHandler(cfg)
+	analyticsHandler := handlers.NewAnalyticsHandler(client)
 
 	// Order handler requires rate limiter
 	orderRateLimiter := appmiddleware.NewOrderRateLimiter(cfg.OrdersPerHour, cfg.OrdersPerDay)
@@ -64,12 +64,13 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	// Global middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(appmiddleware.SecurityHeaders)
 	r.Use(appmiddleware.Logger)
 	r.Use(appmiddleware.Recovery)
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	// CORS configuration
-	allowedOrigins := strings.Split(cfg.AllowedOrigins, ",")
+	allowedOrigins := parseAllowedOrigins(cfg.AllowedOrigins)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -102,8 +103,18 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Get("/categories", categoryHandler.List)
 		api.Get("/categories/{slug}", categoryHandler.GetBySlug)
 
+		// Flavors (public list of active)
+		api.Get("/flavors", flavorHandler.List)
+		api.Get("/flavors/{id}", flavorHandler.Get)
+
+		// Addons (public list of active)
+		api.Get("/addons", addonHandler.List)
+		api.Get("/addons/{id}", addonHandler.Get)
+
 		// Orders (public create)
 		api.Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
+		api.Get("/orders/track/history", orderHandler.TrackPublicHistory)
+		api.Get("/orders/track", orderHandler.TrackPublic)
 
 		// ── Authenticated routes (admin/employee only) ───────────────
 		api.Group(func(protected chi.Router) {
@@ -122,6 +133,24 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.Patch("/products/{id}/availability", productHandler.ToggleAvailability)
 			protected.Delete("/products/{id}", productHandler.Delete)
 
+			// Product-Flavor linking
+			protected.Post("/products/{id}/flavors/{flavorId}", productHandler.LinkFlavor)
+			protected.Delete("/products/{id}/flavors/{flavorId}", productHandler.UnlinkFlavor)
+
+			// Product-Addon linking
+			protected.Post("/products/{id}/addons/{addonId}", productHandler.LinkAddon)
+			protected.Delete("/products/{id}/addons/{addonId}", productHandler.UnlinkAddon)
+
+			// Flavors management
+			protected.Post("/flavors", flavorHandler.Create)
+			protected.Patch("/flavors/{id}", flavorHandler.Update)
+			protected.Delete("/flavors/{id}", flavorHandler.Delete)
+
+			// Addons management
+			protected.Post("/addons", addonHandler.Create)
+			protected.Patch("/addons/{id}", addonHandler.Update)
+			protected.Delete("/addons/{id}", addonHandler.Delete)
+
 			// Categories management
 			protected.Post("/categories", categoryHandler.Create)
 			protected.Patch("/categories/{slug}", categoryHandler.Update)
@@ -137,6 +166,11 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.Patch("/orders/{id}/notes", orderHandler.UpdateNotes)
 			protected.Delete("/orders/{id}", orderHandler.Delete)
 
+			// Analytics (admin only)
+			protected.With(appmiddleware.RequireAdmin).Get("/analytics/overview", analyticsHandler.Overview)
+			protected.With(appmiddleware.RequireAdmin).Get("/analytics/orders-over-time", analyticsHandler.OrdersOverTime)
+			protected.With(appmiddleware.RequireAdmin).Get("/analytics/top-products", analyticsHandler.TopProducts)
+
 			// Upload
 			protected.Post("/upload/image", uploadHandler.UploadImage)
 			protected.Delete("/upload/image", uploadHandler.DeleteImage)
@@ -151,6 +185,26 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		router: r,
 		cfg:    cfg,
 	}, nil
+}
+
+func parseAllowedOrigins(raw string) []string {
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		trimmed = strings.TrimSuffix(trimmed, "/")
+		origins = append(origins, trimmed)
+	}
+
+	if len(origins) == 0 {
+		return []string{"http://localhost:4321"}
+	}
+
+	return origins
 }
 
 // Router returns the configured Chi router.

@@ -346,26 +346,6 @@ func IsAvailableNEQ(v bool) predicate.Product {
 	return predicate.Product(sql.FieldNEQ(FieldIsAvailable, v))
 }
 
-// StockStatusEQ applies the EQ predicate on the "stock_status" field.
-func StockStatusEQ(v StockStatus) predicate.Product {
-	return predicate.Product(sql.FieldEQ(FieldStockStatus, v))
-}
-
-// StockStatusNEQ applies the NEQ predicate on the "stock_status" field.
-func StockStatusNEQ(v StockStatus) predicate.Product {
-	return predicate.Product(sql.FieldNEQ(FieldStockStatus, v))
-}
-
-// StockStatusIn applies the In predicate on the "stock_status" field.
-func StockStatusIn(vs ...StockStatus) predicate.Product {
-	return predicate.Product(sql.FieldIn(FieldStockStatus, vs...))
-}
-
-// StockStatusNotIn applies the NotIn predicate on the "stock_status" field.
-func StockStatusNotIn(vs ...StockStatus) predicate.Product {
-	return predicate.Product(sql.FieldNotIn(FieldStockStatus, vs...))
-}
-
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Product {
 	return predicate.Product(sql.FieldEQ(FieldCreatedAt, v))
@@ -484,6 +464,52 @@ func HasOrderItems() predicate.Product {
 func HasOrderItemsWith(preds ...predicate.OrderItem) predicate.Product {
 	return predicate.Product(func(s *sql.Selector) {
 		step := newOrderItemsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasFlavors applies the HasEdge predicate on the "flavors" edge.
+func HasFlavors() predicate.Product {
+	return predicate.Product(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, FlavorsTable, FlavorsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasFlavorsWith applies the HasEdge predicate on the "flavors" edge with a given conditions (other predicates).
+func HasFlavorsWith(preds ...predicate.Flavor) predicate.Product {
+	return predicate.Product(func(s *sql.Selector) {
+		step := newFlavorsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasAddons applies the HasEdge predicate on the "addons" edge.
+func HasAddons() predicate.Product {
+	return predicate.Product(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, AddonsTable, AddonsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasAddonsWith applies the HasEdge predicate on the "addons" edge with a given conditions (other predicates).
+func HasAddonsWith(preds ...predicate.Addon) predicate.Product {
+	return predicate.Product(func(s *sql.Selector) {
+		step := newAddonsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

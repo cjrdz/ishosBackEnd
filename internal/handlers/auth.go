@@ -24,7 +24,10 @@
 package handlers
 
 import (
+	"net"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -37,12 +40,21 @@ import (
 
 // AuthHandler provides login, session inspection and logout endpoints.
 type AuthHandler struct {
-	pb  *auth.PBAuth
-	cfg *config.Config
+	pb      *auth.PBAuth
+	cfg     *config.Config
+	lockout *loginLockout
 }
 
 func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config) *AuthHandler {
-	return &AuthHandler{pb: pb, cfg: cfg}
+	return &AuthHandler{
+		pb:  pb,
+		cfg: cfg,
+		lockout: newLoginLockout(
+			cfg.LoginLockoutMaxFailures,
+			time.Duration(cfg.LoginLockoutWindowMinutes)*time.Minute,
+			time.Duration(cfg.LoginLockoutDurationMinutes)*time.Minute,
+		),
+	}
 }
 
 // Login authenticates an employee via email/password and returns a JWT token.
@@ -54,6 +66,13 @@ func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config) *AuthHandler {
 // validates tokens from PocketBase's built-in endpoints will also
 // accept tokens generated here.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	ip := authClientIP(r)
+	if h.lockout.IsLocked(ip) {
+		log.Warn().Str("ip", ip).Msg("Login blocked by lockout")
+		response.Error(w, http.StatusTooManyRequests, "Too many failed attempts, try again later")
+		return
+	}
+
 	var body struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
@@ -70,29 +89,38 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, record, err := h.pb.Login(body.Email, body.Password)
 	if err != nil {
-		log.Warn().Str("email", body.Email).Msg("Login failed: invalid credentials")
+		h.lockout.RecordFailure(ip)
+		log.Warn().Str("ip", ip).Msg("Login failed: invalid credentials")
 		response.Error(w, http.StatusUnauthorized, "Invalid email or password")
 		return
 	}
 
 	// Check if the account has been disabled.
 	if auth.IsDisabled(record) {
-		log.Warn().Str("email", body.Email).Msg("Login failed: account disabled")
+		h.lockout.RecordFailure(ip)
+		log.Warn().Str("ip", ip).Msg("Login failed: account disabled")
 		response.Error(w, http.StatusForbidden, "Account has been deactivated")
 		return
 	}
 
+	h.lockout.Reset(ip)
+
 	log.Info().Str("email", body.Email).Str("role", auth.RoleFromRecord(record)).Msg("Login successful")
+
+	cookieTTL := h.cfg.AuthCookieTTLHours
+	if cookieTTL <= 0 {
+		cookieTTL = 24
+	}
 
 	// Set HttpOnly cookie with the auth token
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,                                // Prevent JS access (XSS protection)
-		Secure:   h.cfg.Env == "production",           // HTTPS only in production
-		SameSite: http.SameSiteLaxMode,                // CSRF protection
-		MaxAge:   int((7 * 24 * time.Hour).Seconds()), // 7 days
+		HttpOnly: true,                      // Prevent JS access (XSS protection)
+		Secure:   h.cfg.Env == "production", // HTTPS only in production
+		SameSite: http.SameSiteLaxMode,      // CSRF protection
+		MaxAge:   int((time.Duration(cookieTTL) * time.Hour).Seconds()),
 	})
 
 	response.JSON(w, http.StatusOK, map[string]any{
@@ -135,6 +163,10 @@ func (h *AuthHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 //
 // POST /api/v1/auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if token := extractAuthToken(r); token != "" {
+		auth.RevokeToken(token)
+	}
+
 	// Clear the auth_token cookie by setting MaxAge to -1
 	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
@@ -149,4 +181,100 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "Logged out successfully.",
 	})
+}
+
+type loginLockout struct {
+	mu           sync.Mutex
+	failuresByIP map[string][]time.Time
+	lockedUntil  map[string]time.Time
+	maxFailures  int
+	window       time.Duration
+	lockoutFor   time.Duration
+}
+
+func newLoginLockout(maxFailures int, window, lockoutFor time.Duration) *loginLockout {
+	if maxFailures <= 0 {
+		maxFailures = 5
+	}
+	if window <= 0 {
+		window = 15 * time.Minute
+	}
+	if lockoutFor <= 0 {
+		lockoutFor = 15 * time.Minute
+	}
+
+	return &loginLockout{
+		failuresByIP: make(map[string][]time.Time),
+		lockedUntil:  make(map[string]time.Time),
+		maxFailures:  maxFailures,
+		window:       window,
+		lockoutFor:   lockoutFor,
+	}
+}
+
+func (l *loginLockout) IsLocked(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	until, ok := l.lockedUntil[ip]
+	if !ok {
+		return false
+	}
+	if until.After(now) {
+		return true
+	}
+	delete(l.lockedUntil, ip)
+	return false
+}
+
+func (l *loginLockout) RecordFailure(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	cutoff := now.Add(-l.window)
+
+	current := l.failuresByIP[ip]
+	recent := make([]time.Time, 0, len(current)+1)
+	for _, t := range current {
+		if t.After(cutoff) {
+			recent = append(recent, t)
+		}
+	}
+	recent = append(recent, now)
+	l.failuresByIP[ip] = recent
+
+	if len(recent) >= l.maxFailures {
+		l.lockedUntil[ip] = now.Add(l.lockoutFor)
+		l.failuresByIP[ip] = nil
+	}
+}
+
+func (l *loginLockout) Reset(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.failuresByIP, ip)
+	delete(l.lockedUntil, ip)
+}
+
+func authClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+func extractAuthToken(r *http.Request) string {
+	if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+
+	header := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
+		return strings.TrimSpace(header[7:])
+	}
+
+	return ""
 }

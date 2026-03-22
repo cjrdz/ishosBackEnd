@@ -12,8 +12,12 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// Addon is the client for interacting with the Addon builders.
+	Addon *AddonClient
 	// Category is the client for interacting with the Category builders.
 	Category *CategoryClient
+	// Flavor is the client for interacting with the Flavor builders.
+	Flavor *FlavorClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
 	// OrderItem is the client for interacting with the OrderItem builders.
@@ -153,7 +157,9 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.Addon = NewAddonClient(tx.config)
 	tx.Category = NewCategoryClient(tx.config)
+	tx.Flavor = NewFlavorClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)
 	tx.OrderItem = NewOrderItemClient(tx.config)
 	tx.Product = NewProductClient(tx.config)
@@ -167,7 +173,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Category.QueryXXX(), the query will be executed
+// applies a query, for example: Addon.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

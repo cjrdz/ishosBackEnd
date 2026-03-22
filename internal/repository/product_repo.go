@@ -7,7 +7,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
+	entaddon "github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	entflavor "github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
 )
 
@@ -20,18 +22,24 @@ func NewProductRepository(db *ent.Client) *ProductRepository {
 }
 
 func (r *ProductRepository) FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]*ent.Product, error) {
-	q := r.db.Product.Query().WithCategory()
+	q := r.db.Product.Query().
+		WithCategory().
+		WithFlavors(func(flavorQuery *ent.FlavorQuery) {
+			flavorQuery.Order(ent.Asc(entflavor.FieldDisplayOrder))
+		}).
+		WithAddons(func(addonQuery *ent.AddonQuery) {
+			addonQuery.Order(ent.Asc(entaddon.FieldDisplayOrder))
+		})
 
 	if categorySlug != "" {
 		q = q.Where(product.HasCategoryWith(category.SlugEQ(categorySlug)))
 	}
 
 	if onlyAvailable {
-		q = q.Where(
-			product.IsAvailableEQ(true),
-			product.StockStatusEQ(product.StockStatusInStock),
-		)
+		q = q.Where(product.IsAvailableEQ(true))
 	}
+
+	q = q.Order(ent.Asc(product.FieldCreatedAt))
 
 	return q.All(ctx)
 }
@@ -40,6 +48,8 @@ func (r *ProductRepository) FindByIDWithCategory(ctx context.Context, id uuid.UU
 	return r.db.Product.Query().
 		Where(product.IDEQ(id)).
 		WithCategory().
+		WithFlavors().
+		WithAddons().
 		Only(ctx)
 }
 
@@ -55,7 +65,6 @@ func (r *ProductRepository) Create(ctx context.Context, input CreateProductInput
 		SetPrice(input.Price).
 		SetCategoryID(input.CategoryID).
 		SetNillableImagePath(input.ImagePath).
-		SetStockStatus(product.StockStatus(input.StockStatus)).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -79,9 +88,6 @@ func (r *ProductRepository) Update(ctx context.Context, id uuid.UUID, input Upda
 	if input.IsAvailable != nil {
 		upd = upd.SetIsAvailable(*input.IsAvailable)
 	}
-	if input.StockStatus != nil {
-		upd = upd.SetStockStatus(product.StockStatus(*input.StockStatus))
-	}
 
 	return upd.Save(ctx)
 }
@@ -102,13 +108,54 @@ func (r *ProductRepository) ToggleAvailability(ctx context.Context, id uuid.UUID
 		Save(ctx)
 }
 
+// GetProductFlavors returns all flavors for a product
+func (r *ProductRepository) GetProductFlavors(ctx context.Context, productID uuid.UUID) ([]*ent.Flavor, error) {
+	return r.db.Product.QueryFlavors(
+		r.db.Product.GetX(ctx, productID),
+	).Order(ent.Asc("display_order")).All(ctx)
+}
+
+// GetProductAddons returns all addons for a product
+func (r *ProductRepository) GetProductAddons(ctx context.Context, productID uuid.UUID) ([]*ent.Addon, error) {
+	return r.db.Product.QueryAddons(
+		r.db.Product.GetX(ctx, productID),
+	).Order(ent.Asc("display_order")).All(ctx)
+}
+
+// LinkFlavorToProduct adds a flavor to a product
+func (r *ProductRepository) LinkFlavorToProduct(ctx context.Context, productID, flavorID uuid.UUID) error {
+	return r.db.Product.UpdateOneID(productID).
+		AddFlavorIDs(flavorID).
+		Exec(ctx)
+}
+
+// UnlinkFlavorFromProduct removes a flavor from a product
+func (r *ProductRepository) UnlinkFlavorFromProduct(ctx context.Context, productID, flavorID uuid.UUID) error {
+	return r.db.Product.UpdateOneID(productID).
+		RemoveFlavorIDs(flavorID).
+		Exec(ctx)
+}
+
+// LinkAddonToProduct adds an addon to a product
+func (r *ProductRepository) LinkAddonToProduct(ctx context.Context, productID, addonID uuid.UUID) error {
+	return r.db.Product.UpdateOneID(productID).
+		AddAddonIDs(addonID).
+		Exec(ctx)
+}
+
+// UnlinkAddonFromProduct removes an addon from a product
+func (r *ProductRepository) UnlinkAddonFromProduct(ctx context.Context, productID, addonID uuid.UUID) error {
+	return r.db.Product.UpdateOneID(productID).
+		RemoveAddonIDs(addonID).
+		Exec(ctx)
+}
+
 type CreateProductInput struct {
 	Name        string
 	Description string
 	Price       float64
 	CategoryID  uuid.UUID
 	ImagePath   *string
-	StockStatus string
 }
 
 type UpdateProductInput struct {
@@ -117,5 +164,4 @@ type UpdateProductInput struct {
 	Price       *float64
 	ImagePath   *string
 	IsAvailable *bool
-	StockStatus *string
 }

@@ -82,7 +82,7 @@ func (*Category) scanValues(columns []string) ([]any, error) {
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
 // to the Category fields.
-func (c *Category) assignValues(columns []string, values []any) error {
+func (_m *Category) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
@@ -92,59 +92,59 @@ func (c *Category) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
-				c.ID = *value
+				_m.ID = *value
 			}
 		case category.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
-				c.Name = value.String
+				_m.Name = value.String
 			}
 		case category.FieldSlug:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field slug", values[i])
 			} else if value.Valid {
-				c.Slug = value.String
+				_m.Slug = value.String
 			}
 		case category.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
-				c.Description = value.String
+				_m.Description = value.String
 			}
 		case category.FieldImagePath:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field image_path", values[i])
 			} else if value.Valid {
-				c.ImagePath = new(string)
-				*c.ImagePath = value.String
+				_m.ImagePath = new(string)
+				*_m.ImagePath = value.String
 			}
 		case category.FieldDisplayOrder:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field display_order", values[i])
 			} else if value.Valid {
-				c.DisplayOrder = int(value.Int64)
+				_m.DisplayOrder = int(value.Int64)
 			}
 		case category.FieldIsActive:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field is_active", values[i])
 			} else if value.Valid {
-				c.IsActive = value.Bool
+				_m.IsActive = value.Bool
 			}
 		case category.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
-				c.CreatedAt = value.Time
+				_m.CreatedAt = value.Time
 			}
 		case category.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
-				c.UpdatedAt = value.Time
+				_m.UpdatedAt = value.Time
 			}
 		default:
-			c.selectValues.Set(columns[i], values[i])
+			_m.selectValues.Set(columns[i], values[i])
 		}
 	}
 	return nil
@@ -152,63 +152,63 @@ func (c *Category) assignValues(columns []string, values []any) error {
 
 // Value returns the ent.Value that was dynamically selected and assigned to the Category.
 // This includes values selected through modifiers, order, etc.
-func (c *Category) Value(name string) (ent.Value, error) {
-	return c.selectValues.Get(name)
+func (_m *Category) Value(name string) (ent.Value, error) {
+	return _m.selectValues.Get(name)
 }
 
 // QueryProducts queries the "products" edge of the Category entity.
-func (c *Category) QueryProducts() *ProductQuery {
-	return NewCategoryClient(c.config).QueryProducts(c)
+func (_m *Category) QueryProducts() *ProductQuery {
+	return NewCategoryClient(_m.config).QueryProducts(_m)
 }
 
 // Update returns a builder for updating this Category.
 // Note that you need to call Category.Unwrap() before calling this method if this Category
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (c *Category) Update() *CategoryUpdateOne {
-	return NewCategoryClient(c.config).UpdateOne(c)
+func (_m *Category) Update() *CategoryUpdateOne {
+	return NewCategoryClient(_m.config).UpdateOne(_m)
 }
 
 // Unwrap unwraps the Category entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (c *Category) Unwrap() *Category {
-	_tx, ok := c.config.driver.(*txDriver)
+func (_m *Category) Unwrap() *Category {
+	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
 		panic("ent: Category is not a transactional entity")
 	}
-	c.config.driver = _tx.drv
-	return c
+	_m.config.driver = _tx.drv
+	return _m
 }
 
 // String implements the fmt.Stringer.
-func (c *Category) String() string {
+func (_m *Category) String() string {
 	var builder strings.Builder
 	builder.WriteString("Category(")
-	builder.WriteString(fmt.Sprintf("id=%v, ", c.ID))
+	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("name=")
-	builder.WriteString(c.Name)
+	builder.WriteString(_m.Name)
 	builder.WriteString(", ")
 	builder.WriteString("slug=")
-	builder.WriteString(c.Slug)
+	builder.WriteString(_m.Slug)
 	builder.WriteString(", ")
 	builder.WriteString("description=")
-	builder.WriteString(c.Description)
+	builder.WriteString(_m.Description)
 	builder.WriteString(", ")
-	if v := c.ImagePath; v != nil {
+	if v := _m.ImagePath; v != nil {
 		builder.WriteString("image_path=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("display_order=")
-	builder.WriteString(fmt.Sprintf("%v", c.DisplayOrder))
+	builder.WriteString(fmt.Sprintf("%v", _m.DisplayOrder))
 	builder.WriteString(", ")
 	builder.WriteString("is_active=")
-	builder.WriteString(fmt.Sprintf("%v", c.IsActive))
+	builder.WriteString(fmt.Sprintf("%v", _m.IsActive))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
-	builder.WriteString(c.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("updated_at=")
-	builder.WriteString(c.UpdatedAt.Format(time.ANSIC))
+	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteByte(')')
 	return builder.String()
 }

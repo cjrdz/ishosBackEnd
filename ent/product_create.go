@@ -10,7 +10,9 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/google/uuid"
@@ -24,147 +26,163 @@ type ProductCreate struct {
 }
 
 // SetName sets the "name" field.
-func (pc *ProductCreate) SetName(s string) *ProductCreate {
-	pc.mutation.SetName(s)
-	return pc
+func (_c *ProductCreate) SetName(v string) *ProductCreate {
+	_c.mutation.SetName(v)
+	return _c
 }
 
 // SetDescription sets the "description" field.
-func (pc *ProductCreate) SetDescription(s string) *ProductCreate {
-	pc.mutation.SetDescription(s)
-	return pc
+func (_c *ProductCreate) SetDescription(v string) *ProductCreate {
+	_c.mutation.SetDescription(v)
+	return _c
 }
 
 // SetPrice sets the "price" field.
-func (pc *ProductCreate) SetPrice(f float64) *ProductCreate {
-	pc.mutation.SetPrice(f)
-	return pc
+func (_c *ProductCreate) SetPrice(v float64) *ProductCreate {
+	_c.mutation.SetPrice(v)
+	return _c
 }
 
 // SetImagePath sets the "image_path" field.
-func (pc *ProductCreate) SetImagePath(s string) *ProductCreate {
-	pc.mutation.SetImagePath(s)
-	return pc
+func (_c *ProductCreate) SetImagePath(v string) *ProductCreate {
+	_c.mutation.SetImagePath(v)
+	return _c
 }
 
 // SetNillableImagePath sets the "image_path" field if the given value is not nil.
-func (pc *ProductCreate) SetNillableImagePath(s *string) *ProductCreate {
-	if s != nil {
-		pc.SetImagePath(*s)
+func (_c *ProductCreate) SetNillableImagePath(v *string) *ProductCreate {
+	if v != nil {
+		_c.SetImagePath(*v)
 	}
-	return pc
+	return _c
 }
 
 // SetIsAvailable sets the "is_available" field.
-func (pc *ProductCreate) SetIsAvailable(b bool) *ProductCreate {
-	pc.mutation.SetIsAvailable(b)
-	return pc
+func (_c *ProductCreate) SetIsAvailable(v bool) *ProductCreate {
+	_c.mutation.SetIsAvailable(v)
+	return _c
 }
 
 // SetNillableIsAvailable sets the "is_available" field if the given value is not nil.
-func (pc *ProductCreate) SetNillableIsAvailable(b *bool) *ProductCreate {
-	if b != nil {
-		pc.SetIsAvailable(*b)
+func (_c *ProductCreate) SetNillableIsAvailable(v *bool) *ProductCreate {
+	if v != nil {
+		_c.SetIsAvailable(*v)
 	}
-	return pc
-}
-
-// SetStockStatus sets the "stock_status" field.
-func (pc *ProductCreate) SetStockStatus(ps product.StockStatus) *ProductCreate {
-	pc.mutation.SetStockStatus(ps)
-	return pc
-}
-
-// SetNillableStockStatus sets the "stock_status" field if the given value is not nil.
-func (pc *ProductCreate) SetNillableStockStatus(ps *product.StockStatus) *ProductCreate {
-	if ps != nil {
-		pc.SetStockStatus(*ps)
-	}
-	return pc
+	return _c
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (pc *ProductCreate) SetCreatedAt(t time.Time) *ProductCreate {
-	pc.mutation.SetCreatedAt(t)
-	return pc
+func (_c *ProductCreate) SetCreatedAt(v time.Time) *ProductCreate {
+	_c.mutation.SetCreatedAt(v)
+	return _c
 }
 
 // SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
-func (pc *ProductCreate) SetNillableCreatedAt(t *time.Time) *ProductCreate {
-	if t != nil {
-		pc.SetCreatedAt(*t)
+func (_c *ProductCreate) SetNillableCreatedAt(v *time.Time) *ProductCreate {
+	if v != nil {
+		_c.SetCreatedAt(*v)
 	}
-	return pc
+	return _c
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (pc *ProductCreate) SetUpdatedAt(t time.Time) *ProductCreate {
-	pc.mutation.SetUpdatedAt(t)
-	return pc
+func (_c *ProductCreate) SetUpdatedAt(v time.Time) *ProductCreate {
+	_c.mutation.SetUpdatedAt(v)
+	return _c
 }
 
 // SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
-func (pc *ProductCreate) SetNillableUpdatedAt(t *time.Time) *ProductCreate {
-	if t != nil {
-		pc.SetUpdatedAt(*t)
+func (_c *ProductCreate) SetNillableUpdatedAt(v *time.Time) *ProductCreate {
+	if v != nil {
+		_c.SetUpdatedAt(*v)
 	}
-	return pc
+	return _c
 }
 
 // SetID sets the "id" field.
-func (pc *ProductCreate) SetID(u uuid.UUID) *ProductCreate {
-	pc.mutation.SetID(u)
-	return pc
+func (_c *ProductCreate) SetID(v uuid.UUID) *ProductCreate {
+	_c.mutation.SetID(v)
+	return _c
 }
 
 // SetNillableID sets the "id" field if the given value is not nil.
-func (pc *ProductCreate) SetNillableID(u *uuid.UUID) *ProductCreate {
-	if u != nil {
-		pc.SetID(*u)
+func (_c *ProductCreate) SetNillableID(v *uuid.UUID) *ProductCreate {
+	if v != nil {
+		_c.SetID(*v)
 	}
-	return pc
+	return _c
 }
 
 // SetCategoryID sets the "category" edge to the Category entity by ID.
-func (pc *ProductCreate) SetCategoryID(id uuid.UUID) *ProductCreate {
-	pc.mutation.SetCategoryID(id)
-	return pc
+func (_c *ProductCreate) SetCategoryID(id uuid.UUID) *ProductCreate {
+	_c.mutation.SetCategoryID(id)
+	return _c
 }
 
 // SetCategory sets the "category" edge to the Category entity.
-func (pc *ProductCreate) SetCategory(c *Category) *ProductCreate {
-	return pc.SetCategoryID(c.ID)
+func (_c *ProductCreate) SetCategory(v *Category) *ProductCreate {
+	return _c.SetCategoryID(v.ID)
 }
 
 // AddOrderItemIDs adds the "order_items" edge to the OrderItem entity by IDs.
-func (pc *ProductCreate) AddOrderItemIDs(ids ...uuid.UUID) *ProductCreate {
-	pc.mutation.AddOrderItemIDs(ids...)
-	return pc
+func (_c *ProductCreate) AddOrderItemIDs(ids ...uuid.UUID) *ProductCreate {
+	_c.mutation.AddOrderItemIDs(ids...)
+	return _c
 }
 
 // AddOrderItems adds the "order_items" edges to the OrderItem entity.
-func (pc *ProductCreate) AddOrderItems(o ...*OrderItem) *ProductCreate {
-	ids := make([]uuid.UUID, len(o))
-	for i := range o {
-		ids[i] = o[i].ID
+func (_c *ProductCreate) AddOrderItems(v ...*OrderItem) *ProductCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
 	}
-	return pc.AddOrderItemIDs(ids...)
+	return _c.AddOrderItemIDs(ids...)
+}
+
+// AddFlavorIDs adds the "flavors" edge to the Flavor entity by IDs.
+func (_c *ProductCreate) AddFlavorIDs(ids ...uuid.UUID) *ProductCreate {
+	_c.mutation.AddFlavorIDs(ids...)
+	return _c
+}
+
+// AddFlavors adds the "flavors" edges to the Flavor entity.
+func (_c *ProductCreate) AddFlavors(v ...*Flavor) *ProductCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddFlavorIDs(ids...)
+}
+
+// AddAddonIDs adds the "addons" edge to the Addon entity by IDs.
+func (_c *ProductCreate) AddAddonIDs(ids ...uuid.UUID) *ProductCreate {
+	_c.mutation.AddAddonIDs(ids...)
+	return _c
+}
+
+// AddAddons adds the "addons" edges to the Addon entity.
+func (_c *ProductCreate) AddAddons(v ...*Addon) *ProductCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddAddonIDs(ids...)
 }
 
 // Mutation returns the ProductMutation object of the builder.
-func (pc *ProductCreate) Mutation() *ProductMutation {
-	return pc.mutation
+func (_c *ProductCreate) Mutation() *ProductMutation {
+	return _c.mutation
 }
 
 // Save creates the Product in the database.
-func (pc *ProductCreate) Save(ctx context.Context) (*Product, error) {
-	pc.defaults()
-	return withHooks(ctx, pc.sqlSave, pc.mutation, pc.hooks)
+func (_c *ProductCreate) Save(ctx context.Context) (*Product, error) {
+	_c.defaults()
+	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (pc *ProductCreate) SaveX(ctx context.Context) *Product {
-	v, err := pc.Save(ctx)
+func (_c *ProductCreate) SaveX(ctx context.Context) *Product {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -172,92 +190,80 @@ func (pc *ProductCreate) SaveX(ctx context.Context) *Product {
 }
 
 // Exec executes the query.
-func (pc *ProductCreate) Exec(ctx context.Context) error {
-	_, err := pc.Save(ctx)
+func (_c *ProductCreate) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (pc *ProductCreate) ExecX(ctx context.Context) {
-	if err := pc.Exec(ctx); err != nil {
+func (_c *ProductCreate) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (pc *ProductCreate) defaults() {
-	if _, ok := pc.mutation.IsAvailable(); !ok {
+func (_c *ProductCreate) defaults() {
+	if _, ok := _c.mutation.IsAvailable(); !ok {
 		v := product.DefaultIsAvailable
-		pc.mutation.SetIsAvailable(v)
+		_c.mutation.SetIsAvailable(v)
 	}
-	if _, ok := pc.mutation.StockStatus(); !ok {
-		v := product.DefaultStockStatus
-		pc.mutation.SetStockStatus(v)
-	}
-	if _, ok := pc.mutation.CreatedAt(); !ok {
+	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := product.DefaultCreatedAt()
-		pc.mutation.SetCreatedAt(v)
+		_c.mutation.SetCreatedAt(v)
 	}
-	if _, ok := pc.mutation.UpdatedAt(); !ok {
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		v := product.DefaultUpdatedAt()
-		pc.mutation.SetUpdatedAt(v)
+		_c.mutation.SetUpdatedAt(v)
 	}
-	if _, ok := pc.mutation.ID(); !ok {
+	if _, ok := _c.mutation.ID(); !ok {
 		v := product.DefaultID()
-		pc.mutation.SetID(v)
+		_c.mutation.SetID(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (pc *ProductCreate) check() error {
-	if _, ok := pc.mutation.Name(); !ok {
+func (_c *ProductCreate) check() error {
+	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "Product.name"`)}
 	}
-	if v, ok := pc.mutation.Name(); ok {
+	if v, ok := _c.mutation.Name(); ok {
 		if err := product.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Product.name": %w`, err)}
 		}
 	}
-	if _, ok := pc.mutation.Description(); !ok {
+	if _, ok := _c.mutation.Description(); !ok {
 		return &ValidationError{Name: "description", err: errors.New(`ent: missing required field "Product.description"`)}
 	}
-	if _, ok := pc.mutation.Price(); !ok {
+	if _, ok := _c.mutation.Price(); !ok {
 		return &ValidationError{Name: "price", err: errors.New(`ent: missing required field "Product.price"`)}
 	}
-	if v, ok := pc.mutation.Price(); ok {
+	if v, ok := _c.mutation.Price(); ok {
 		if err := product.PriceValidator(v); err != nil {
 			return &ValidationError{Name: "price", err: fmt.Errorf(`ent: validator failed for field "Product.price": %w`, err)}
 		}
 	}
-	if _, ok := pc.mutation.IsAvailable(); !ok {
+	if _, ok := _c.mutation.IsAvailable(); !ok {
 		return &ValidationError{Name: "is_available", err: errors.New(`ent: missing required field "Product.is_available"`)}
 	}
-	if _, ok := pc.mutation.StockStatus(); !ok {
-		return &ValidationError{Name: "stock_status", err: errors.New(`ent: missing required field "Product.stock_status"`)}
-	}
-	if v, ok := pc.mutation.StockStatus(); ok {
-		if err := product.StockStatusValidator(v); err != nil {
-			return &ValidationError{Name: "stock_status", err: fmt.Errorf(`ent: validator failed for field "Product.stock_status": %w`, err)}
-		}
-	}
-	if _, ok := pc.mutation.CreatedAt(); !ok {
+	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Product.created_at"`)}
 	}
-	if _, ok := pc.mutation.UpdatedAt(); !ok {
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Product.updated_at"`)}
 	}
-	if len(pc.mutation.CategoryIDs()) == 0 {
+	if len(_c.mutation.CategoryIDs()) == 0 {
 		return &ValidationError{Name: "category", err: errors.New(`ent: missing required edge "Product.category"`)}
 	}
 	return nil
 }
 
-func (pc *ProductCreate) sqlSave(ctx context.Context) (*Product, error) {
-	if err := pc.check(); err != nil {
+func (_c *ProductCreate) sqlSave(ctx context.Context) (*Product, error) {
+	if err := _c.check(); err != nil {
 		return nil, err
 	}
-	_node, _spec := pc.createSpec()
-	if err := sqlgraph.CreateNode(ctx, pc.driver, _spec); err != nil {
+	_node, _spec := _c.createSpec()
+	if err := sqlgraph.CreateNode(ctx, _c.driver, _spec); err != nil {
 		if sqlgraph.IsConstraintError(err) {
 			err = &ConstraintError{msg: err.Error(), wrap: err}
 		}
@@ -270,53 +276,49 @@ func (pc *ProductCreate) sqlSave(ctx context.Context) (*Product, error) {
 			return nil, err
 		}
 	}
-	pc.mutation.id = &_node.ID
-	pc.mutation.done = true
+	_c.mutation.id = &_node.ID
+	_c.mutation.done = true
 	return _node, nil
 }
 
-func (pc *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
+func (_c *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
 	var (
-		_node = &Product{config: pc.config}
+		_node = &Product{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(product.Table, sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID))
 	)
-	if id, ok := pc.mutation.ID(); ok {
+	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
-	if value, ok := pc.mutation.Name(); ok {
+	if value, ok := _c.mutation.Name(); ok {
 		_spec.SetField(product.FieldName, field.TypeString, value)
 		_node.Name = value
 	}
-	if value, ok := pc.mutation.Description(); ok {
+	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(product.FieldDescription, field.TypeString, value)
 		_node.Description = value
 	}
-	if value, ok := pc.mutation.Price(); ok {
+	if value, ok := _c.mutation.Price(); ok {
 		_spec.SetField(product.FieldPrice, field.TypeFloat64, value)
 		_node.Price = value
 	}
-	if value, ok := pc.mutation.ImagePath(); ok {
+	if value, ok := _c.mutation.ImagePath(); ok {
 		_spec.SetField(product.FieldImagePath, field.TypeString, value)
 		_node.ImagePath = &value
 	}
-	if value, ok := pc.mutation.IsAvailable(); ok {
+	if value, ok := _c.mutation.IsAvailable(); ok {
 		_spec.SetField(product.FieldIsAvailable, field.TypeBool, value)
 		_node.IsAvailable = value
 	}
-	if value, ok := pc.mutation.StockStatus(); ok {
-		_spec.SetField(product.FieldStockStatus, field.TypeEnum, value)
-		_node.StockStatus = value
-	}
-	if value, ok := pc.mutation.CreatedAt(); ok {
+	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(product.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
-	if value, ok := pc.mutation.UpdatedAt(); ok {
+	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
 	}
-	if nodes := pc.mutation.CategoryIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.CategoryIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: true,
@@ -333,7 +335,7 @@ func (pc *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
 		_node.category_products = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
-	if nodes := pc.mutation.OrderItemsIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.OrderItemsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -342,6 +344,38 @@ func (pc *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(orderitem.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.FlavorsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.AddonsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -360,16 +394,16 @@ type ProductCreateBulk struct {
 }
 
 // Save creates the Product entities in the database.
-func (pcb *ProductCreateBulk) Save(ctx context.Context) ([]*Product, error) {
-	if pcb.err != nil {
-		return nil, pcb.err
+func (_c *ProductCreateBulk) Save(ctx context.Context) ([]*Product, error) {
+	if _c.err != nil {
+		return nil, _c.err
 	}
-	specs := make([]*sqlgraph.CreateSpec, len(pcb.builders))
-	nodes := make([]*Product, len(pcb.builders))
-	mutators := make([]Mutator, len(pcb.builders))
-	for i := range pcb.builders {
+	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
+	nodes := make([]*Product, len(_c.builders))
+	mutators := make([]Mutator, len(_c.builders))
+	for i := range _c.builders {
 		func(i int, root context.Context) {
-			builder := pcb.builders[i]
+			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*ProductMutation)
@@ -383,11 +417,11 @@ func (pcb *ProductCreateBulk) Save(ctx context.Context) ([]*Product, error) {
 				var err error
 				nodes[i], specs[i] = builder.createSpec()
 				if i < len(mutators)-1 {
-					_, err = mutators[i+1].Mutate(root, pcb.builders[i+1].mutation)
+					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
 					// Invoke the actual operation on the latest mutation in the chain.
-					if err = sqlgraph.BatchCreate(ctx, pcb.driver, spec); err != nil {
+					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
 							err = &ConstraintError{msg: err.Error(), wrap: err}
 						}
@@ -407,7 +441,7 @@ func (pcb *ProductCreateBulk) Save(ctx context.Context) ([]*Product, error) {
 		}(i, ctx)
 	}
 	if len(mutators) > 0 {
-		if _, err := mutators[0].Mutate(ctx, pcb.builders[0].mutation); err != nil {
+		if _, err := mutators[0].Mutate(ctx, _c.builders[0].mutation); err != nil {
 			return nil, err
 		}
 	}
@@ -415,8 +449,8 @@ func (pcb *ProductCreateBulk) Save(ctx context.Context) ([]*Product, error) {
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (pcb *ProductCreateBulk) SaveX(ctx context.Context) []*Product {
-	v, err := pcb.Save(ctx)
+func (_c *ProductCreateBulk) SaveX(ctx context.Context) []*Product {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -424,14 +458,14 @@ func (pcb *ProductCreateBulk) SaveX(ctx context.Context) []*Product {
 }
 
 // Exec executes the query.
-func (pcb *ProductCreateBulk) Exec(ctx context.Context) error {
-	_, err := pcb.Save(ctx)
+func (_c *ProductCreateBulk) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (pcb *ProductCreateBulk) ExecX(ctx context.Context) {
-	if err := pcb.Exec(ctx); err != nil {
+func (_c *ProductCreateBulk) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

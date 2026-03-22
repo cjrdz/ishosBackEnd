@@ -29,8 +29,6 @@ type Product struct {
 	ImagePath *string `json:"image_path,omitempty"`
 	// IsAvailable holds the value of the "is_available" field.
 	IsAvailable bool `json:"is_available,omitempty"`
-	// StockStatus holds the value of the "stock_status" field.
-	StockStatus product.StockStatus `json:"stock_status,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -38,7 +36,9 @@ type Product struct {
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ProductQuery when eager-loading is set.
 	Edges             ProductEdges `json:"edges"`
+	addon_products    *uuid.UUID
 	category_products *uuid.UUID
+	flavor_products   *uuid.UUID
 	selectValues      sql.SelectValues
 }
 
@@ -48,9 +48,13 @@ type ProductEdges struct {
 	Category *Category `json:"category,omitempty"`
 	// OrderItems holds the value of the order_items edge.
 	OrderItems []*OrderItem `json:"order_items,omitempty"`
+	// Flavors holds the value of the flavors edge.
+	Flavors []*Flavor `json:"flavors,omitempty"`
+	// Addons holds the value of the addons edge.
+	Addons []*Addon `json:"addons,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [4]bool
 }
 
 // CategoryOrErr returns the Category value or an error if the edge
@@ -73,6 +77,24 @@ func (e ProductEdges) OrderItemsOrErr() ([]*OrderItem, error) {
 	return nil, &NotLoadedError{edge: "order_items"}
 }
 
+// FlavorsOrErr returns the Flavors value or an error if the edge
+// was not loaded in eager-loading.
+func (e ProductEdges) FlavorsOrErr() ([]*Flavor, error) {
+	if e.loadedTypes[2] {
+		return e.Flavors, nil
+	}
+	return nil, &NotLoadedError{edge: "flavors"}
+}
+
+// AddonsOrErr returns the Addons value or an error if the edge
+// was not loaded in eager-loading.
+func (e ProductEdges) AddonsOrErr() ([]*Addon, error) {
+	if e.loadedTypes[3] {
+		return e.Addons, nil
+	}
+	return nil, &NotLoadedError{edge: "addons"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Product) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -82,13 +104,17 @@ func (*Product) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case product.FieldPrice:
 			values[i] = new(sql.NullFloat64)
-		case product.FieldName, product.FieldDescription, product.FieldImagePath, product.FieldStockStatus:
+		case product.FieldName, product.FieldDescription, product.FieldImagePath:
 			values[i] = new(sql.NullString)
 		case product.FieldCreatedAt, product.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case product.FieldID:
 			values[i] = new(uuid.UUID)
-		case product.ForeignKeys[0]: // category_products
+		case product.ForeignKeys[0]: // addon_products
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case product.ForeignKeys[1]: // category_products
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
+		case product.ForeignKeys[2]: // flavor_products
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
@@ -99,7 +125,7 @@ func (*Product) scanValues(columns []string) ([]any, error) {
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
 // to the Product fields.
-func (pr *Product) assignValues(columns []string, values []any) error {
+func (_m *Product) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
@@ -109,66 +135,74 @@ func (pr *Product) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
-				pr.ID = *value
+				_m.ID = *value
 			}
 		case product.FieldName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field name", values[i])
 			} else if value.Valid {
-				pr.Name = value.String
+				_m.Name = value.String
 			}
 		case product.FieldDescription:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
-				pr.Description = value.String
+				_m.Description = value.String
 			}
 		case product.FieldPrice:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field price", values[i])
 			} else if value.Valid {
-				pr.Price = value.Float64
+				_m.Price = value.Float64
 			}
 		case product.FieldImagePath:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field image_path", values[i])
 			} else if value.Valid {
-				pr.ImagePath = new(string)
-				*pr.ImagePath = value.String
+				_m.ImagePath = new(string)
+				*_m.ImagePath = value.String
 			}
 		case product.FieldIsAvailable:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field is_available", values[i])
 			} else if value.Valid {
-				pr.IsAvailable = value.Bool
-			}
-		case product.FieldStockStatus:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field stock_status", values[i])
-			} else if value.Valid {
-				pr.StockStatus = product.StockStatus(value.String)
+				_m.IsAvailable = value.Bool
 			}
 		case product.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
-				pr.CreatedAt = value.Time
+				_m.CreatedAt = value.Time
 			}
 		case product.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
-				pr.UpdatedAt = value.Time
+				_m.UpdatedAt = value.Time
 			}
 		case product.ForeignKeys[0]:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field addon_products", values[i])
+			} else if value.Valid {
+				_m.addon_products = new(uuid.UUID)
+				*_m.addon_products = *value.S.(*uuid.UUID)
+			}
+		case product.ForeignKeys[1]:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
 				return fmt.Errorf("unexpected type %T for field category_products", values[i])
 			} else if value.Valid {
-				pr.category_products = new(uuid.UUID)
-				*pr.category_products = *value.S.(*uuid.UUID)
+				_m.category_products = new(uuid.UUID)
+				*_m.category_products = *value.S.(*uuid.UUID)
+			}
+		case product.ForeignKeys[2]:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field flavor_products", values[i])
+			} else if value.Valid {
+				_m.flavor_products = new(uuid.UUID)
+				*_m.flavor_products = *value.S.(*uuid.UUID)
 			}
 		default:
-			pr.selectValues.Set(columns[i], values[i])
+			_m.selectValues.Set(columns[i], values[i])
 		}
 	}
 	return nil
@@ -176,68 +210,75 @@ func (pr *Product) assignValues(columns []string, values []any) error {
 
 // Value returns the ent.Value that was dynamically selected and assigned to the Product.
 // This includes values selected through modifiers, order, etc.
-func (pr *Product) Value(name string) (ent.Value, error) {
-	return pr.selectValues.Get(name)
+func (_m *Product) Value(name string) (ent.Value, error) {
+	return _m.selectValues.Get(name)
 }
 
 // QueryCategory queries the "category" edge of the Product entity.
-func (pr *Product) QueryCategory() *CategoryQuery {
-	return NewProductClient(pr.config).QueryCategory(pr)
+func (_m *Product) QueryCategory() *CategoryQuery {
+	return NewProductClient(_m.config).QueryCategory(_m)
 }
 
 // QueryOrderItems queries the "order_items" edge of the Product entity.
-func (pr *Product) QueryOrderItems() *OrderItemQuery {
-	return NewProductClient(pr.config).QueryOrderItems(pr)
+func (_m *Product) QueryOrderItems() *OrderItemQuery {
+	return NewProductClient(_m.config).QueryOrderItems(_m)
+}
+
+// QueryFlavors queries the "flavors" edge of the Product entity.
+func (_m *Product) QueryFlavors() *FlavorQuery {
+	return NewProductClient(_m.config).QueryFlavors(_m)
+}
+
+// QueryAddons queries the "addons" edge of the Product entity.
+func (_m *Product) QueryAddons() *AddonQuery {
+	return NewProductClient(_m.config).QueryAddons(_m)
 }
 
 // Update returns a builder for updating this Product.
 // Note that you need to call Product.Unwrap() before calling this method if this Product
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (pr *Product) Update() *ProductUpdateOne {
-	return NewProductClient(pr.config).UpdateOne(pr)
+func (_m *Product) Update() *ProductUpdateOne {
+	return NewProductClient(_m.config).UpdateOne(_m)
 }
 
 // Unwrap unwraps the Product entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (pr *Product) Unwrap() *Product {
-	_tx, ok := pr.config.driver.(*txDriver)
+func (_m *Product) Unwrap() *Product {
+	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
 		panic("ent: Product is not a transactional entity")
 	}
-	pr.config.driver = _tx.drv
-	return pr
+	_m.config.driver = _tx.drv
+	return _m
 }
 
 // String implements the fmt.Stringer.
-func (pr *Product) String() string {
+func (_m *Product) String() string {
 	var builder strings.Builder
 	builder.WriteString("Product(")
-	builder.WriteString(fmt.Sprintf("id=%v, ", pr.ID))
+	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("name=")
-	builder.WriteString(pr.Name)
+	builder.WriteString(_m.Name)
 	builder.WriteString(", ")
 	builder.WriteString("description=")
-	builder.WriteString(pr.Description)
+	builder.WriteString(_m.Description)
 	builder.WriteString(", ")
 	builder.WriteString("price=")
-	builder.WriteString(fmt.Sprintf("%v", pr.Price))
+	builder.WriteString(fmt.Sprintf("%v", _m.Price))
 	builder.WriteString(", ")
-	if v := pr.ImagePath; v != nil {
+	if v := _m.ImagePath; v != nil {
 		builder.WriteString("image_path=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("is_available=")
-	builder.WriteString(fmt.Sprintf("%v", pr.IsAvailable))
-	builder.WriteString(", ")
-	builder.WriteString("stock_status=")
-	builder.WriteString(fmt.Sprintf("%v", pr.StockStatus))
+	builder.WriteString(fmt.Sprintf("%v", _m.IsAvailable))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
-	builder.WriteString(pr.CreatedAt.Format(time.ANSIC))
+	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("updated_at=")
-	builder.WriteString(pr.UpdatedAt.Format(time.ANSIC))
+	builder.WriteString(_m.UpdatedAt.Format(time.ANSIC))
 	builder.WriteByte(')')
 	return builder.String()
 }

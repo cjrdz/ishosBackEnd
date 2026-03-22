@@ -12,7 +12,9 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
@@ -74,17 +76,19 @@ var (
 )
 
 // checkColumn checks if the column exists in the given table.
-func checkColumn(table, column string) error {
+func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			addon.Table:     addon.ValidColumn,
 			category.Table:  category.ValidColumn,
+			flavor.Table:    flavor.ValidColumn,
 			order.Table:     order.ValidColumn,
 			orderitem.Table: orderitem.ValidColumn,
 			product.Table:   product.ValidColumn,
 			ratelimit.Table: ratelimit.ValidColumn,
 		})
 	})
-	return columnCheck(table, column)
+	return columnCheck(t, c)
 }
 
 // Asc applies the given fields in ASC order.

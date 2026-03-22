@@ -23,282 +23,282 @@ type OrderCreate struct {
 }
 
 // SetOrderNumber sets the "order_number" field.
-func (oc *OrderCreate) SetOrderNumber(s string) *OrderCreate {
-	oc.mutation.SetOrderNumber(s)
-	return oc
+func (_c *OrderCreate) SetOrderNumber(v string) *OrderCreate {
+	_c.mutation.SetOrderNumber(v)
+	return _c
 }
 
 // SetCustomerName sets the "customer_name" field.
-func (oc *OrderCreate) SetCustomerName(s string) *OrderCreate {
-	oc.mutation.SetCustomerName(s)
-	return oc
+func (_c *OrderCreate) SetCustomerName(v string) *OrderCreate {
+	_c.mutation.SetCustomerName(v)
+	return _c
 }
 
 // SetCustomerPhone sets the "customer_phone" field.
-func (oc *OrderCreate) SetCustomerPhone(s string) *OrderCreate {
-	oc.mutation.SetCustomerPhone(s)
-	return oc
+func (_c *OrderCreate) SetCustomerPhone(v string) *OrderCreate {
+	_c.mutation.SetCustomerPhone(v)
+	return _c
 }
 
 // SetCustomerEmail sets the "customer_email" field.
-func (oc *OrderCreate) SetCustomerEmail(s string) *OrderCreate {
-	oc.mutation.SetCustomerEmail(s)
-	return oc
+func (_c *OrderCreate) SetCustomerEmail(v string) *OrderCreate {
+	_c.mutation.SetCustomerEmail(v)
+	return _c
 }
 
 // SetNillableCustomerEmail sets the "customer_email" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableCustomerEmail(s *string) *OrderCreate {
-	if s != nil {
-		oc.SetCustomerEmail(*s)
+func (_c *OrderCreate) SetNillableCustomerEmail(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetCustomerEmail(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetCustomerIP sets the "customer_ip" field.
-func (oc *OrderCreate) SetCustomerIP(s string) *OrderCreate {
-	oc.mutation.SetCustomerIP(s)
-	return oc
+func (_c *OrderCreate) SetCustomerIP(v string) *OrderCreate {
+	_c.mutation.SetCustomerIP(v)
+	return _c
 }
 
 // SetNillableCustomerIP sets the "customer_ip" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableCustomerIP(s *string) *OrderCreate {
-	if s != nil {
-		oc.SetCustomerIP(*s)
+func (_c *OrderCreate) SetNillableCustomerIP(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetCustomerIP(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetTotalAmount sets the "total_amount" field.
-func (oc *OrderCreate) SetTotalAmount(f float64) *OrderCreate {
-	oc.mutation.SetTotalAmount(f)
-	return oc
+func (_c *OrderCreate) SetTotalAmount(v float64) *OrderCreate {
+	_c.mutation.SetTotalAmount(v)
+	return _c
 }
 
 // SetStatus sets the "status" field.
-func (oc *OrderCreate) SetStatus(o order.Status) *OrderCreate {
-	oc.mutation.SetStatus(o)
-	return oc
+func (_c *OrderCreate) SetStatus(v order.Status) *OrderCreate {
+	_c.mutation.SetStatus(v)
+	return _c
 }
 
 // SetNillableStatus sets the "status" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableStatus(o *order.Status) *OrderCreate {
-	if o != nil {
-		oc.SetStatus(*o)
+func (_c *OrderCreate) SetNillableStatus(v *order.Status) *OrderCreate {
+	if v != nil {
+		_c.SetStatus(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetPaymentMethod sets the "payment_method" field.
-func (oc *OrderCreate) SetPaymentMethod(om order.PaymentMethod) *OrderCreate {
-	oc.mutation.SetPaymentMethod(om)
-	return oc
+func (_c *OrderCreate) SetPaymentMethod(v order.PaymentMethod) *OrderCreate {
+	_c.mutation.SetPaymentMethod(v)
+	return _c
 }
 
 // SetNillablePaymentMethod sets the "payment_method" field if the given value is not nil.
-func (oc *OrderCreate) SetNillablePaymentMethod(om *order.PaymentMethod) *OrderCreate {
-	if om != nil {
-		oc.SetPaymentMethod(*om)
+func (_c *OrderCreate) SetNillablePaymentMethod(v *order.PaymentMethod) *OrderCreate {
+	if v != nil {
+		_c.SetPaymentMethod(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetPaymentStatus sets the "payment_status" field.
-func (oc *OrderCreate) SetPaymentStatus(os order.PaymentStatus) *OrderCreate {
-	oc.mutation.SetPaymentStatus(os)
-	return oc
+func (_c *OrderCreate) SetPaymentStatus(v order.PaymentStatus) *OrderCreate {
+	_c.mutation.SetPaymentStatus(v)
+	return _c
 }
 
 // SetNillablePaymentStatus sets the "payment_status" field if the given value is not nil.
-func (oc *OrderCreate) SetNillablePaymentStatus(os *order.PaymentStatus) *OrderCreate {
-	if os != nil {
-		oc.SetPaymentStatus(*os)
+func (_c *OrderCreate) SetNillablePaymentStatus(v *order.PaymentStatus) *OrderCreate {
+	if v != nil {
+		_c.SetPaymentStatus(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetOrderType sets the "order_type" field.
-func (oc *OrderCreate) SetOrderType(ot order.OrderType) *OrderCreate {
-	oc.mutation.SetOrderType(ot)
-	return oc
+func (_c *OrderCreate) SetOrderType(v order.OrderType) *OrderCreate {
+	_c.mutation.SetOrderType(v)
+	return _c
 }
 
 // SetNillableOrderType sets the "order_type" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableOrderType(ot *order.OrderType) *OrderCreate {
-	if ot != nil {
-		oc.SetOrderType(*ot)
+func (_c *OrderCreate) SetNillableOrderType(v *order.OrderType) *OrderCreate {
+	if v != nil {
+		_c.SetOrderType(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetTableNumber sets the "table_number" field.
-func (oc *OrderCreate) SetTableNumber(i int) *OrderCreate {
-	oc.mutation.SetTableNumber(i)
-	return oc
+func (_c *OrderCreate) SetTableNumber(v int) *OrderCreate {
+	_c.mutation.SetTableNumber(v)
+	return _c
 }
 
 // SetNillableTableNumber sets the "table_number" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableTableNumber(i *int) *OrderCreate {
-	if i != nil {
-		oc.SetTableNumber(*i)
+func (_c *OrderCreate) SetNillableTableNumber(v *int) *OrderCreate {
+	if v != nil {
+		_c.SetTableNumber(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetNotes sets the "notes" field.
-func (oc *OrderCreate) SetNotes(s string) *OrderCreate {
-	oc.mutation.SetNotes(s)
-	return oc
+func (_c *OrderCreate) SetNotes(v string) *OrderCreate {
+	_c.mutation.SetNotes(v)
+	return _c
 }
 
 // SetNillableNotes sets the "notes" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableNotes(s *string) *OrderCreate {
-	if s != nil {
-		oc.SetNotes(*s)
+func (_c *OrderCreate) SetNillableNotes(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetNotes(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetRejectionReason sets the "rejection_reason" field.
-func (oc *OrderCreate) SetRejectionReason(s string) *OrderCreate {
-	oc.mutation.SetRejectionReason(s)
-	return oc
+func (_c *OrderCreate) SetRejectionReason(v string) *OrderCreate {
+	_c.mutation.SetRejectionReason(v)
+	return _c
 }
 
 // SetNillableRejectionReason sets the "rejection_reason" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableRejectionReason(s *string) *OrderCreate {
-	if s != nil {
-		oc.SetRejectionReason(*s)
+func (_c *OrderCreate) SetNillableRejectionReason(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetRejectionReason(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetReviewedByUserID sets the "reviewed_by_user_id" field.
-func (oc *OrderCreate) SetReviewedByUserID(s string) *OrderCreate {
-	oc.mutation.SetReviewedByUserID(s)
-	return oc
+func (_c *OrderCreate) SetReviewedByUserID(v string) *OrderCreate {
+	_c.mutation.SetReviewedByUserID(v)
+	return _c
 }
 
 // SetNillableReviewedByUserID sets the "reviewed_by_user_id" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableReviewedByUserID(s *string) *OrderCreate {
-	if s != nil {
-		oc.SetReviewedByUserID(*s)
+func (_c *OrderCreate) SetNillableReviewedByUserID(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetReviewedByUserID(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetReviewedAt sets the "reviewed_at" field.
-func (oc *OrderCreate) SetReviewedAt(t time.Time) *OrderCreate {
-	oc.mutation.SetReviewedAt(t)
-	return oc
+func (_c *OrderCreate) SetReviewedAt(v time.Time) *OrderCreate {
+	_c.mutation.SetReviewedAt(v)
+	return _c
 }
 
 // SetNillableReviewedAt sets the "reviewed_at" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableReviewedAt(t *time.Time) *OrderCreate {
-	if t != nil {
-		oc.SetReviewedAt(*t)
+func (_c *OrderCreate) SetNillableReviewedAt(v *time.Time) *OrderCreate {
+	if v != nil {
+		_c.SetReviewedAt(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetCreatedByUserID sets the "created_by_user_id" field.
-func (oc *OrderCreate) SetCreatedByUserID(s string) *OrderCreate {
-	oc.mutation.SetCreatedByUserID(s)
-	return oc
+func (_c *OrderCreate) SetCreatedByUserID(v string) *OrderCreate {
+	_c.mutation.SetCreatedByUserID(v)
+	return _c
 }
 
 // SetNillableCreatedByUserID sets the "created_by_user_id" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableCreatedByUserID(s *string) *OrderCreate {
-	if s != nil {
-		oc.SetCreatedByUserID(*s)
+func (_c *OrderCreate) SetNillableCreatedByUserID(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetCreatedByUserID(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetIsArchived sets the "is_archived" field.
-func (oc *OrderCreate) SetIsArchived(b bool) *OrderCreate {
-	oc.mutation.SetIsArchived(b)
-	return oc
+func (_c *OrderCreate) SetIsArchived(v bool) *OrderCreate {
+	_c.mutation.SetIsArchived(v)
+	return _c
 }
 
 // SetNillableIsArchived sets the "is_archived" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableIsArchived(b *bool) *OrderCreate {
-	if b != nil {
-		oc.SetIsArchived(*b)
+func (_c *OrderCreate) SetNillableIsArchived(v *bool) *OrderCreate {
+	if v != nil {
+		_c.SetIsArchived(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (oc *OrderCreate) SetCreatedAt(t time.Time) *OrderCreate {
-	oc.mutation.SetCreatedAt(t)
-	return oc
+func (_c *OrderCreate) SetCreatedAt(v time.Time) *OrderCreate {
+	_c.mutation.SetCreatedAt(v)
+	return _c
 }
 
 // SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableCreatedAt(t *time.Time) *OrderCreate {
-	if t != nil {
-		oc.SetCreatedAt(*t)
+func (_c *OrderCreate) SetNillableCreatedAt(v *time.Time) *OrderCreate {
+	if v != nil {
+		_c.SetCreatedAt(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (oc *OrderCreate) SetUpdatedAt(t time.Time) *OrderCreate {
-	oc.mutation.SetUpdatedAt(t)
-	return oc
+func (_c *OrderCreate) SetUpdatedAt(v time.Time) *OrderCreate {
+	_c.mutation.SetUpdatedAt(v)
+	return _c
 }
 
 // SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableUpdatedAt(t *time.Time) *OrderCreate {
-	if t != nil {
-		oc.SetUpdatedAt(*t)
+func (_c *OrderCreate) SetNillableUpdatedAt(v *time.Time) *OrderCreate {
+	if v != nil {
+		_c.SetUpdatedAt(*v)
 	}
-	return oc
+	return _c
 }
 
 // SetID sets the "id" field.
-func (oc *OrderCreate) SetID(u uuid.UUID) *OrderCreate {
-	oc.mutation.SetID(u)
-	return oc
+func (_c *OrderCreate) SetID(v uuid.UUID) *OrderCreate {
+	_c.mutation.SetID(v)
+	return _c
 }
 
 // SetNillableID sets the "id" field if the given value is not nil.
-func (oc *OrderCreate) SetNillableID(u *uuid.UUID) *OrderCreate {
-	if u != nil {
-		oc.SetID(*u)
+func (_c *OrderCreate) SetNillableID(v *uuid.UUID) *OrderCreate {
+	if v != nil {
+		_c.SetID(*v)
 	}
-	return oc
+	return _c
 }
 
 // AddItemIDs adds the "items" edge to the OrderItem entity by IDs.
-func (oc *OrderCreate) AddItemIDs(ids ...uuid.UUID) *OrderCreate {
-	oc.mutation.AddItemIDs(ids...)
-	return oc
+func (_c *OrderCreate) AddItemIDs(ids ...uuid.UUID) *OrderCreate {
+	_c.mutation.AddItemIDs(ids...)
+	return _c
 }
 
 // AddItems adds the "items" edges to the OrderItem entity.
-func (oc *OrderCreate) AddItems(o ...*OrderItem) *OrderCreate {
-	ids := make([]uuid.UUID, len(o))
-	for i := range o {
-		ids[i] = o[i].ID
+func (_c *OrderCreate) AddItems(v ...*OrderItem) *OrderCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
 	}
-	return oc.AddItemIDs(ids...)
+	return _c.AddItemIDs(ids...)
 }
 
 // Mutation returns the OrderMutation object of the builder.
-func (oc *OrderCreate) Mutation() *OrderMutation {
-	return oc.mutation
+func (_c *OrderCreate) Mutation() *OrderMutation {
+	return _c.mutation
 }
 
 // Save creates the Order in the database.
-func (oc *OrderCreate) Save(ctx context.Context) (*Order, error) {
-	oc.defaults()
-	return withHooks(ctx, oc.sqlSave, oc.mutation, oc.hooks)
+func (_c *OrderCreate) Save(ctx context.Context) (*Order, error) {
+	_c.defaults()
+	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (oc *OrderCreate) SaveX(ctx context.Context) *Order {
-	v, err := oc.Save(ctx)
+func (_c *OrderCreate) SaveX(ctx context.Context) *Order {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -306,133 +306,133 @@ func (oc *OrderCreate) SaveX(ctx context.Context) *Order {
 }
 
 // Exec executes the query.
-func (oc *OrderCreate) Exec(ctx context.Context) error {
-	_, err := oc.Save(ctx)
+func (_c *OrderCreate) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (oc *OrderCreate) ExecX(ctx context.Context) {
-	if err := oc.Exec(ctx); err != nil {
+func (_c *OrderCreate) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (oc *OrderCreate) defaults() {
-	if _, ok := oc.mutation.Status(); !ok {
+func (_c *OrderCreate) defaults() {
+	if _, ok := _c.mutation.Status(); !ok {
 		v := order.DefaultStatus
-		oc.mutation.SetStatus(v)
+		_c.mutation.SetStatus(v)
 	}
-	if _, ok := oc.mutation.PaymentMethod(); !ok {
+	if _, ok := _c.mutation.PaymentMethod(); !ok {
 		v := order.DefaultPaymentMethod
-		oc.mutation.SetPaymentMethod(v)
+		_c.mutation.SetPaymentMethod(v)
 	}
-	if _, ok := oc.mutation.PaymentStatus(); !ok {
+	if _, ok := _c.mutation.PaymentStatus(); !ok {
 		v := order.DefaultPaymentStatus
-		oc.mutation.SetPaymentStatus(v)
+		_c.mutation.SetPaymentStatus(v)
 	}
-	if _, ok := oc.mutation.OrderType(); !ok {
+	if _, ok := _c.mutation.OrderType(); !ok {
 		v := order.DefaultOrderType
-		oc.mutation.SetOrderType(v)
+		_c.mutation.SetOrderType(v)
 	}
-	if _, ok := oc.mutation.IsArchived(); !ok {
+	if _, ok := _c.mutation.IsArchived(); !ok {
 		v := order.DefaultIsArchived
-		oc.mutation.SetIsArchived(v)
+		_c.mutation.SetIsArchived(v)
 	}
-	if _, ok := oc.mutation.CreatedAt(); !ok {
+	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := order.DefaultCreatedAt()
-		oc.mutation.SetCreatedAt(v)
+		_c.mutation.SetCreatedAt(v)
 	}
-	if _, ok := oc.mutation.UpdatedAt(); !ok {
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		v := order.DefaultUpdatedAt()
-		oc.mutation.SetUpdatedAt(v)
+		_c.mutation.SetUpdatedAt(v)
 	}
-	if _, ok := oc.mutation.ID(); !ok {
+	if _, ok := _c.mutation.ID(); !ok {
 		v := order.DefaultID()
-		oc.mutation.SetID(v)
+		_c.mutation.SetID(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (oc *OrderCreate) check() error {
-	if _, ok := oc.mutation.OrderNumber(); !ok {
+func (_c *OrderCreate) check() error {
+	if _, ok := _c.mutation.OrderNumber(); !ok {
 		return &ValidationError{Name: "order_number", err: errors.New(`ent: missing required field "Order.order_number"`)}
 	}
-	if _, ok := oc.mutation.CustomerName(); !ok {
+	if _, ok := _c.mutation.CustomerName(); !ok {
 		return &ValidationError{Name: "customer_name", err: errors.New(`ent: missing required field "Order.customer_name"`)}
 	}
-	if v, ok := oc.mutation.CustomerName(); ok {
+	if v, ok := _c.mutation.CustomerName(); ok {
 		if err := order.CustomerNameValidator(v); err != nil {
 			return &ValidationError{Name: "customer_name", err: fmt.Errorf(`ent: validator failed for field "Order.customer_name": %w`, err)}
 		}
 	}
-	if _, ok := oc.mutation.CustomerPhone(); !ok {
+	if _, ok := _c.mutation.CustomerPhone(); !ok {
 		return &ValidationError{Name: "customer_phone", err: errors.New(`ent: missing required field "Order.customer_phone"`)}
 	}
-	if v, ok := oc.mutation.CustomerPhone(); ok {
+	if v, ok := _c.mutation.CustomerPhone(); ok {
 		if err := order.CustomerPhoneValidator(v); err != nil {
 			return &ValidationError{Name: "customer_phone", err: fmt.Errorf(`ent: validator failed for field "Order.customer_phone": %w`, err)}
 		}
 	}
-	if _, ok := oc.mutation.TotalAmount(); !ok {
+	if _, ok := _c.mutation.TotalAmount(); !ok {
 		return &ValidationError{Name: "total_amount", err: errors.New(`ent: missing required field "Order.total_amount"`)}
 	}
-	if _, ok := oc.mutation.Status(); !ok {
+	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Order.status"`)}
 	}
-	if v, ok := oc.mutation.Status(); ok {
+	if v, ok := _c.mutation.Status(); ok {
 		if err := order.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "Order.status": %w`, err)}
 		}
 	}
-	if _, ok := oc.mutation.PaymentMethod(); !ok {
+	if _, ok := _c.mutation.PaymentMethod(); !ok {
 		return &ValidationError{Name: "payment_method", err: errors.New(`ent: missing required field "Order.payment_method"`)}
 	}
-	if v, ok := oc.mutation.PaymentMethod(); ok {
+	if v, ok := _c.mutation.PaymentMethod(); ok {
 		if err := order.PaymentMethodValidator(v); err != nil {
 			return &ValidationError{Name: "payment_method", err: fmt.Errorf(`ent: validator failed for field "Order.payment_method": %w`, err)}
 		}
 	}
-	if _, ok := oc.mutation.PaymentStatus(); !ok {
+	if _, ok := _c.mutation.PaymentStatus(); !ok {
 		return &ValidationError{Name: "payment_status", err: errors.New(`ent: missing required field "Order.payment_status"`)}
 	}
-	if v, ok := oc.mutation.PaymentStatus(); ok {
+	if v, ok := _c.mutation.PaymentStatus(); ok {
 		if err := order.PaymentStatusValidator(v); err != nil {
 			return &ValidationError{Name: "payment_status", err: fmt.Errorf(`ent: validator failed for field "Order.payment_status": %w`, err)}
 		}
 	}
-	if _, ok := oc.mutation.OrderType(); !ok {
+	if _, ok := _c.mutation.OrderType(); !ok {
 		return &ValidationError{Name: "order_type", err: errors.New(`ent: missing required field "Order.order_type"`)}
 	}
-	if v, ok := oc.mutation.OrderType(); ok {
+	if v, ok := _c.mutation.OrderType(); ok {
 		if err := order.OrderTypeValidator(v); err != nil {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "Order.order_type": %w`, err)}
 		}
 	}
-	if v, ok := oc.mutation.TableNumber(); ok {
+	if v, ok := _c.mutation.TableNumber(); ok {
 		if err := order.TableNumberValidator(v); err != nil {
 			return &ValidationError{Name: "table_number", err: fmt.Errorf(`ent: validator failed for field "Order.table_number": %w`, err)}
 		}
 	}
-	if _, ok := oc.mutation.IsArchived(); !ok {
+	if _, ok := _c.mutation.IsArchived(); !ok {
 		return &ValidationError{Name: "is_archived", err: errors.New(`ent: missing required field "Order.is_archived"`)}
 	}
-	if _, ok := oc.mutation.CreatedAt(); !ok {
+	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Order.created_at"`)}
 	}
-	if _, ok := oc.mutation.UpdatedAt(); !ok {
+	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Order.updated_at"`)}
 	}
 	return nil
 }
 
-func (oc *OrderCreate) sqlSave(ctx context.Context) (*Order, error) {
-	if err := oc.check(); err != nil {
+func (_c *OrderCreate) sqlSave(ctx context.Context) (*Order, error) {
+	if err := _c.check(); err != nil {
 		return nil, err
 	}
-	_node, _spec := oc.createSpec()
-	if err := sqlgraph.CreateNode(ctx, oc.driver, _spec); err != nil {
+	_node, _spec := _c.createSpec()
+	if err := sqlgraph.CreateNode(ctx, _c.driver, _spec); err != nil {
 		if sqlgraph.IsConstraintError(err) {
 			err = &ConstraintError{msg: err.Error(), wrap: err}
 		}
@@ -445,97 +445,97 @@ func (oc *OrderCreate) sqlSave(ctx context.Context) (*Order, error) {
 			return nil, err
 		}
 	}
-	oc.mutation.id = &_node.ID
-	oc.mutation.done = true
+	_c.mutation.id = &_node.ID
+	_c.mutation.done = true
 	return _node, nil
 }
 
-func (oc *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
+func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 	var (
-		_node = &Order{config: oc.config}
+		_node = &Order{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(order.Table, sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID))
 	)
-	if id, ok := oc.mutation.ID(); ok {
+	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
-	if value, ok := oc.mutation.OrderNumber(); ok {
+	if value, ok := _c.mutation.OrderNumber(); ok {
 		_spec.SetField(order.FieldOrderNumber, field.TypeString, value)
 		_node.OrderNumber = value
 	}
-	if value, ok := oc.mutation.CustomerName(); ok {
+	if value, ok := _c.mutation.CustomerName(); ok {
 		_spec.SetField(order.FieldCustomerName, field.TypeString, value)
 		_node.CustomerName = value
 	}
-	if value, ok := oc.mutation.CustomerPhone(); ok {
+	if value, ok := _c.mutation.CustomerPhone(); ok {
 		_spec.SetField(order.FieldCustomerPhone, field.TypeString, value)
 		_node.CustomerPhone = value
 	}
-	if value, ok := oc.mutation.CustomerEmail(); ok {
+	if value, ok := _c.mutation.CustomerEmail(); ok {
 		_spec.SetField(order.FieldCustomerEmail, field.TypeString, value)
 		_node.CustomerEmail = &value
 	}
-	if value, ok := oc.mutation.CustomerIP(); ok {
+	if value, ok := _c.mutation.CustomerIP(); ok {
 		_spec.SetField(order.FieldCustomerIP, field.TypeString, value)
 		_node.CustomerIP = &value
 	}
-	if value, ok := oc.mutation.TotalAmount(); ok {
+	if value, ok := _c.mutation.TotalAmount(); ok {
 		_spec.SetField(order.FieldTotalAmount, field.TypeFloat64, value)
 		_node.TotalAmount = value
 	}
-	if value, ok := oc.mutation.Status(); ok {
+	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(order.FieldStatus, field.TypeEnum, value)
 		_node.Status = value
 	}
-	if value, ok := oc.mutation.PaymentMethod(); ok {
+	if value, ok := _c.mutation.PaymentMethod(); ok {
 		_spec.SetField(order.FieldPaymentMethod, field.TypeEnum, value)
 		_node.PaymentMethod = value
 	}
-	if value, ok := oc.mutation.PaymentStatus(); ok {
+	if value, ok := _c.mutation.PaymentStatus(); ok {
 		_spec.SetField(order.FieldPaymentStatus, field.TypeEnum, value)
 		_node.PaymentStatus = value
 	}
-	if value, ok := oc.mutation.OrderType(); ok {
+	if value, ok := _c.mutation.OrderType(); ok {
 		_spec.SetField(order.FieldOrderType, field.TypeEnum, value)
 		_node.OrderType = value
 	}
-	if value, ok := oc.mutation.TableNumber(); ok {
+	if value, ok := _c.mutation.TableNumber(); ok {
 		_spec.SetField(order.FieldTableNumber, field.TypeInt, value)
 		_node.TableNumber = &value
 	}
-	if value, ok := oc.mutation.Notes(); ok {
+	if value, ok := _c.mutation.Notes(); ok {
 		_spec.SetField(order.FieldNotes, field.TypeString, value)
 		_node.Notes = &value
 	}
-	if value, ok := oc.mutation.RejectionReason(); ok {
+	if value, ok := _c.mutation.RejectionReason(); ok {
 		_spec.SetField(order.FieldRejectionReason, field.TypeString, value)
 		_node.RejectionReason = &value
 	}
-	if value, ok := oc.mutation.ReviewedByUserID(); ok {
+	if value, ok := _c.mutation.ReviewedByUserID(); ok {
 		_spec.SetField(order.FieldReviewedByUserID, field.TypeString, value)
 		_node.ReviewedByUserID = &value
 	}
-	if value, ok := oc.mutation.ReviewedAt(); ok {
+	if value, ok := _c.mutation.ReviewedAt(); ok {
 		_spec.SetField(order.FieldReviewedAt, field.TypeTime, value)
 		_node.ReviewedAt = &value
 	}
-	if value, ok := oc.mutation.CreatedByUserID(); ok {
+	if value, ok := _c.mutation.CreatedByUserID(); ok {
 		_spec.SetField(order.FieldCreatedByUserID, field.TypeString, value)
 		_node.CreatedByUserID = &value
 	}
-	if value, ok := oc.mutation.IsArchived(); ok {
+	if value, ok := _c.mutation.IsArchived(); ok {
 		_spec.SetField(order.FieldIsArchived, field.TypeBool, value)
 		_node.IsArchived = value
 	}
-	if value, ok := oc.mutation.CreatedAt(); ok {
+	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(order.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
-	if value, ok := oc.mutation.UpdatedAt(); ok {
+	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(order.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
 	}
-	if nodes := oc.mutation.ItemsIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.ItemsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -562,16 +562,16 @@ type OrderCreateBulk struct {
 }
 
 // Save creates the Order entities in the database.
-func (ocb *OrderCreateBulk) Save(ctx context.Context) ([]*Order, error) {
-	if ocb.err != nil {
-		return nil, ocb.err
+func (_c *OrderCreateBulk) Save(ctx context.Context) ([]*Order, error) {
+	if _c.err != nil {
+		return nil, _c.err
 	}
-	specs := make([]*sqlgraph.CreateSpec, len(ocb.builders))
-	nodes := make([]*Order, len(ocb.builders))
-	mutators := make([]Mutator, len(ocb.builders))
-	for i := range ocb.builders {
+	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
+	nodes := make([]*Order, len(_c.builders))
+	mutators := make([]Mutator, len(_c.builders))
+	for i := range _c.builders {
 		func(i int, root context.Context) {
-			builder := ocb.builders[i]
+			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*OrderMutation)
@@ -585,11 +585,11 @@ func (ocb *OrderCreateBulk) Save(ctx context.Context) ([]*Order, error) {
 				var err error
 				nodes[i], specs[i] = builder.createSpec()
 				if i < len(mutators)-1 {
-					_, err = mutators[i+1].Mutate(root, ocb.builders[i+1].mutation)
+					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
 					// Invoke the actual operation on the latest mutation in the chain.
-					if err = sqlgraph.BatchCreate(ctx, ocb.driver, spec); err != nil {
+					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
 							err = &ConstraintError{msg: err.Error(), wrap: err}
 						}
@@ -609,7 +609,7 @@ func (ocb *OrderCreateBulk) Save(ctx context.Context) ([]*Order, error) {
 		}(i, ctx)
 	}
 	if len(mutators) > 0 {
-		if _, err := mutators[0].Mutate(ctx, ocb.builders[0].mutation); err != nil {
+		if _, err := mutators[0].Mutate(ctx, _c.builders[0].mutation); err != nil {
 			return nil, err
 		}
 	}
@@ -617,8 +617,8 @@ func (ocb *OrderCreateBulk) Save(ctx context.Context) ([]*Order, error) {
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (ocb *OrderCreateBulk) SaveX(ctx context.Context) []*Order {
-	v, err := ocb.Save(ctx)
+func (_c *OrderCreateBulk) SaveX(ctx context.Context) []*Order {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -626,14 +626,14 @@ func (ocb *OrderCreateBulk) SaveX(ctx context.Context) []*Order {
 }
 
 // Exec executes the query.
-func (ocb *OrderCreateBulk) Exec(ctx context.Context) error {
-	_, err := ocb.Save(ctx)
+func (_c *OrderCreateBulk) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (ocb *OrderCreateBulk) ExecX(ctx context.Context) {
-	if err := ocb.Exec(ctx); err != nil {
+func (_c *OrderCreateBulk) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

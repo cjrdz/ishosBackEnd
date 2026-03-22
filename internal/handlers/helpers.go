@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 )
+
+const maxJSONBodyBytes = 1 << 20 // 1 MiB
 
 // decodeJSON reads the request body as JSON into the provided destination.
 func decodeJSON(r *http.Request, dst interface{}) error {
@@ -14,7 +17,18 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 	}
 	defer r.Body.Close()
 
-	dec := json.NewDecoder(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
+	if err != nil {
+		return fmt.Errorf("failed to read request body: %w", err)
+	}
+	if len(body) == 0 {
+		return fmt.Errorf("request body is empty")
+	}
+	if len(body) > maxJSONBodyBytes {
+		return fmt.Errorf("request body too large (max %d bytes)", maxJSONBodyBytes)
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(dst); err != nil {

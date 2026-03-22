@@ -20,56 +20,56 @@ type RateLimitDelete struct {
 }
 
 // Where appends a list predicates to the RateLimitDelete builder.
-func (rld *RateLimitDelete) Where(ps ...predicate.RateLimit) *RateLimitDelete {
-	rld.mutation.Where(ps...)
-	return rld
+func (_d *RateLimitDelete) Where(ps ...predicate.RateLimit) *RateLimitDelete {
+	_d.mutation.Where(ps...)
+	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (rld *RateLimitDelete) Exec(ctx context.Context) (int, error) {
-	return withHooks(ctx, rld.sqlExec, rld.mutation, rld.hooks)
+func (_d *RateLimitDelete) Exec(ctx context.Context) (int, error) {
+	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (rld *RateLimitDelete) ExecX(ctx context.Context) int {
-	n, err := rld.Exec(ctx)
+func (_d *RateLimitDelete) ExecX(ctx context.Context) int {
+	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
 	}
 	return n
 }
 
-func (rld *RateLimitDelete) sqlExec(ctx context.Context) (int, error) {
+func (_d *RateLimitDelete) sqlExec(ctx context.Context) (int, error) {
 	_spec := sqlgraph.NewDeleteSpec(ratelimit.Table, sqlgraph.NewFieldSpec(ratelimit.FieldID, field.TypeUUID))
-	if ps := rld.mutation.predicates; len(ps) > 0 {
+	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	affected, err := sqlgraph.DeleteNodes(ctx, rld.driver, _spec)
+	affected, err := sqlgraph.DeleteNodes(ctx, _d.driver, _spec)
 	if err != nil && sqlgraph.IsConstraintError(err) {
 		err = &ConstraintError{msg: err.Error(), wrap: err}
 	}
-	rld.mutation.done = true
+	_d.mutation.done = true
 	return affected, err
 }
 
 // RateLimitDeleteOne is the builder for deleting a single RateLimit entity.
 type RateLimitDeleteOne struct {
-	rld *RateLimitDelete
+	_d *RateLimitDelete
 }
 
 // Where appends a list predicates to the RateLimitDelete builder.
-func (rldo *RateLimitDeleteOne) Where(ps ...predicate.RateLimit) *RateLimitDeleteOne {
-	rldo.rld.mutation.Where(ps...)
-	return rldo
+func (_d *RateLimitDeleteOne) Where(ps ...predicate.RateLimit) *RateLimitDeleteOne {
+	_d._d.mutation.Where(ps...)
+	return _d
 }
 
 // Exec executes the deletion query.
-func (rldo *RateLimitDeleteOne) Exec(ctx context.Context) error {
-	n, err := rldo.rld.Exec(ctx)
+func (_d *RateLimitDeleteOne) Exec(ctx context.Context) error {
+	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
@@ -81,8 +81,8 @@ func (rldo *RateLimitDeleteOne) Exec(ctx context.Context) error {
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (rldo *RateLimitDeleteOne) ExecX(ctx context.Context) {
-	if err := rldo.Exec(ctx); err != nil {
+func (_d *RateLimitDeleteOne) ExecX(ctx context.Context) {
+	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

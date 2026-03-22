@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,7 +22,17 @@ var (
 	ErrInvalidOrderState  = errors.New("invalid order state")
 	ErrProductNotFound    = errors.New("product not found")
 	ErrProductUnavailable = errors.New("product unavailable")
+	ErrFlavorRequired     = errors.New("flavor selection required")
+	ErrFlavorNotAllowed   = errors.New("selected flavor is not available for this product")
+	ErrAddonNotAllowed    = errors.New("one or more selected addons are not available for this product")
 )
+
+const defaultAddonGroupName = "extras"
+
+var freeAddonAllowanceByGroup = map[string]int{
+	"toppings": 1,
+	"jalea":    1,
+}
 
 type OrderService struct {
 	db          *ent.Client
@@ -88,6 +99,299 @@ func (s *OrderService) GetByOrderNumberAndPhone(ctx context.Context, orderNumber
 	return order, nil
 }
 
+func (s *OrderService) ListRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]*ent.Order, error) {
+	orders, err := s.orderRepo.FindRecentByPhone(ctx, customerPhone, limit)
+	if err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+func cloneCustomizations(raw map[string]interface{}) map[string]interface{} {
+	if raw == nil {
+		return nil
+	}
+
+	cloned := make(map[string]interface{}, len(raw))
+	for key, value := range raw {
+		cloned[key] = value
+	}
+
+	return cloned
+}
+
+func extractCustomizationString(raw map[string]interface{}, key string) string {
+	if raw == nil {
+		return ""
+	}
+
+	value, ok := raw[key]
+	if !ok || value == nil {
+		return ""
+	}
+
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+
+	return strings.TrimSpace(text)
+}
+
+func extractCustomizationStrings(raw map[string]interface{}, key string) []string {
+	if raw == nil {
+		return nil
+	}
+
+	value, ok := raw[key]
+	if !ok || value == nil {
+		return nil
+	}
+
+	switch typed := value.(type) {
+	case []string:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			trimmed := strings.TrimSpace(item)
+			if trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		return result
+	case []interface{}:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			text, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(text)
+			if trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func normalizeAddonGroupName(value string) string {
+	normalized := strings.TrimSpace(strings.ToLower(value))
+	if normalized == "" {
+		return defaultAddonGroupName
+	}
+
+	switch normalized {
+	case "topping", "toppings":
+		return "toppings"
+	case "jalea", "jaleas":
+		return "jalea"
+	case "extra", "extras":
+		return "extras"
+	}
+
+	return normalized
+}
+
+func activeFlavorIndex(product *ent.Product) map[uuid.UUID]*ent.Flavor {
+	indexed := make(map[uuid.UUID]*ent.Flavor)
+	for _, flavor := range product.Edges.Flavors {
+		if flavor == nil || !flavor.IsActive {
+			continue
+		}
+		indexed[flavor.ID] = flavor
+	}
+	return indexed
+}
+
+func activeAddonIndex(product *ent.Product) map[uuid.UUID]*ent.Addon {
+	indexed := make(map[uuid.UUID]*ent.Addon)
+	for _, addon := range product.Edges.Addons {
+		if addon == nil || !addon.IsActive {
+			continue
+		}
+		indexed[addon.ID] = addon
+	}
+	return indexed
+}
+
+// enrichCustomizations validates customizations against the product's assigned,
+// active flavors and addons, adds resolved names/prices, and returns the price
+// delta introduced by selected paid addons.
+func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string]interface{}) (map[string]interface{}, float64, error) {
+	enriched := cloneCustomizations(raw)
+	addonExtra := 0.0
+
+	activeFlavors := activeFlavorIndex(product)
+	selectedFlavorID := extractCustomizationString(raw, "flavor_id")
+
+	if selectedFlavorID != "" {
+		parsedFlavorID, parseErr := uuid.Parse(selectedFlavorID)
+		if parseErr != nil {
+			return nil, 0, fmt.Errorf("%w: %s", ErrFlavorNotAllowed, selectedFlavorID)
+		}
+
+		selectedFlavor, ok := activeFlavors[parsedFlavorID]
+		if !ok {
+			return nil, 0, fmt.Errorf("%w: %s", ErrFlavorNotAllowed, selectedFlavorID)
+		}
+
+		if enriched == nil {
+			enriched = make(map[string]interface{})
+		}
+		enriched["flavor_id"] = selectedFlavor.ID.String()
+		enriched["flavor_name"] = selectedFlavor.Name
+	}
+
+	activeAddons := activeAddonIndex(product)
+
+	legacyAddonIDs := extractCustomizationStrings(raw, "addon_ids")
+	includedAddonIDs := extractCustomizationStrings(raw, "included_addon_ids")
+	extraAddonIDs := extractCustomizationStrings(raw, "extra_addon_ids")
+
+	if len(legacyAddonIDs) > 0 || len(includedAddonIDs) > 0 || len(extraAddonIDs) > 0 {
+		seenAll := make(map[uuid.UUID]struct{})
+
+		resolveAddon := func(addonID string) (*ent.Addon, error) {
+			parsedAddonID, parseErr := uuid.Parse(addonID)
+			if parseErr != nil {
+				return nil, fmt.Errorf("%w: %s", ErrAddonNotAllowed, addonID)
+			}
+
+			selectedAddon, ok := activeAddons[parsedAddonID]
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrAddonNotAllowed, addonID)
+			}
+
+			if _, duplicate := seenAll[selectedAddon.ID]; duplicate {
+				return nil, nil
+			}
+			seenAll[selectedAddon.ID] = struct{}{}
+			return selectedAddon, nil
+		}
+
+		if len(includedAddonIDs) == 0 && len(extraAddonIDs) == 0 && len(legacyAddonIDs) > 0 {
+			normalizedAddonIDs := make([]string, 0, len(legacyAddonIDs))
+			addonNames := make([]string, 0, len(legacyAddonIDs))
+			addonPrices := make([]float64, 0, len(legacyAddonIDs))
+
+			for _, addonID := range legacyAddonIDs {
+				selectedAddon, resolveErr := resolveAddon(addonID)
+				if resolveErr != nil {
+					return nil, 0, resolveErr
+				}
+				if selectedAddon == nil {
+					continue
+				}
+
+				normalizedAddonIDs = append(normalizedAddonIDs, selectedAddon.ID.String())
+				addonNames = append(addonNames, selectedAddon.Name)
+				addonPrices = append(addonPrices, selectedAddon.Price)
+				addonExtra += selectedAddon.Price
+			}
+
+			if len(normalizedAddonIDs) > 0 {
+				if enriched == nil {
+					enriched = make(map[string]interface{})
+				}
+				enriched["addon_ids"] = normalizedAddonIDs
+				enriched["addon_names"] = addonNames
+				enriched["addon_prices"] = addonPrices
+			}
+		} else {
+			seenAll = make(map[uuid.UUID]struct{})
+			includedByGroupCount := make(map[string]int)
+
+			normalizedIncludedIDs := make([]string, 0, len(includedAddonIDs))
+			includedNames := make([]string, 0, len(includedAddonIDs))
+
+			normalizedExtraIDs := make([]string, 0, len(extraAddonIDs)+len(legacyAddonIDs))
+			extraNames := make([]string, 0, len(extraAddonIDs)+len(legacyAddonIDs))
+			extraPrices := make([]float64, 0, len(extraAddonIDs)+len(legacyAddonIDs))
+
+			allSelectedIDs := make([]string, 0, len(includedAddonIDs)+len(extraAddonIDs))
+			allSelectedNames := make([]string, 0, len(includedAddonIDs)+len(extraAddonIDs))
+
+			for _, addonID := range includedAddonIDs {
+				selectedAddon, resolveErr := resolveAddon(addonID)
+				if resolveErr != nil {
+					return nil, 0, resolveErr
+				}
+				if selectedAddon == nil {
+					continue
+				}
+
+				groupName := normalizeAddonGroupName(selectedAddon.GroupName)
+				allowance := freeAddonAllowanceByGroup[groupName]
+				if allowance > 0 && includedByGroupCount[groupName] < allowance {
+					includedByGroupCount[groupName]++
+					normalizedIncludedIDs = append(normalizedIncludedIDs, selectedAddon.ID.String())
+					includedNames = append(includedNames, selectedAddon.Name)
+					allSelectedIDs = append(allSelectedIDs, selectedAddon.ID.String())
+					allSelectedNames = append(allSelectedNames, selectedAddon.Name)
+					continue
+				}
+
+				normalizedExtraIDs = append(normalizedExtraIDs, selectedAddon.ID.String())
+				extraNames = append(extraNames, selectedAddon.Name)
+				extraPrices = append(extraPrices, selectedAddon.Price)
+				addonExtra += selectedAddon.Price
+				allSelectedIDs = append(allSelectedIDs, selectedAddon.ID.String())
+				allSelectedNames = append(allSelectedNames, selectedAddon.Name)
+			}
+
+			for _, addonID := range extraAddonIDs {
+				selectedAddon, resolveErr := resolveAddon(addonID)
+				if resolveErr != nil {
+					return nil, 0, resolveErr
+				}
+				if selectedAddon == nil {
+					continue
+				}
+
+				normalizedExtraIDs = append(normalizedExtraIDs, selectedAddon.ID.String())
+				extraNames = append(extraNames, selectedAddon.Name)
+				extraPrices = append(extraPrices, selectedAddon.Price)
+				addonExtra += selectedAddon.Price
+				allSelectedIDs = append(allSelectedIDs, selectedAddon.ID.String())
+				allSelectedNames = append(allSelectedNames, selectedAddon.Name)
+			}
+
+			if len(allSelectedIDs) > 0 {
+				if enriched == nil {
+					enriched = make(map[string]interface{})
+				}
+				enriched["addon_ids"] = allSelectedIDs
+				enriched["addon_names"] = allSelectedNames
+				enriched["included_addon_ids"] = normalizedIncludedIDs
+				enriched["included_addon_names"] = includedNames
+				enriched["extra_addon_ids"] = normalizedExtraIDs
+				enriched["extra_addon_names"] = extraNames
+				enriched["extra_addon_prices"] = extraPrices
+				enriched["addon_prices"] = extraPrices
+			}
+		}
+	}
+
+	if enriched != nil {
+		if notes, ok := enriched["notes"].(string); ok {
+			trimmed := strings.TrimSpace(notes)
+			if trimmed == "" {
+				delete(enriched, "notes")
+			} else {
+				enriched["notes"] = trimmed
+			}
+		}
+	}
+
+	if len(enriched) == 0 {
+		return nil, addonExtra, nil
+	}
+
+	return enriched, addonExtra, nil
+}
+
 func (s *OrderService) Create(ctx context.Context, input CreateOrderInput) (*ent.Order, error) {
 	tx, err := s.db.Tx(ctx)
 	if err != nil {
@@ -107,7 +411,7 @@ func (s *OrderService) Create(ctx context.Context, input CreateOrderInput) (*ent
 	items := make([]snapshot, 0, len(input.Items))
 
 	for _, item := range input.Items {
-		p, getErr := txProductRepo.FindByID(ctx, item.ProductID)
+		p, getErr := txProductRepo.FindByIDWithCategory(ctx, item.ProductID)
 		if getErr != nil {
 			_ = tx.Rollback()
 			return nil, fmt.Errorf("%w: %s", ErrProductNotFound, item.ProductID)
@@ -117,13 +421,20 @@ func (s *OrderService) Create(ctx context.Context, input CreateOrderInput) (*ent
 			return nil, fmt.Errorf("%w: %s", ErrProductUnavailable, p.Name)
 		}
 
-		total += p.Price * float64(item.Quantity)
+		enriched, addonExtra, enrichErr := s.enrichCustomizations(p, item.Customizations)
+		if enrichErr != nil {
+			_ = tx.Rollback()
+			return nil, enrichErr
+		}
+		effectivePrice := p.Price + addonExtra
+
+		total += effectivePrice * float64(item.Quantity)
 		items = append(items, snapshot{
 			productID:      item.ProductID,
 			productName:    p.Name,
 			quantity:       item.Quantity,
-			unitPrice:      p.Price,
-			customizations: item.Customizations,
+			unitPrice:      effectivePrice,
+			customizations: enriched,
 		})
 	}
 
@@ -287,7 +598,7 @@ func (s *OrderService) Update(ctx context.Context, id uuid.UUID, input UpdateOrd
 	items := make([]snapshot, 0, len(input.Items))
 
 	for _, item := range input.Items {
-		p, getErr := txProductRepo.FindByID(ctx, item.ProductID)
+		p, getErr := txProductRepo.FindByIDWithCategory(ctx, item.ProductID)
 		if getErr != nil {
 			_ = tx.Rollback()
 			return nil, fmt.Errorf("%w: %s", ErrProductNotFound, item.ProductID)
@@ -297,13 +608,20 @@ func (s *OrderService) Update(ctx context.Context, id uuid.UUID, input UpdateOrd
 			return nil, fmt.Errorf("%w: %s", ErrProductUnavailable, p.Name)
 		}
 
-		total += p.Price * float64(item.Quantity)
+		enriched, addonExtra, enrichErr := s.enrichCustomizations(p, item.Customizations)
+		if enrichErr != nil {
+			_ = tx.Rollback()
+			return nil, enrichErr
+		}
+		effectivePrice := p.Price + addonExtra
+
+		total += effectivePrice * float64(item.Quantity)
 		items = append(items, snapshot{
 			productID:      item.ProductID,
 			productName:    p.Name,
 			quantity:       item.Quantity,
-			unitPrice:      p.Price,
-			customizations: item.Customizations,
+			unitPrice:      effectivePrice,
+			customizations: enriched,
 		})
 	}
 

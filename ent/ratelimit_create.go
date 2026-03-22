@@ -22,101 +22,101 @@ type RateLimitCreate struct {
 }
 
 // SetIPAddress sets the "ip_address" field.
-func (rlc *RateLimitCreate) SetIPAddress(s string) *RateLimitCreate {
-	rlc.mutation.SetIPAddress(s)
-	return rlc
+func (_c *RateLimitCreate) SetIPAddress(v string) *RateLimitCreate {
+	_c.mutation.SetIPAddress(v)
+	return _c
 }
 
 // SetPhoneNumber sets the "phone_number" field.
-func (rlc *RateLimitCreate) SetPhoneNumber(s string) *RateLimitCreate {
-	rlc.mutation.SetPhoneNumber(s)
-	return rlc
+func (_c *RateLimitCreate) SetPhoneNumber(v string) *RateLimitCreate {
+	_c.mutation.SetPhoneNumber(v)
+	return _c
 }
 
 // SetNillablePhoneNumber sets the "phone_number" field if the given value is not nil.
-func (rlc *RateLimitCreate) SetNillablePhoneNumber(s *string) *RateLimitCreate {
-	if s != nil {
-		rlc.SetPhoneNumber(*s)
+func (_c *RateLimitCreate) SetNillablePhoneNumber(v *string) *RateLimitCreate {
+	if v != nil {
+		_c.SetPhoneNumber(*v)
 	}
-	return rlc
+	return _c
 }
 
 // SetActionType sets the "action_type" field.
-func (rlc *RateLimitCreate) SetActionType(s string) *RateLimitCreate {
-	rlc.mutation.SetActionType(s)
-	return rlc
+func (_c *RateLimitCreate) SetActionType(v string) *RateLimitCreate {
+	_c.mutation.SetActionType(v)
+	return _c
 }
 
 // SetNillableActionType sets the "action_type" field if the given value is not nil.
-func (rlc *RateLimitCreate) SetNillableActionType(s *string) *RateLimitCreate {
-	if s != nil {
-		rlc.SetActionType(*s)
+func (_c *RateLimitCreate) SetNillableActionType(v *string) *RateLimitCreate {
+	if v != nil {
+		_c.SetActionType(*v)
 	}
-	return rlc
+	return _c
 }
 
 // SetAttempts sets the "attempts" field.
-func (rlc *RateLimitCreate) SetAttempts(i int) *RateLimitCreate {
-	rlc.mutation.SetAttempts(i)
-	return rlc
+func (_c *RateLimitCreate) SetAttempts(v int) *RateLimitCreate {
+	_c.mutation.SetAttempts(v)
+	return _c
 }
 
 // SetNillableAttempts sets the "attempts" field if the given value is not nil.
-func (rlc *RateLimitCreate) SetNillableAttempts(i *int) *RateLimitCreate {
-	if i != nil {
-		rlc.SetAttempts(*i)
+func (_c *RateLimitCreate) SetNillableAttempts(v *int) *RateLimitCreate {
+	if v != nil {
+		_c.SetAttempts(*v)
 	}
-	return rlc
+	return _c
 }
 
 // SetLastAttempt sets the "last_attempt" field.
-func (rlc *RateLimitCreate) SetLastAttempt(t time.Time) *RateLimitCreate {
-	rlc.mutation.SetLastAttempt(t)
-	return rlc
+func (_c *RateLimitCreate) SetLastAttempt(v time.Time) *RateLimitCreate {
+	_c.mutation.SetLastAttempt(v)
+	return _c
 }
 
 // SetBlockedUntil sets the "blocked_until" field.
-func (rlc *RateLimitCreate) SetBlockedUntil(t time.Time) *RateLimitCreate {
-	rlc.mutation.SetBlockedUntil(t)
-	return rlc
+func (_c *RateLimitCreate) SetBlockedUntil(v time.Time) *RateLimitCreate {
+	_c.mutation.SetBlockedUntil(v)
+	return _c
 }
 
 // SetNillableBlockedUntil sets the "blocked_until" field if the given value is not nil.
-func (rlc *RateLimitCreate) SetNillableBlockedUntil(t *time.Time) *RateLimitCreate {
-	if t != nil {
-		rlc.SetBlockedUntil(*t)
+func (_c *RateLimitCreate) SetNillableBlockedUntil(v *time.Time) *RateLimitCreate {
+	if v != nil {
+		_c.SetBlockedUntil(*v)
 	}
-	return rlc
+	return _c
 }
 
 // SetID sets the "id" field.
-func (rlc *RateLimitCreate) SetID(u uuid.UUID) *RateLimitCreate {
-	rlc.mutation.SetID(u)
-	return rlc
+func (_c *RateLimitCreate) SetID(v uuid.UUID) *RateLimitCreate {
+	_c.mutation.SetID(v)
+	return _c
 }
 
 // SetNillableID sets the "id" field if the given value is not nil.
-func (rlc *RateLimitCreate) SetNillableID(u *uuid.UUID) *RateLimitCreate {
-	if u != nil {
-		rlc.SetID(*u)
+func (_c *RateLimitCreate) SetNillableID(v *uuid.UUID) *RateLimitCreate {
+	if v != nil {
+		_c.SetID(*v)
 	}
-	return rlc
+	return _c
 }
 
 // Mutation returns the RateLimitMutation object of the builder.
-func (rlc *RateLimitCreate) Mutation() *RateLimitMutation {
-	return rlc.mutation
+func (_c *RateLimitCreate) Mutation() *RateLimitMutation {
+	return _c.mutation
 }
 
 // Save creates the RateLimit in the database.
-func (rlc *RateLimitCreate) Save(ctx context.Context) (*RateLimit, error) {
-	rlc.defaults()
-	return withHooks(ctx, rlc.sqlSave, rlc.mutation, rlc.hooks)
+func (_c *RateLimitCreate) Save(ctx context.Context) (*RateLimit, error) {
+	_c.defaults()
+	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (rlc *RateLimitCreate) SaveX(ctx context.Context) *RateLimit {
-	v, err := rlc.Save(ctx)
+func (_c *RateLimitCreate) SaveX(ctx context.Context) *RateLimit {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -124,57 +124,57 @@ func (rlc *RateLimitCreate) SaveX(ctx context.Context) *RateLimit {
 }
 
 // Exec executes the query.
-func (rlc *RateLimitCreate) Exec(ctx context.Context) error {
-	_, err := rlc.Save(ctx)
+func (_c *RateLimitCreate) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (rlc *RateLimitCreate) ExecX(ctx context.Context) {
-	if err := rlc.Exec(ctx); err != nil {
+func (_c *RateLimitCreate) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (rlc *RateLimitCreate) defaults() {
-	if _, ok := rlc.mutation.ActionType(); !ok {
+func (_c *RateLimitCreate) defaults() {
+	if _, ok := _c.mutation.ActionType(); !ok {
 		v := ratelimit.DefaultActionType
-		rlc.mutation.SetActionType(v)
+		_c.mutation.SetActionType(v)
 	}
-	if _, ok := rlc.mutation.Attempts(); !ok {
+	if _, ok := _c.mutation.Attempts(); !ok {
 		v := ratelimit.DefaultAttempts
-		rlc.mutation.SetAttempts(v)
+		_c.mutation.SetAttempts(v)
 	}
-	if _, ok := rlc.mutation.ID(); !ok {
+	if _, ok := _c.mutation.ID(); !ok {
 		v := ratelimit.DefaultID()
-		rlc.mutation.SetID(v)
+		_c.mutation.SetID(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (rlc *RateLimitCreate) check() error {
-	if _, ok := rlc.mutation.IPAddress(); !ok {
+func (_c *RateLimitCreate) check() error {
+	if _, ok := _c.mutation.IPAddress(); !ok {
 		return &ValidationError{Name: "ip_address", err: errors.New(`ent: missing required field "RateLimit.ip_address"`)}
 	}
-	if _, ok := rlc.mutation.ActionType(); !ok {
+	if _, ok := _c.mutation.ActionType(); !ok {
 		return &ValidationError{Name: "action_type", err: errors.New(`ent: missing required field "RateLimit.action_type"`)}
 	}
-	if _, ok := rlc.mutation.Attempts(); !ok {
+	if _, ok := _c.mutation.Attempts(); !ok {
 		return &ValidationError{Name: "attempts", err: errors.New(`ent: missing required field "RateLimit.attempts"`)}
 	}
-	if _, ok := rlc.mutation.LastAttempt(); !ok {
+	if _, ok := _c.mutation.LastAttempt(); !ok {
 		return &ValidationError{Name: "last_attempt", err: errors.New(`ent: missing required field "RateLimit.last_attempt"`)}
 	}
 	return nil
 }
 
-func (rlc *RateLimitCreate) sqlSave(ctx context.Context) (*RateLimit, error) {
-	if err := rlc.check(); err != nil {
+func (_c *RateLimitCreate) sqlSave(ctx context.Context) (*RateLimit, error) {
+	if err := _c.check(); err != nil {
 		return nil, err
 	}
-	_node, _spec := rlc.createSpec()
-	if err := sqlgraph.CreateNode(ctx, rlc.driver, _spec); err != nil {
+	_node, _spec := _c.createSpec()
+	if err := sqlgraph.CreateNode(ctx, _c.driver, _spec); err != nil {
 		if sqlgraph.IsConstraintError(err) {
 			err = &ConstraintError{msg: err.Error(), wrap: err}
 		}
@@ -187,41 +187,41 @@ func (rlc *RateLimitCreate) sqlSave(ctx context.Context) (*RateLimit, error) {
 			return nil, err
 		}
 	}
-	rlc.mutation.id = &_node.ID
-	rlc.mutation.done = true
+	_c.mutation.id = &_node.ID
+	_c.mutation.done = true
 	return _node, nil
 }
 
-func (rlc *RateLimitCreate) createSpec() (*RateLimit, *sqlgraph.CreateSpec) {
+func (_c *RateLimitCreate) createSpec() (*RateLimit, *sqlgraph.CreateSpec) {
 	var (
-		_node = &RateLimit{config: rlc.config}
+		_node = &RateLimit{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(ratelimit.Table, sqlgraph.NewFieldSpec(ratelimit.FieldID, field.TypeUUID))
 	)
-	if id, ok := rlc.mutation.ID(); ok {
+	if id, ok := _c.mutation.ID(); ok {
 		_node.ID = id
 		_spec.ID.Value = &id
 	}
-	if value, ok := rlc.mutation.IPAddress(); ok {
+	if value, ok := _c.mutation.IPAddress(); ok {
 		_spec.SetField(ratelimit.FieldIPAddress, field.TypeString, value)
 		_node.IPAddress = value
 	}
-	if value, ok := rlc.mutation.PhoneNumber(); ok {
+	if value, ok := _c.mutation.PhoneNumber(); ok {
 		_spec.SetField(ratelimit.FieldPhoneNumber, field.TypeString, value)
 		_node.PhoneNumber = value
 	}
-	if value, ok := rlc.mutation.ActionType(); ok {
+	if value, ok := _c.mutation.ActionType(); ok {
 		_spec.SetField(ratelimit.FieldActionType, field.TypeString, value)
 		_node.ActionType = value
 	}
-	if value, ok := rlc.mutation.Attempts(); ok {
+	if value, ok := _c.mutation.Attempts(); ok {
 		_spec.SetField(ratelimit.FieldAttempts, field.TypeInt, value)
 		_node.Attempts = value
 	}
-	if value, ok := rlc.mutation.LastAttempt(); ok {
+	if value, ok := _c.mutation.LastAttempt(); ok {
 		_spec.SetField(ratelimit.FieldLastAttempt, field.TypeTime, value)
 		_node.LastAttempt = value
 	}
-	if value, ok := rlc.mutation.BlockedUntil(); ok {
+	if value, ok := _c.mutation.BlockedUntil(); ok {
 		_spec.SetField(ratelimit.FieldBlockedUntil, field.TypeTime, value)
 		_node.BlockedUntil = &value
 	}
@@ -236,16 +236,16 @@ type RateLimitCreateBulk struct {
 }
 
 // Save creates the RateLimit entities in the database.
-func (rlcb *RateLimitCreateBulk) Save(ctx context.Context) ([]*RateLimit, error) {
-	if rlcb.err != nil {
-		return nil, rlcb.err
+func (_c *RateLimitCreateBulk) Save(ctx context.Context) ([]*RateLimit, error) {
+	if _c.err != nil {
+		return nil, _c.err
 	}
-	specs := make([]*sqlgraph.CreateSpec, len(rlcb.builders))
-	nodes := make([]*RateLimit, len(rlcb.builders))
-	mutators := make([]Mutator, len(rlcb.builders))
-	for i := range rlcb.builders {
+	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
+	nodes := make([]*RateLimit, len(_c.builders))
+	mutators := make([]Mutator, len(_c.builders))
+	for i := range _c.builders {
 		func(i int, root context.Context) {
-			builder := rlcb.builders[i]
+			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
 				mutation, ok := m.(*RateLimitMutation)
@@ -259,11 +259,11 @@ func (rlcb *RateLimitCreateBulk) Save(ctx context.Context) ([]*RateLimit, error)
 				var err error
 				nodes[i], specs[i] = builder.createSpec()
 				if i < len(mutators)-1 {
-					_, err = mutators[i+1].Mutate(root, rlcb.builders[i+1].mutation)
+					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
 					// Invoke the actual operation on the latest mutation in the chain.
-					if err = sqlgraph.BatchCreate(ctx, rlcb.driver, spec); err != nil {
+					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
 							err = &ConstraintError{msg: err.Error(), wrap: err}
 						}
@@ -283,7 +283,7 @@ func (rlcb *RateLimitCreateBulk) Save(ctx context.Context) ([]*RateLimit, error)
 		}(i, ctx)
 	}
 	if len(mutators) > 0 {
-		if _, err := mutators[0].Mutate(ctx, rlcb.builders[0].mutation); err != nil {
+		if _, err := mutators[0].Mutate(ctx, _c.builders[0].mutation); err != nil {
 			return nil, err
 		}
 	}
@@ -291,8 +291,8 @@ func (rlcb *RateLimitCreateBulk) Save(ctx context.Context) ([]*RateLimit, error)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (rlcb *RateLimitCreateBulk) SaveX(ctx context.Context) []*RateLimit {
-	v, err := rlcb.Save(ctx)
+func (_c *RateLimitCreateBulk) SaveX(ctx context.Context) []*RateLimit {
+	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -300,14 +300,14 @@ func (rlcb *RateLimitCreateBulk) SaveX(ctx context.Context) []*RateLimit {
 }
 
 // Exec executes the query.
-func (rlcb *RateLimitCreateBulk) Exec(ctx context.Context) error {
-	_, err := rlcb.Save(ctx)
+func (_c *RateLimitCreateBulk) Exec(ctx context.Context) error {
+	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (rlcb *RateLimitCreateBulk) ExecX(ctx context.Context) {
-	if err := rlcb.Exec(ctx); err != nil {
+func (_c *RateLimitCreateBulk) ExecX(ctx context.Context) {
+	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

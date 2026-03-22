@@ -23,127 +23,127 @@ type RateLimitUpdate struct {
 }
 
 // Where appends a list predicates to the RateLimitUpdate builder.
-func (rlu *RateLimitUpdate) Where(ps ...predicate.RateLimit) *RateLimitUpdate {
-	rlu.mutation.Where(ps...)
-	return rlu
+func (_u *RateLimitUpdate) Where(ps ...predicate.RateLimit) *RateLimitUpdate {
+	_u.mutation.Where(ps...)
+	return _u
 }
 
 // SetIPAddress sets the "ip_address" field.
-func (rlu *RateLimitUpdate) SetIPAddress(s string) *RateLimitUpdate {
-	rlu.mutation.SetIPAddress(s)
-	return rlu
+func (_u *RateLimitUpdate) SetIPAddress(v string) *RateLimitUpdate {
+	_u.mutation.SetIPAddress(v)
+	return _u
 }
 
 // SetNillableIPAddress sets the "ip_address" field if the given value is not nil.
-func (rlu *RateLimitUpdate) SetNillableIPAddress(s *string) *RateLimitUpdate {
-	if s != nil {
-		rlu.SetIPAddress(*s)
+func (_u *RateLimitUpdate) SetNillableIPAddress(v *string) *RateLimitUpdate {
+	if v != nil {
+		_u.SetIPAddress(*v)
 	}
-	return rlu
+	return _u
 }
 
 // SetPhoneNumber sets the "phone_number" field.
-func (rlu *RateLimitUpdate) SetPhoneNumber(s string) *RateLimitUpdate {
-	rlu.mutation.SetPhoneNumber(s)
-	return rlu
+func (_u *RateLimitUpdate) SetPhoneNumber(v string) *RateLimitUpdate {
+	_u.mutation.SetPhoneNumber(v)
+	return _u
 }
 
 // SetNillablePhoneNumber sets the "phone_number" field if the given value is not nil.
-func (rlu *RateLimitUpdate) SetNillablePhoneNumber(s *string) *RateLimitUpdate {
-	if s != nil {
-		rlu.SetPhoneNumber(*s)
+func (_u *RateLimitUpdate) SetNillablePhoneNumber(v *string) *RateLimitUpdate {
+	if v != nil {
+		_u.SetPhoneNumber(*v)
 	}
-	return rlu
+	return _u
 }
 
 // ClearPhoneNumber clears the value of the "phone_number" field.
-func (rlu *RateLimitUpdate) ClearPhoneNumber() *RateLimitUpdate {
-	rlu.mutation.ClearPhoneNumber()
-	return rlu
+func (_u *RateLimitUpdate) ClearPhoneNumber() *RateLimitUpdate {
+	_u.mutation.ClearPhoneNumber()
+	return _u
 }
 
 // SetActionType sets the "action_type" field.
-func (rlu *RateLimitUpdate) SetActionType(s string) *RateLimitUpdate {
-	rlu.mutation.SetActionType(s)
-	return rlu
+func (_u *RateLimitUpdate) SetActionType(v string) *RateLimitUpdate {
+	_u.mutation.SetActionType(v)
+	return _u
 }
 
 // SetNillableActionType sets the "action_type" field if the given value is not nil.
-func (rlu *RateLimitUpdate) SetNillableActionType(s *string) *RateLimitUpdate {
-	if s != nil {
-		rlu.SetActionType(*s)
+func (_u *RateLimitUpdate) SetNillableActionType(v *string) *RateLimitUpdate {
+	if v != nil {
+		_u.SetActionType(*v)
 	}
-	return rlu
+	return _u
 }
 
 // SetAttempts sets the "attempts" field.
-func (rlu *RateLimitUpdate) SetAttempts(i int) *RateLimitUpdate {
-	rlu.mutation.ResetAttempts()
-	rlu.mutation.SetAttempts(i)
-	return rlu
+func (_u *RateLimitUpdate) SetAttempts(v int) *RateLimitUpdate {
+	_u.mutation.ResetAttempts()
+	_u.mutation.SetAttempts(v)
+	return _u
 }
 
 // SetNillableAttempts sets the "attempts" field if the given value is not nil.
-func (rlu *RateLimitUpdate) SetNillableAttempts(i *int) *RateLimitUpdate {
-	if i != nil {
-		rlu.SetAttempts(*i)
+func (_u *RateLimitUpdate) SetNillableAttempts(v *int) *RateLimitUpdate {
+	if v != nil {
+		_u.SetAttempts(*v)
 	}
-	return rlu
+	return _u
 }
 
-// AddAttempts adds i to the "attempts" field.
-func (rlu *RateLimitUpdate) AddAttempts(i int) *RateLimitUpdate {
-	rlu.mutation.AddAttempts(i)
-	return rlu
+// AddAttempts adds value to the "attempts" field.
+func (_u *RateLimitUpdate) AddAttempts(v int) *RateLimitUpdate {
+	_u.mutation.AddAttempts(v)
+	return _u
 }
 
 // SetLastAttempt sets the "last_attempt" field.
-func (rlu *RateLimitUpdate) SetLastAttempt(t time.Time) *RateLimitUpdate {
-	rlu.mutation.SetLastAttempt(t)
-	return rlu
+func (_u *RateLimitUpdate) SetLastAttempt(v time.Time) *RateLimitUpdate {
+	_u.mutation.SetLastAttempt(v)
+	return _u
 }
 
 // SetNillableLastAttempt sets the "last_attempt" field if the given value is not nil.
-func (rlu *RateLimitUpdate) SetNillableLastAttempt(t *time.Time) *RateLimitUpdate {
-	if t != nil {
-		rlu.SetLastAttempt(*t)
+func (_u *RateLimitUpdate) SetNillableLastAttempt(v *time.Time) *RateLimitUpdate {
+	if v != nil {
+		_u.SetLastAttempt(*v)
 	}
-	return rlu
+	return _u
 }
 
 // SetBlockedUntil sets the "blocked_until" field.
-func (rlu *RateLimitUpdate) SetBlockedUntil(t time.Time) *RateLimitUpdate {
-	rlu.mutation.SetBlockedUntil(t)
-	return rlu
+func (_u *RateLimitUpdate) SetBlockedUntil(v time.Time) *RateLimitUpdate {
+	_u.mutation.SetBlockedUntil(v)
+	return _u
 }
 
 // SetNillableBlockedUntil sets the "blocked_until" field if the given value is not nil.
-func (rlu *RateLimitUpdate) SetNillableBlockedUntil(t *time.Time) *RateLimitUpdate {
-	if t != nil {
-		rlu.SetBlockedUntil(*t)
+func (_u *RateLimitUpdate) SetNillableBlockedUntil(v *time.Time) *RateLimitUpdate {
+	if v != nil {
+		_u.SetBlockedUntil(*v)
 	}
-	return rlu
+	return _u
 }
 
 // ClearBlockedUntil clears the value of the "blocked_until" field.
-func (rlu *RateLimitUpdate) ClearBlockedUntil() *RateLimitUpdate {
-	rlu.mutation.ClearBlockedUntil()
-	return rlu
+func (_u *RateLimitUpdate) ClearBlockedUntil() *RateLimitUpdate {
+	_u.mutation.ClearBlockedUntil()
+	return _u
 }
 
 // Mutation returns the RateLimitMutation object of the builder.
-func (rlu *RateLimitUpdate) Mutation() *RateLimitMutation {
-	return rlu.mutation
+func (_u *RateLimitUpdate) Mutation() *RateLimitMutation {
+	return _u.mutation
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
-func (rlu *RateLimitUpdate) Save(ctx context.Context) (int, error) {
-	return withHooks(ctx, rlu.sqlSave, rlu.mutation, rlu.hooks)
+func (_u *RateLimitUpdate) Save(ctx context.Context) (int, error) {
+	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (rlu *RateLimitUpdate) SaveX(ctx context.Context) int {
-	affected, err := rlu.Save(ctx)
+func (_u *RateLimitUpdate) SaveX(ctx context.Context) int {
+	affected, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -151,55 +151,55 @@ func (rlu *RateLimitUpdate) SaveX(ctx context.Context) int {
 }
 
 // Exec executes the query.
-func (rlu *RateLimitUpdate) Exec(ctx context.Context) error {
-	_, err := rlu.Save(ctx)
+func (_u *RateLimitUpdate) Exec(ctx context.Context) error {
+	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (rlu *RateLimitUpdate) ExecX(ctx context.Context) {
-	if err := rlu.Exec(ctx); err != nil {
+func (_u *RateLimitUpdate) ExecX(ctx context.Context) {
+	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
-func (rlu *RateLimitUpdate) sqlSave(ctx context.Context) (n int, err error) {
+func (_u *RateLimitUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	_spec := sqlgraph.NewUpdateSpec(ratelimit.Table, ratelimit.Columns, sqlgraph.NewFieldSpec(ratelimit.FieldID, field.TypeUUID))
-	if ps := rlu.mutation.predicates; len(ps) > 0 {
+	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	if value, ok := rlu.mutation.IPAddress(); ok {
+	if value, ok := _u.mutation.IPAddress(); ok {
 		_spec.SetField(ratelimit.FieldIPAddress, field.TypeString, value)
 	}
-	if value, ok := rlu.mutation.PhoneNumber(); ok {
+	if value, ok := _u.mutation.PhoneNumber(); ok {
 		_spec.SetField(ratelimit.FieldPhoneNumber, field.TypeString, value)
 	}
-	if rlu.mutation.PhoneNumberCleared() {
+	if _u.mutation.PhoneNumberCleared() {
 		_spec.ClearField(ratelimit.FieldPhoneNumber, field.TypeString)
 	}
-	if value, ok := rlu.mutation.ActionType(); ok {
+	if value, ok := _u.mutation.ActionType(); ok {
 		_spec.SetField(ratelimit.FieldActionType, field.TypeString, value)
 	}
-	if value, ok := rlu.mutation.Attempts(); ok {
+	if value, ok := _u.mutation.Attempts(); ok {
 		_spec.SetField(ratelimit.FieldAttempts, field.TypeInt, value)
 	}
-	if value, ok := rlu.mutation.AddedAttempts(); ok {
+	if value, ok := _u.mutation.AddedAttempts(); ok {
 		_spec.AddField(ratelimit.FieldAttempts, field.TypeInt, value)
 	}
-	if value, ok := rlu.mutation.LastAttempt(); ok {
+	if value, ok := _u.mutation.LastAttempt(); ok {
 		_spec.SetField(ratelimit.FieldLastAttempt, field.TypeTime, value)
 	}
-	if value, ok := rlu.mutation.BlockedUntil(); ok {
+	if value, ok := _u.mutation.BlockedUntil(); ok {
 		_spec.SetField(ratelimit.FieldBlockedUntil, field.TypeTime, value)
 	}
-	if rlu.mutation.BlockedUntilCleared() {
+	if _u.mutation.BlockedUntilCleared() {
 		_spec.ClearField(ratelimit.FieldBlockedUntil, field.TypeTime)
 	}
-	if n, err = sqlgraph.UpdateNodes(ctx, rlu.driver, _spec); err != nil {
+	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{ratelimit.Label}
 		} else if sqlgraph.IsConstraintError(err) {
@@ -207,8 +207,8 @@ func (rlu *RateLimitUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		return 0, err
 	}
-	rlu.mutation.done = true
-	return n, nil
+	_u.mutation.done = true
+	return _node, nil
 }
 
 // RateLimitUpdateOne is the builder for updating a single RateLimit entity.
@@ -220,134 +220,134 @@ type RateLimitUpdateOne struct {
 }
 
 // SetIPAddress sets the "ip_address" field.
-func (rluo *RateLimitUpdateOne) SetIPAddress(s string) *RateLimitUpdateOne {
-	rluo.mutation.SetIPAddress(s)
-	return rluo
+func (_u *RateLimitUpdateOne) SetIPAddress(v string) *RateLimitUpdateOne {
+	_u.mutation.SetIPAddress(v)
+	return _u
 }
 
 // SetNillableIPAddress sets the "ip_address" field if the given value is not nil.
-func (rluo *RateLimitUpdateOne) SetNillableIPAddress(s *string) *RateLimitUpdateOne {
-	if s != nil {
-		rluo.SetIPAddress(*s)
+func (_u *RateLimitUpdateOne) SetNillableIPAddress(v *string) *RateLimitUpdateOne {
+	if v != nil {
+		_u.SetIPAddress(*v)
 	}
-	return rluo
+	return _u
 }
 
 // SetPhoneNumber sets the "phone_number" field.
-func (rluo *RateLimitUpdateOne) SetPhoneNumber(s string) *RateLimitUpdateOne {
-	rluo.mutation.SetPhoneNumber(s)
-	return rluo
+func (_u *RateLimitUpdateOne) SetPhoneNumber(v string) *RateLimitUpdateOne {
+	_u.mutation.SetPhoneNumber(v)
+	return _u
 }
 
 // SetNillablePhoneNumber sets the "phone_number" field if the given value is not nil.
-func (rluo *RateLimitUpdateOne) SetNillablePhoneNumber(s *string) *RateLimitUpdateOne {
-	if s != nil {
-		rluo.SetPhoneNumber(*s)
+func (_u *RateLimitUpdateOne) SetNillablePhoneNumber(v *string) *RateLimitUpdateOne {
+	if v != nil {
+		_u.SetPhoneNumber(*v)
 	}
-	return rluo
+	return _u
 }
 
 // ClearPhoneNumber clears the value of the "phone_number" field.
-func (rluo *RateLimitUpdateOne) ClearPhoneNumber() *RateLimitUpdateOne {
-	rluo.mutation.ClearPhoneNumber()
-	return rluo
+func (_u *RateLimitUpdateOne) ClearPhoneNumber() *RateLimitUpdateOne {
+	_u.mutation.ClearPhoneNumber()
+	return _u
 }
 
 // SetActionType sets the "action_type" field.
-func (rluo *RateLimitUpdateOne) SetActionType(s string) *RateLimitUpdateOne {
-	rluo.mutation.SetActionType(s)
-	return rluo
+func (_u *RateLimitUpdateOne) SetActionType(v string) *RateLimitUpdateOne {
+	_u.mutation.SetActionType(v)
+	return _u
 }
 
 // SetNillableActionType sets the "action_type" field if the given value is not nil.
-func (rluo *RateLimitUpdateOne) SetNillableActionType(s *string) *RateLimitUpdateOne {
-	if s != nil {
-		rluo.SetActionType(*s)
+func (_u *RateLimitUpdateOne) SetNillableActionType(v *string) *RateLimitUpdateOne {
+	if v != nil {
+		_u.SetActionType(*v)
 	}
-	return rluo
+	return _u
 }
 
 // SetAttempts sets the "attempts" field.
-func (rluo *RateLimitUpdateOne) SetAttempts(i int) *RateLimitUpdateOne {
-	rluo.mutation.ResetAttempts()
-	rluo.mutation.SetAttempts(i)
-	return rluo
+func (_u *RateLimitUpdateOne) SetAttempts(v int) *RateLimitUpdateOne {
+	_u.mutation.ResetAttempts()
+	_u.mutation.SetAttempts(v)
+	return _u
 }
 
 // SetNillableAttempts sets the "attempts" field if the given value is not nil.
-func (rluo *RateLimitUpdateOne) SetNillableAttempts(i *int) *RateLimitUpdateOne {
-	if i != nil {
-		rluo.SetAttempts(*i)
+func (_u *RateLimitUpdateOne) SetNillableAttempts(v *int) *RateLimitUpdateOne {
+	if v != nil {
+		_u.SetAttempts(*v)
 	}
-	return rluo
+	return _u
 }
 
-// AddAttempts adds i to the "attempts" field.
-func (rluo *RateLimitUpdateOne) AddAttempts(i int) *RateLimitUpdateOne {
-	rluo.mutation.AddAttempts(i)
-	return rluo
+// AddAttempts adds value to the "attempts" field.
+func (_u *RateLimitUpdateOne) AddAttempts(v int) *RateLimitUpdateOne {
+	_u.mutation.AddAttempts(v)
+	return _u
 }
 
 // SetLastAttempt sets the "last_attempt" field.
-func (rluo *RateLimitUpdateOne) SetLastAttempt(t time.Time) *RateLimitUpdateOne {
-	rluo.mutation.SetLastAttempt(t)
-	return rluo
+func (_u *RateLimitUpdateOne) SetLastAttempt(v time.Time) *RateLimitUpdateOne {
+	_u.mutation.SetLastAttempt(v)
+	return _u
 }
 
 // SetNillableLastAttempt sets the "last_attempt" field if the given value is not nil.
-func (rluo *RateLimitUpdateOne) SetNillableLastAttempt(t *time.Time) *RateLimitUpdateOne {
-	if t != nil {
-		rluo.SetLastAttempt(*t)
+func (_u *RateLimitUpdateOne) SetNillableLastAttempt(v *time.Time) *RateLimitUpdateOne {
+	if v != nil {
+		_u.SetLastAttempt(*v)
 	}
-	return rluo
+	return _u
 }
 
 // SetBlockedUntil sets the "blocked_until" field.
-func (rluo *RateLimitUpdateOne) SetBlockedUntil(t time.Time) *RateLimitUpdateOne {
-	rluo.mutation.SetBlockedUntil(t)
-	return rluo
+func (_u *RateLimitUpdateOne) SetBlockedUntil(v time.Time) *RateLimitUpdateOne {
+	_u.mutation.SetBlockedUntil(v)
+	return _u
 }
 
 // SetNillableBlockedUntil sets the "blocked_until" field if the given value is not nil.
-func (rluo *RateLimitUpdateOne) SetNillableBlockedUntil(t *time.Time) *RateLimitUpdateOne {
-	if t != nil {
-		rluo.SetBlockedUntil(*t)
+func (_u *RateLimitUpdateOne) SetNillableBlockedUntil(v *time.Time) *RateLimitUpdateOne {
+	if v != nil {
+		_u.SetBlockedUntil(*v)
 	}
-	return rluo
+	return _u
 }
 
 // ClearBlockedUntil clears the value of the "blocked_until" field.
-func (rluo *RateLimitUpdateOne) ClearBlockedUntil() *RateLimitUpdateOne {
-	rluo.mutation.ClearBlockedUntil()
-	return rluo
+func (_u *RateLimitUpdateOne) ClearBlockedUntil() *RateLimitUpdateOne {
+	_u.mutation.ClearBlockedUntil()
+	return _u
 }
 
 // Mutation returns the RateLimitMutation object of the builder.
-func (rluo *RateLimitUpdateOne) Mutation() *RateLimitMutation {
-	return rluo.mutation
+func (_u *RateLimitUpdateOne) Mutation() *RateLimitMutation {
+	return _u.mutation
 }
 
 // Where appends a list predicates to the RateLimitUpdate builder.
-func (rluo *RateLimitUpdateOne) Where(ps ...predicate.RateLimit) *RateLimitUpdateOne {
-	rluo.mutation.Where(ps...)
-	return rluo
+func (_u *RateLimitUpdateOne) Where(ps ...predicate.RateLimit) *RateLimitUpdateOne {
+	_u.mutation.Where(ps...)
+	return _u
 }
 
 // Select allows selecting one or more fields (columns) of the returned entity.
 // The default is selecting all fields defined in the entity schema.
-func (rluo *RateLimitUpdateOne) Select(field string, fields ...string) *RateLimitUpdateOne {
-	rluo.fields = append([]string{field}, fields...)
-	return rluo
+func (_u *RateLimitUpdateOne) Select(field string, fields ...string) *RateLimitUpdateOne {
+	_u.fields = append([]string{field}, fields...)
+	return _u
 }
 
 // Save executes the query and returns the updated RateLimit entity.
-func (rluo *RateLimitUpdateOne) Save(ctx context.Context) (*RateLimit, error) {
-	return withHooks(ctx, rluo.sqlSave, rluo.mutation, rluo.hooks)
+func (_u *RateLimitUpdateOne) Save(ctx context.Context) (*RateLimit, error) {
+	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (rluo *RateLimitUpdateOne) SaveX(ctx context.Context) *RateLimit {
-	node, err := rluo.Save(ctx)
+func (_u *RateLimitUpdateOne) SaveX(ctx context.Context) *RateLimit {
+	node, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -355,26 +355,26 @@ func (rluo *RateLimitUpdateOne) SaveX(ctx context.Context) *RateLimit {
 }
 
 // Exec executes the query on the entity.
-func (rluo *RateLimitUpdateOne) Exec(ctx context.Context) error {
-	_, err := rluo.Save(ctx)
+func (_u *RateLimitUpdateOne) Exec(ctx context.Context) error {
+	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (rluo *RateLimitUpdateOne) ExecX(ctx context.Context) {
-	if err := rluo.Exec(ctx); err != nil {
+func (_u *RateLimitUpdateOne) ExecX(ctx context.Context) {
+	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
-func (rluo *RateLimitUpdateOne) sqlSave(ctx context.Context) (_node *RateLimit, err error) {
+func (_u *RateLimitUpdateOne) sqlSave(ctx context.Context) (_node *RateLimit, err error) {
 	_spec := sqlgraph.NewUpdateSpec(ratelimit.Table, ratelimit.Columns, sqlgraph.NewFieldSpec(ratelimit.FieldID, field.TypeUUID))
-	id, ok := rluo.mutation.ID()
+	id, ok := _u.mutation.ID()
 	if !ok {
 		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "RateLimit.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
-	if fields := rluo.fields; len(fields) > 0 {
+	if fields := _u.fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
 		_spec.Node.Columns = append(_spec.Node.Columns, ratelimit.FieldID)
 		for _, f := range fields {
@@ -386,44 +386,44 @@ func (rluo *RateLimitUpdateOne) sqlSave(ctx context.Context) (_node *RateLimit, 
 			}
 		}
 	}
-	if ps := rluo.mutation.predicates; len(ps) > 0 {
+	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	if value, ok := rluo.mutation.IPAddress(); ok {
+	if value, ok := _u.mutation.IPAddress(); ok {
 		_spec.SetField(ratelimit.FieldIPAddress, field.TypeString, value)
 	}
-	if value, ok := rluo.mutation.PhoneNumber(); ok {
+	if value, ok := _u.mutation.PhoneNumber(); ok {
 		_spec.SetField(ratelimit.FieldPhoneNumber, field.TypeString, value)
 	}
-	if rluo.mutation.PhoneNumberCleared() {
+	if _u.mutation.PhoneNumberCleared() {
 		_spec.ClearField(ratelimit.FieldPhoneNumber, field.TypeString)
 	}
-	if value, ok := rluo.mutation.ActionType(); ok {
+	if value, ok := _u.mutation.ActionType(); ok {
 		_spec.SetField(ratelimit.FieldActionType, field.TypeString, value)
 	}
-	if value, ok := rluo.mutation.Attempts(); ok {
+	if value, ok := _u.mutation.Attempts(); ok {
 		_spec.SetField(ratelimit.FieldAttempts, field.TypeInt, value)
 	}
-	if value, ok := rluo.mutation.AddedAttempts(); ok {
+	if value, ok := _u.mutation.AddedAttempts(); ok {
 		_spec.AddField(ratelimit.FieldAttempts, field.TypeInt, value)
 	}
-	if value, ok := rluo.mutation.LastAttempt(); ok {
+	if value, ok := _u.mutation.LastAttempt(); ok {
 		_spec.SetField(ratelimit.FieldLastAttempt, field.TypeTime, value)
 	}
-	if value, ok := rluo.mutation.BlockedUntil(); ok {
+	if value, ok := _u.mutation.BlockedUntil(); ok {
 		_spec.SetField(ratelimit.FieldBlockedUntil, field.TypeTime, value)
 	}
-	if rluo.mutation.BlockedUntilCleared() {
+	if _u.mutation.BlockedUntilCleared() {
 		_spec.ClearField(ratelimit.FieldBlockedUntil, field.TypeTime)
 	}
-	_node = &RateLimit{config: rluo.config}
+	_node = &RateLimit{config: _u.config}
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues
-	if err = sqlgraph.UpdateNode(ctx, rluo.driver, _spec); err != nil {
+	if err = sqlgraph.UpdateNode(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{ratelimit.Label}
 		} else if sqlgraph.IsConstraintError(err) {
@@ -431,6 +431,6 @@ func (rluo *RateLimitUpdateOne) sqlSave(ctx context.Context) (_node *RateLimit, 
 		}
 		return nil, err
 	}
-	rluo.mutation.done = true
+	_u.mutation.done = true
 	return _node, nil
 }

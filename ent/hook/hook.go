@@ -9,6 +9,18 @@ import (
 	"github.com/cjrdz/ishosBackEnd/ent"
 )
 
+// The AddonFunc type is an adapter to allow the use of ordinary
+// function as Addon mutator.
+type AddonFunc func(context.Context, *ent.AddonMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AddonFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AddonMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AddonMutation", m)
+}
+
 // The CategoryFunc type is an adapter to allow the use of ordinary
 // function as Category mutator.
 type CategoryFunc func(context.Context, *ent.CategoryMutation) (ent.Value, error)
@@ -19,6 +31,18 @@ func (f CategoryFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CategoryMutation", m)
+}
+
+// The FlavorFunc type is an adapter to allow the use of ordinary
+// function as Flavor mutator.
+type FlavorFunc func(context.Context, *ent.FlavorMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f FlavorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.FlavorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.FlavorMutation", m)
 }
 
 // The OrderFunc type is an adapter to allow the use of ordinary

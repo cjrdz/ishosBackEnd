@@ -55,7 +55,7 @@ func (*RateLimit) scanValues(columns []string) ([]any, error) {
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
 // to the RateLimit fields.
-func (rl *RateLimit) assignValues(columns []string, values []any) error {
+func (_m *RateLimit) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
@@ -65,47 +65,47 @@ func (rl *RateLimit) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
-				rl.ID = *value
+				_m.ID = *value
 			}
 		case ratelimit.FieldIPAddress:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field ip_address", values[i])
 			} else if value.Valid {
-				rl.IPAddress = value.String
+				_m.IPAddress = value.String
 			}
 		case ratelimit.FieldPhoneNumber:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field phone_number", values[i])
 			} else if value.Valid {
-				rl.PhoneNumber = value.String
+				_m.PhoneNumber = value.String
 			}
 		case ratelimit.FieldActionType:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field action_type", values[i])
 			} else if value.Valid {
-				rl.ActionType = value.String
+				_m.ActionType = value.String
 			}
 		case ratelimit.FieldAttempts:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field attempts", values[i])
 			} else if value.Valid {
-				rl.Attempts = int(value.Int64)
+				_m.Attempts = int(value.Int64)
 			}
 		case ratelimit.FieldLastAttempt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field last_attempt", values[i])
 			} else if value.Valid {
-				rl.LastAttempt = value.Time
+				_m.LastAttempt = value.Time
 			}
 		case ratelimit.FieldBlockedUntil:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field blocked_until", values[i])
 			} else if value.Valid {
-				rl.BlockedUntil = new(time.Time)
-				*rl.BlockedUntil = value.Time
+				_m.BlockedUntil = new(time.Time)
+				*_m.BlockedUntil = value.Time
 			}
 		default:
-			rl.selectValues.Set(columns[i], values[i])
+			_m.selectValues.Set(columns[i], values[i])
 		}
 	}
 	return nil
@@ -113,49 +113,49 @@ func (rl *RateLimit) assignValues(columns []string, values []any) error {
 
 // Value returns the ent.Value that was dynamically selected and assigned to the RateLimit.
 // This includes values selected through modifiers, order, etc.
-func (rl *RateLimit) Value(name string) (ent.Value, error) {
-	return rl.selectValues.Get(name)
+func (_m *RateLimit) Value(name string) (ent.Value, error) {
+	return _m.selectValues.Get(name)
 }
 
 // Update returns a builder for updating this RateLimit.
 // Note that you need to call RateLimit.Unwrap() before calling this method if this RateLimit
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (rl *RateLimit) Update() *RateLimitUpdateOne {
-	return NewRateLimitClient(rl.config).UpdateOne(rl)
+func (_m *RateLimit) Update() *RateLimitUpdateOne {
+	return NewRateLimitClient(_m.config).UpdateOne(_m)
 }
 
 // Unwrap unwraps the RateLimit entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (rl *RateLimit) Unwrap() *RateLimit {
-	_tx, ok := rl.config.driver.(*txDriver)
+func (_m *RateLimit) Unwrap() *RateLimit {
+	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
 		panic("ent: RateLimit is not a transactional entity")
 	}
-	rl.config.driver = _tx.drv
-	return rl
+	_m.config.driver = _tx.drv
+	return _m
 }
 
 // String implements the fmt.Stringer.
-func (rl *RateLimit) String() string {
+func (_m *RateLimit) String() string {
 	var builder strings.Builder
 	builder.WriteString("RateLimit(")
-	builder.WriteString(fmt.Sprintf("id=%v, ", rl.ID))
+	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("ip_address=")
-	builder.WriteString(rl.IPAddress)
+	builder.WriteString(_m.IPAddress)
 	builder.WriteString(", ")
 	builder.WriteString("phone_number=")
-	builder.WriteString(rl.PhoneNumber)
+	builder.WriteString(_m.PhoneNumber)
 	builder.WriteString(", ")
 	builder.WriteString("action_type=")
-	builder.WriteString(rl.ActionType)
+	builder.WriteString(_m.ActionType)
 	builder.WriteString(", ")
 	builder.WriteString("attempts=")
-	builder.WriteString(fmt.Sprintf("%v", rl.Attempts))
+	builder.WriteString(fmt.Sprintf("%v", _m.Attempts))
 	builder.WriteString(", ")
 	builder.WriteString("last_attempt=")
-	builder.WriteString(rl.LastAttempt.Format(time.ANSIC))
+	builder.WriteString(_m.LastAttempt.Format(time.ANSIC))
 	builder.WriteString(", ")
-	if v := rl.BlockedUntil; v != nil {
+	if v := _m.BlockedUntil; v != nil {
 		builder.WriteString("blocked_until=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}

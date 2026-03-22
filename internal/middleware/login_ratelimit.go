@@ -35,8 +35,9 @@ func (rl *LoginRateLimiter) allow(ip string) bool {
 	now := time.Now()
 	cutoff := now.Add(-time.Minute)
 
-	recent := rl.attemptsByIP[ip][:0]
-	for _, t := range rl.attemptsByIP[ip] {
+	attempts := rl.attemptsByIP[ip]
+	recent := make([]time.Time, 0, len(attempts))
+	for _, t := range attempts {
 		if t.After(cutoff) {
 			recent = append(recent, t)
 		}

@@ -19,7 +19,7 @@ The backend is organized in clear layers to keep HTTP, business logic, and data 
 ### Request Lifecycle
 
 1. Request enters Chi router (`internal/server/server.go`).
-2. Global middleware runs: request metadata, recovery, logger, CORS.
+2. Global middleware runs: request metadata, security headers, recovery, logger, CORS.
 3. Route middleware runs: `RequireSession` / `OptionalAuth`, roles, rate limit.
 4. Handler decodes + validates payload with `internal/validator`.
 5. Service executes business rules and side effects.
@@ -69,6 +69,12 @@ go mod tidy
 go generate ./ent
 ```
 
+If you need to migrate the database without starting the API server:
+
+```sh
+make migrate
+```
+
 ### 3. Run locally
 
 ```sh
@@ -78,6 +84,8 @@ go run ./cmd/api
 # Option B: Docker Compose (local Postgres for development)
 docker compose up --build
 ```
+
+API startup also applies Ent schema migrations automatically and verifies that `addons.group_name` exists before serving requests.
 
 ### 4. Create the first admin employee
 
@@ -160,6 +168,8 @@ ishosBackend/
 │   │   └── main.go             # Entrypoint: Chi HTTP server + graceful shutdown
 │   ├── bootstrap/
 │   │   └── main.go             # Create first admin employee
+│   ├── migrate/
+│   │   └── main.go             # Apply schema migrations and verify addon grouping column
 │   └── seed/
 │       └── main.go             # Seed data helper
 ├── ent/
@@ -188,6 +198,7 @@ ishosBackend/
 │   │   ├── optional_auth.go    # Optional auth (public + staff mixed routes)
 │   │   ├── logger.go           # Request logging middleware
 │   │   ├── recovery.go         # Panic recovery middleware
+│   │   ├── security_headers.go # Security response headers middleware
 │   │   ├── ratelimit.go        # IP/phone rate limiting
 │   │   └── roles.go            # Admin/employee role checks
 │   ├── repository/
@@ -250,6 +261,23 @@ ishosBackend/
 - `.github/workflows/security.yml` for automated `govulncheck`, `gosec`, `gitleaks`, and Trivy image scanning
 - Integration test scaffolding under `tests/integration` (gated by `RUN_INTEGRATION=1`)
 
+## Security Hardening (Current Baseline)
+
+- Security response headers are applied globally:
+  - `X-Content-Type-Options: nosniff`
+  - `X-Frame-Options: DENY`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+- Analytics endpoints are now **admin-only** via role middleware.
+- JSON request decoding enforces a shared **1 MiB** max body size limit.
+- Login rate limiting panic path was removed by making per-IP sliding window compaction nil-safe.
+- Failed-login lockout is enforced per IP after configurable repeated failures in a rolling window.
+- Logout now triggers server-side token revocation (denylist) so revoked tokens are rejected before JWT expiry.
+- Browser auth cookie TTL is reduced to **24h** by default (`AUTH_COOKIE_TTL_HOURS`) to reduce long-lived session risk.
+- Order customer IP capture now uses normalized `RemoteAddr` parsing instead of directly trusting `X-Forwarded-For` in handlers.
+
+These controls are intentionally conservative and can be relaxed per endpoint if future requirements need broader CSP or larger JSON payloads.
+
 ## Scripts
 
 - `scripts/bootstrap_admin.sh` — creates the first admin user; reads credentials from `.env` (`BOOTSTRAP_ADMIN_*`) or prompts interactively.
@@ -305,6 +333,14 @@ ishosBackend/
 | PATCH  | `/api/v1/orders/{id}/status`                   | Staff   | Advance status                             |
 | PATCH  | `/api/v1/orders/{id}/notes`                    | Staff   | Update internal notes only                 |
 | DELETE | `/api/v1/orders/{id}`                          | Admin   | Delete order                               |
+
+### Analytics
+
+| Method | Path                                  | Auth  | Description                    |
+| ------ | ------------------------------------- | ----- | ------------------------------ |
+| GET    | `/api/v1/analytics/overview`          | Admin | KPI summary metrics            |
+| GET    | `/api/v1/analytics/orders-over-time`  | Admin | Time-series order counts       |
+| GET    | `/api/v1/analytics/top-products`      | Admin | Most sold products breakdown   |
 
 ### Image Upload
 
@@ -375,6 +411,10 @@ Customer submits order
 | `ORDERS_PER_HOUR`   | No       | `5`                     | Max orders per IP per hour            |
 | `ORDERS_PER_DAY`    | No       | `20`                    | Max orders per phone per day          |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | No | `10`                  | Max login attempts per IP per minute  |
+| `LOGIN_LOCKOUT_MAX_FAILURES` | No | `5`                  | Failed logins before lockout is applied |
+| `LOGIN_LOCKOUT_WINDOW_MINUTES` | No | `15`               | Rolling window used to count failed logins |
+| `LOGIN_LOCKOUT_DURATION_MINUTES` | No | `15`             | Lockout duration once threshold is reached |
+| `AUTH_COOKIE_TTL_HOURS` | No | `24`                    | `auth_token` cookie lifetime in browser |
 | `ALLOWED_ORIGINS`   | No       | `http://localhost:4321` | Comma-separated CORS allowed origins  |
 
 ## Deployment

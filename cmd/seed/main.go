@@ -23,7 +23,6 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/ent"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
@@ -178,19 +177,13 @@ func main() {
 			imgPath = &sp.Image
 		}
 
-		// Map is_active to is_available and stock_status
-		stockStatus := "in_stock"
-		if !sp.IsActive {
-			stockStatus = "out_of_stock"
-		}
-
+		// Map is_active to is_available
 		p, err := db.Product.Create().
 			SetName(sp.Name).
 			SetDescription(sp.Description).
 			SetPrice(price).
 			SetNillableImagePath(imgPath).
 			SetIsAvailable(sp.IsActive).
-			SetStockStatus(product.StockStatus(stockStatus)).
 			SetCategoryID(cat.ID).
 			SetCreatedAt(now).
 			SetUpdatedAt(now).

@@ -11,7 +11,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
@@ -26,181 +28,239 @@ type ProductUpdate struct {
 }
 
 // Where appends a list predicates to the ProductUpdate builder.
-func (pu *ProductUpdate) Where(ps ...predicate.Product) *ProductUpdate {
-	pu.mutation.Where(ps...)
-	return pu
+func (_u *ProductUpdate) Where(ps ...predicate.Product) *ProductUpdate {
+	_u.mutation.Where(ps...)
+	return _u
 }
 
 // SetName sets the "name" field.
-func (pu *ProductUpdate) SetName(s string) *ProductUpdate {
-	pu.mutation.SetName(s)
-	return pu
+func (_u *ProductUpdate) SetName(v string) *ProductUpdate {
+	_u.mutation.SetName(v)
+	return _u
 }
 
 // SetNillableName sets the "name" field if the given value is not nil.
-func (pu *ProductUpdate) SetNillableName(s *string) *ProductUpdate {
-	if s != nil {
-		pu.SetName(*s)
+func (_u *ProductUpdate) SetNillableName(v *string) *ProductUpdate {
+	if v != nil {
+		_u.SetName(*v)
 	}
-	return pu
+	return _u
 }
 
 // SetDescription sets the "description" field.
-func (pu *ProductUpdate) SetDescription(s string) *ProductUpdate {
-	pu.mutation.SetDescription(s)
-	return pu
+func (_u *ProductUpdate) SetDescription(v string) *ProductUpdate {
+	_u.mutation.SetDescription(v)
+	return _u
 }
 
 // SetNillableDescription sets the "description" field if the given value is not nil.
-func (pu *ProductUpdate) SetNillableDescription(s *string) *ProductUpdate {
-	if s != nil {
-		pu.SetDescription(*s)
+func (_u *ProductUpdate) SetNillableDescription(v *string) *ProductUpdate {
+	if v != nil {
+		_u.SetDescription(*v)
 	}
-	return pu
+	return _u
 }
 
 // SetPrice sets the "price" field.
-func (pu *ProductUpdate) SetPrice(f float64) *ProductUpdate {
-	pu.mutation.ResetPrice()
-	pu.mutation.SetPrice(f)
-	return pu
+func (_u *ProductUpdate) SetPrice(v float64) *ProductUpdate {
+	_u.mutation.ResetPrice()
+	_u.mutation.SetPrice(v)
+	return _u
 }
 
 // SetNillablePrice sets the "price" field if the given value is not nil.
-func (pu *ProductUpdate) SetNillablePrice(f *float64) *ProductUpdate {
-	if f != nil {
-		pu.SetPrice(*f)
+func (_u *ProductUpdate) SetNillablePrice(v *float64) *ProductUpdate {
+	if v != nil {
+		_u.SetPrice(*v)
 	}
-	return pu
+	return _u
 }
 
-// AddPrice adds f to the "price" field.
-func (pu *ProductUpdate) AddPrice(f float64) *ProductUpdate {
-	pu.mutation.AddPrice(f)
-	return pu
+// AddPrice adds value to the "price" field.
+func (_u *ProductUpdate) AddPrice(v float64) *ProductUpdate {
+	_u.mutation.AddPrice(v)
+	return _u
 }
 
 // SetImagePath sets the "image_path" field.
-func (pu *ProductUpdate) SetImagePath(s string) *ProductUpdate {
-	pu.mutation.SetImagePath(s)
-	return pu
+func (_u *ProductUpdate) SetImagePath(v string) *ProductUpdate {
+	_u.mutation.SetImagePath(v)
+	return _u
 }
 
 // SetNillableImagePath sets the "image_path" field if the given value is not nil.
-func (pu *ProductUpdate) SetNillableImagePath(s *string) *ProductUpdate {
-	if s != nil {
-		pu.SetImagePath(*s)
+func (_u *ProductUpdate) SetNillableImagePath(v *string) *ProductUpdate {
+	if v != nil {
+		_u.SetImagePath(*v)
 	}
-	return pu
+	return _u
 }
 
 // ClearImagePath clears the value of the "image_path" field.
-func (pu *ProductUpdate) ClearImagePath() *ProductUpdate {
-	pu.mutation.ClearImagePath()
-	return pu
+func (_u *ProductUpdate) ClearImagePath() *ProductUpdate {
+	_u.mutation.ClearImagePath()
+	return _u
 }
 
 // SetIsAvailable sets the "is_available" field.
-func (pu *ProductUpdate) SetIsAvailable(b bool) *ProductUpdate {
-	pu.mutation.SetIsAvailable(b)
-	return pu
+func (_u *ProductUpdate) SetIsAvailable(v bool) *ProductUpdate {
+	_u.mutation.SetIsAvailable(v)
+	return _u
 }
 
 // SetNillableIsAvailable sets the "is_available" field if the given value is not nil.
-func (pu *ProductUpdate) SetNillableIsAvailable(b *bool) *ProductUpdate {
-	if b != nil {
-		pu.SetIsAvailable(*b)
+func (_u *ProductUpdate) SetNillableIsAvailable(v *bool) *ProductUpdate {
+	if v != nil {
+		_u.SetIsAvailable(*v)
 	}
-	return pu
-}
-
-// SetStockStatus sets the "stock_status" field.
-func (pu *ProductUpdate) SetStockStatus(ps product.StockStatus) *ProductUpdate {
-	pu.mutation.SetStockStatus(ps)
-	return pu
-}
-
-// SetNillableStockStatus sets the "stock_status" field if the given value is not nil.
-func (pu *ProductUpdate) SetNillableStockStatus(ps *product.StockStatus) *ProductUpdate {
-	if ps != nil {
-		pu.SetStockStatus(*ps)
-	}
-	return pu
+	return _u
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (pu *ProductUpdate) SetUpdatedAt(t time.Time) *ProductUpdate {
-	pu.mutation.SetUpdatedAt(t)
-	return pu
+func (_u *ProductUpdate) SetUpdatedAt(v time.Time) *ProductUpdate {
+	_u.mutation.SetUpdatedAt(v)
+	return _u
 }
 
 // SetCategoryID sets the "category" edge to the Category entity by ID.
-func (pu *ProductUpdate) SetCategoryID(id uuid.UUID) *ProductUpdate {
-	pu.mutation.SetCategoryID(id)
-	return pu
+func (_u *ProductUpdate) SetCategoryID(id uuid.UUID) *ProductUpdate {
+	_u.mutation.SetCategoryID(id)
+	return _u
 }
 
 // SetCategory sets the "category" edge to the Category entity.
-func (pu *ProductUpdate) SetCategory(c *Category) *ProductUpdate {
-	return pu.SetCategoryID(c.ID)
+func (_u *ProductUpdate) SetCategory(v *Category) *ProductUpdate {
+	return _u.SetCategoryID(v.ID)
 }
 
 // AddOrderItemIDs adds the "order_items" edge to the OrderItem entity by IDs.
-func (pu *ProductUpdate) AddOrderItemIDs(ids ...uuid.UUID) *ProductUpdate {
-	pu.mutation.AddOrderItemIDs(ids...)
-	return pu
+func (_u *ProductUpdate) AddOrderItemIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.AddOrderItemIDs(ids...)
+	return _u
 }
 
 // AddOrderItems adds the "order_items" edges to the OrderItem entity.
-func (pu *ProductUpdate) AddOrderItems(o ...*OrderItem) *ProductUpdate {
-	ids := make([]uuid.UUID, len(o))
-	for i := range o {
-		ids[i] = o[i].ID
+func (_u *ProductUpdate) AddOrderItems(v ...*OrderItem) *ProductUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
 	}
-	return pu.AddOrderItemIDs(ids...)
+	return _u.AddOrderItemIDs(ids...)
+}
+
+// AddFlavorIDs adds the "flavors" edge to the Flavor entity by IDs.
+func (_u *ProductUpdate) AddFlavorIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.AddFlavorIDs(ids...)
+	return _u
+}
+
+// AddFlavors adds the "flavors" edges to the Flavor entity.
+func (_u *ProductUpdate) AddFlavors(v ...*Flavor) *ProductUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddFlavorIDs(ids...)
+}
+
+// AddAddonIDs adds the "addons" edge to the Addon entity by IDs.
+func (_u *ProductUpdate) AddAddonIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.AddAddonIDs(ids...)
+	return _u
+}
+
+// AddAddons adds the "addons" edges to the Addon entity.
+func (_u *ProductUpdate) AddAddons(v ...*Addon) *ProductUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAddonIDs(ids...)
 }
 
 // Mutation returns the ProductMutation object of the builder.
-func (pu *ProductUpdate) Mutation() *ProductMutation {
-	return pu.mutation
+func (_u *ProductUpdate) Mutation() *ProductMutation {
+	return _u.mutation
 }
 
 // ClearCategory clears the "category" edge to the Category entity.
-func (pu *ProductUpdate) ClearCategory() *ProductUpdate {
-	pu.mutation.ClearCategory()
-	return pu
+func (_u *ProductUpdate) ClearCategory() *ProductUpdate {
+	_u.mutation.ClearCategory()
+	return _u
 }
 
 // ClearOrderItems clears all "order_items" edges to the OrderItem entity.
-func (pu *ProductUpdate) ClearOrderItems() *ProductUpdate {
-	pu.mutation.ClearOrderItems()
-	return pu
+func (_u *ProductUpdate) ClearOrderItems() *ProductUpdate {
+	_u.mutation.ClearOrderItems()
+	return _u
 }
 
 // RemoveOrderItemIDs removes the "order_items" edge to OrderItem entities by IDs.
-func (pu *ProductUpdate) RemoveOrderItemIDs(ids ...uuid.UUID) *ProductUpdate {
-	pu.mutation.RemoveOrderItemIDs(ids...)
-	return pu
+func (_u *ProductUpdate) RemoveOrderItemIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.RemoveOrderItemIDs(ids...)
+	return _u
 }
 
 // RemoveOrderItems removes "order_items" edges to OrderItem entities.
-func (pu *ProductUpdate) RemoveOrderItems(o ...*OrderItem) *ProductUpdate {
-	ids := make([]uuid.UUID, len(o))
-	for i := range o {
-		ids[i] = o[i].ID
+func (_u *ProductUpdate) RemoveOrderItems(v ...*OrderItem) *ProductUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
 	}
-	return pu.RemoveOrderItemIDs(ids...)
+	return _u.RemoveOrderItemIDs(ids...)
+}
+
+// ClearFlavors clears all "flavors" edges to the Flavor entity.
+func (_u *ProductUpdate) ClearFlavors() *ProductUpdate {
+	_u.mutation.ClearFlavors()
+	return _u
+}
+
+// RemoveFlavorIDs removes the "flavors" edge to Flavor entities by IDs.
+func (_u *ProductUpdate) RemoveFlavorIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.RemoveFlavorIDs(ids...)
+	return _u
+}
+
+// RemoveFlavors removes "flavors" edges to Flavor entities.
+func (_u *ProductUpdate) RemoveFlavors(v ...*Flavor) *ProductUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveFlavorIDs(ids...)
+}
+
+// ClearAddons clears all "addons" edges to the Addon entity.
+func (_u *ProductUpdate) ClearAddons() *ProductUpdate {
+	_u.mutation.ClearAddons()
+	return _u
+}
+
+// RemoveAddonIDs removes the "addons" edge to Addon entities by IDs.
+func (_u *ProductUpdate) RemoveAddonIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.RemoveAddonIDs(ids...)
+	return _u
+}
+
+// RemoveAddons removes "addons" edges to Addon entities.
+func (_u *ProductUpdate) RemoveAddons(v ...*Addon) *ProductUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAddonIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
-func (pu *ProductUpdate) Save(ctx context.Context) (int, error) {
-	pu.defaults()
-	return withHooks(ctx, pu.sqlSave, pu.mutation, pu.hooks)
+func (_u *ProductUpdate) Save(ctx context.Context) (int, error) {
+	_u.defaults()
+	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (pu *ProductUpdate) SaveX(ctx context.Context) int {
-	affected, err := pu.Save(ctx)
+func (_u *ProductUpdate) SaveX(ctx context.Context) int {
+	affected, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -208,89 +268,81 @@ func (pu *ProductUpdate) SaveX(ctx context.Context) int {
 }
 
 // Exec executes the query.
-func (pu *ProductUpdate) Exec(ctx context.Context) error {
-	_, err := pu.Save(ctx)
+func (_u *ProductUpdate) Exec(ctx context.Context) error {
+	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (pu *ProductUpdate) ExecX(ctx context.Context) {
-	if err := pu.Exec(ctx); err != nil {
+func (_u *ProductUpdate) ExecX(ctx context.Context) {
+	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (pu *ProductUpdate) defaults() {
-	if _, ok := pu.mutation.UpdatedAt(); !ok {
+func (_u *ProductUpdate) defaults() {
+	if _, ok := _u.mutation.UpdatedAt(); !ok {
 		v := product.UpdateDefaultUpdatedAt()
-		pu.mutation.SetUpdatedAt(v)
+		_u.mutation.SetUpdatedAt(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (pu *ProductUpdate) check() error {
-	if v, ok := pu.mutation.Name(); ok {
+func (_u *ProductUpdate) check() error {
+	if v, ok := _u.mutation.Name(); ok {
 		if err := product.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Product.name": %w`, err)}
 		}
 	}
-	if v, ok := pu.mutation.Price(); ok {
+	if v, ok := _u.mutation.Price(); ok {
 		if err := product.PriceValidator(v); err != nil {
 			return &ValidationError{Name: "price", err: fmt.Errorf(`ent: validator failed for field "Product.price": %w`, err)}
 		}
 	}
-	if v, ok := pu.mutation.StockStatus(); ok {
-		if err := product.StockStatusValidator(v); err != nil {
-			return &ValidationError{Name: "stock_status", err: fmt.Errorf(`ent: validator failed for field "Product.stock_status": %w`, err)}
-		}
-	}
-	if pu.mutation.CategoryCleared() && len(pu.mutation.CategoryIDs()) > 0 {
+	if _u.mutation.CategoryCleared() && len(_u.mutation.CategoryIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Product.category"`)
 	}
 	return nil
 }
 
-func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
-	if err := pu.check(); err != nil {
-		return n, err
+func (_u *ProductUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
 	}
 	_spec := sqlgraph.NewUpdateSpec(product.Table, product.Columns, sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID))
-	if ps := pu.mutation.predicates; len(ps) > 0 {
+	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	if value, ok := pu.mutation.Name(); ok {
+	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(product.FieldName, field.TypeString, value)
 	}
-	if value, ok := pu.mutation.Description(); ok {
+	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(product.FieldDescription, field.TypeString, value)
 	}
-	if value, ok := pu.mutation.Price(); ok {
+	if value, ok := _u.mutation.Price(); ok {
 		_spec.SetField(product.FieldPrice, field.TypeFloat64, value)
 	}
-	if value, ok := pu.mutation.AddedPrice(); ok {
+	if value, ok := _u.mutation.AddedPrice(); ok {
 		_spec.AddField(product.FieldPrice, field.TypeFloat64, value)
 	}
-	if value, ok := pu.mutation.ImagePath(); ok {
+	if value, ok := _u.mutation.ImagePath(); ok {
 		_spec.SetField(product.FieldImagePath, field.TypeString, value)
 	}
-	if pu.mutation.ImagePathCleared() {
+	if _u.mutation.ImagePathCleared() {
 		_spec.ClearField(product.FieldImagePath, field.TypeString)
 	}
-	if value, ok := pu.mutation.IsAvailable(); ok {
+	if value, ok := _u.mutation.IsAvailable(); ok {
 		_spec.SetField(product.FieldIsAvailable, field.TypeBool, value)
 	}
-	if value, ok := pu.mutation.StockStatus(); ok {
-		_spec.SetField(product.FieldStockStatus, field.TypeEnum, value)
-	}
-	if value, ok := pu.mutation.UpdatedAt(); ok {
+	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)
 	}
-	if pu.mutation.CategoryCleared() {
+	if _u.mutation.CategoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: true,
@@ -303,7 +355,7 @@ func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := pu.mutation.CategoryIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.CategoryIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: true,
@@ -319,7 +371,7 @@ func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if pu.mutation.OrderItemsCleared() {
+	if _u.mutation.OrderItemsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -332,7 +384,7 @@ func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := pu.mutation.RemovedOrderItemsIDs(); len(nodes) > 0 && !pu.mutation.OrderItemsCleared() {
+	if nodes := _u.mutation.RemovedOrderItemsIDs(); len(nodes) > 0 && !_u.mutation.OrderItemsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -348,7 +400,7 @@ func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := pu.mutation.OrderItemsIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.OrderItemsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -364,7 +416,97 @@ func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if n, err = sqlgraph.UpdateNodes(ctx, pu.driver, _spec); err != nil {
+	if _u.mutation.FlavorsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedFlavorsIDs(); len(nodes) > 0 && !_u.mutation.FlavorsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FlavorsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AddonsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAddonsIDs(); len(nodes) > 0 && !_u.mutation.AddonsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AddonsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{product.Label}
 		} else if sqlgraph.IsConstraintError(err) {
@@ -372,8 +514,8 @@ func (pu *ProductUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		return 0, err
 	}
-	pu.mutation.done = true
-	return n, nil
+	_u.mutation.done = true
+	return _node, nil
 }
 
 // ProductUpdateOne is the builder for updating a single Product entity.
@@ -385,188 +527,246 @@ type ProductUpdateOne struct {
 }
 
 // SetName sets the "name" field.
-func (puo *ProductUpdateOne) SetName(s string) *ProductUpdateOne {
-	puo.mutation.SetName(s)
-	return puo
+func (_u *ProductUpdateOne) SetName(v string) *ProductUpdateOne {
+	_u.mutation.SetName(v)
+	return _u
 }
 
 // SetNillableName sets the "name" field if the given value is not nil.
-func (puo *ProductUpdateOne) SetNillableName(s *string) *ProductUpdateOne {
-	if s != nil {
-		puo.SetName(*s)
+func (_u *ProductUpdateOne) SetNillableName(v *string) *ProductUpdateOne {
+	if v != nil {
+		_u.SetName(*v)
 	}
-	return puo
+	return _u
 }
 
 // SetDescription sets the "description" field.
-func (puo *ProductUpdateOne) SetDescription(s string) *ProductUpdateOne {
-	puo.mutation.SetDescription(s)
-	return puo
+func (_u *ProductUpdateOne) SetDescription(v string) *ProductUpdateOne {
+	_u.mutation.SetDescription(v)
+	return _u
 }
 
 // SetNillableDescription sets the "description" field if the given value is not nil.
-func (puo *ProductUpdateOne) SetNillableDescription(s *string) *ProductUpdateOne {
-	if s != nil {
-		puo.SetDescription(*s)
+func (_u *ProductUpdateOne) SetNillableDescription(v *string) *ProductUpdateOne {
+	if v != nil {
+		_u.SetDescription(*v)
 	}
-	return puo
+	return _u
 }
 
 // SetPrice sets the "price" field.
-func (puo *ProductUpdateOne) SetPrice(f float64) *ProductUpdateOne {
-	puo.mutation.ResetPrice()
-	puo.mutation.SetPrice(f)
-	return puo
+func (_u *ProductUpdateOne) SetPrice(v float64) *ProductUpdateOne {
+	_u.mutation.ResetPrice()
+	_u.mutation.SetPrice(v)
+	return _u
 }
 
 // SetNillablePrice sets the "price" field if the given value is not nil.
-func (puo *ProductUpdateOne) SetNillablePrice(f *float64) *ProductUpdateOne {
-	if f != nil {
-		puo.SetPrice(*f)
+func (_u *ProductUpdateOne) SetNillablePrice(v *float64) *ProductUpdateOne {
+	if v != nil {
+		_u.SetPrice(*v)
 	}
-	return puo
+	return _u
 }
 
-// AddPrice adds f to the "price" field.
-func (puo *ProductUpdateOne) AddPrice(f float64) *ProductUpdateOne {
-	puo.mutation.AddPrice(f)
-	return puo
+// AddPrice adds value to the "price" field.
+func (_u *ProductUpdateOne) AddPrice(v float64) *ProductUpdateOne {
+	_u.mutation.AddPrice(v)
+	return _u
 }
 
 // SetImagePath sets the "image_path" field.
-func (puo *ProductUpdateOne) SetImagePath(s string) *ProductUpdateOne {
-	puo.mutation.SetImagePath(s)
-	return puo
+func (_u *ProductUpdateOne) SetImagePath(v string) *ProductUpdateOne {
+	_u.mutation.SetImagePath(v)
+	return _u
 }
 
 // SetNillableImagePath sets the "image_path" field if the given value is not nil.
-func (puo *ProductUpdateOne) SetNillableImagePath(s *string) *ProductUpdateOne {
-	if s != nil {
-		puo.SetImagePath(*s)
+func (_u *ProductUpdateOne) SetNillableImagePath(v *string) *ProductUpdateOne {
+	if v != nil {
+		_u.SetImagePath(*v)
 	}
-	return puo
+	return _u
 }
 
 // ClearImagePath clears the value of the "image_path" field.
-func (puo *ProductUpdateOne) ClearImagePath() *ProductUpdateOne {
-	puo.mutation.ClearImagePath()
-	return puo
+func (_u *ProductUpdateOne) ClearImagePath() *ProductUpdateOne {
+	_u.mutation.ClearImagePath()
+	return _u
 }
 
 // SetIsAvailable sets the "is_available" field.
-func (puo *ProductUpdateOne) SetIsAvailable(b bool) *ProductUpdateOne {
-	puo.mutation.SetIsAvailable(b)
-	return puo
+func (_u *ProductUpdateOne) SetIsAvailable(v bool) *ProductUpdateOne {
+	_u.mutation.SetIsAvailable(v)
+	return _u
 }
 
 // SetNillableIsAvailable sets the "is_available" field if the given value is not nil.
-func (puo *ProductUpdateOne) SetNillableIsAvailable(b *bool) *ProductUpdateOne {
-	if b != nil {
-		puo.SetIsAvailable(*b)
+func (_u *ProductUpdateOne) SetNillableIsAvailable(v *bool) *ProductUpdateOne {
+	if v != nil {
+		_u.SetIsAvailable(*v)
 	}
-	return puo
-}
-
-// SetStockStatus sets the "stock_status" field.
-func (puo *ProductUpdateOne) SetStockStatus(ps product.StockStatus) *ProductUpdateOne {
-	puo.mutation.SetStockStatus(ps)
-	return puo
-}
-
-// SetNillableStockStatus sets the "stock_status" field if the given value is not nil.
-func (puo *ProductUpdateOne) SetNillableStockStatus(ps *product.StockStatus) *ProductUpdateOne {
-	if ps != nil {
-		puo.SetStockStatus(*ps)
-	}
-	return puo
+	return _u
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (puo *ProductUpdateOne) SetUpdatedAt(t time.Time) *ProductUpdateOne {
-	puo.mutation.SetUpdatedAt(t)
-	return puo
+func (_u *ProductUpdateOne) SetUpdatedAt(v time.Time) *ProductUpdateOne {
+	_u.mutation.SetUpdatedAt(v)
+	return _u
 }
 
 // SetCategoryID sets the "category" edge to the Category entity by ID.
-func (puo *ProductUpdateOne) SetCategoryID(id uuid.UUID) *ProductUpdateOne {
-	puo.mutation.SetCategoryID(id)
-	return puo
+func (_u *ProductUpdateOne) SetCategoryID(id uuid.UUID) *ProductUpdateOne {
+	_u.mutation.SetCategoryID(id)
+	return _u
 }
 
 // SetCategory sets the "category" edge to the Category entity.
-func (puo *ProductUpdateOne) SetCategory(c *Category) *ProductUpdateOne {
-	return puo.SetCategoryID(c.ID)
+func (_u *ProductUpdateOne) SetCategory(v *Category) *ProductUpdateOne {
+	return _u.SetCategoryID(v.ID)
 }
 
 // AddOrderItemIDs adds the "order_items" edge to the OrderItem entity by IDs.
-func (puo *ProductUpdateOne) AddOrderItemIDs(ids ...uuid.UUID) *ProductUpdateOne {
-	puo.mutation.AddOrderItemIDs(ids...)
-	return puo
+func (_u *ProductUpdateOne) AddOrderItemIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.AddOrderItemIDs(ids...)
+	return _u
 }
 
 // AddOrderItems adds the "order_items" edges to the OrderItem entity.
-func (puo *ProductUpdateOne) AddOrderItems(o ...*OrderItem) *ProductUpdateOne {
-	ids := make([]uuid.UUID, len(o))
-	for i := range o {
-		ids[i] = o[i].ID
+func (_u *ProductUpdateOne) AddOrderItems(v ...*OrderItem) *ProductUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
 	}
-	return puo.AddOrderItemIDs(ids...)
+	return _u.AddOrderItemIDs(ids...)
+}
+
+// AddFlavorIDs adds the "flavors" edge to the Flavor entity by IDs.
+func (_u *ProductUpdateOne) AddFlavorIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.AddFlavorIDs(ids...)
+	return _u
+}
+
+// AddFlavors adds the "flavors" edges to the Flavor entity.
+func (_u *ProductUpdateOne) AddFlavors(v ...*Flavor) *ProductUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddFlavorIDs(ids...)
+}
+
+// AddAddonIDs adds the "addons" edge to the Addon entity by IDs.
+func (_u *ProductUpdateOne) AddAddonIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.AddAddonIDs(ids...)
+	return _u
+}
+
+// AddAddons adds the "addons" edges to the Addon entity.
+func (_u *ProductUpdateOne) AddAddons(v ...*Addon) *ProductUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddAddonIDs(ids...)
 }
 
 // Mutation returns the ProductMutation object of the builder.
-func (puo *ProductUpdateOne) Mutation() *ProductMutation {
-	return puo.mutation
+func (_u *ProductUpdateOne) Mutation() *ProductMutation {
+	return _u.mutation
 }
 
 // ClearCategory clears the "category" edge to the Category entity.
-func (puo *ProductUpdateOne) ClearCategory() *ProductUpdateOne {
-	puo.mutation.ClearCategory()
-	return puo
+func (_u *ProductUpdateOne) ClearCategory() *ProductUpdateOne {
+	_u.mutation.ClearCategory()
+	return _u
 }
 
 // ClearOrderItems clears all "order_items" edges to the OrderItem entity.
-func (puo *ProductUpdateOne) ClearOrderItems() *ProductUpdateOne {
-	puo.mutation.ClearOrderItems()
-	return puo
+func (_u *ProductUpdateOne) ClearOrderItems() *ProductUpdateOne {
+	_u.mutation.ClearOrderItems()
+	return _u
 }
 
 // RemoveOrderItemIDs removes the "order_items" edge to OrderItem entities by IDs.
-func (puo *ProductUpdateOne) RemoveOrderItemIDs(ids ...uuid.UUID) *ProductUpdateOne {
-	puo.mutation.RemoveOrderItemIDs(ids...)
-	return puo
+func (_u *ProductUpdateOne) RemoveOrderItemIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.RemoveOrderItemIDs(ids...)
+	return _u
 }
 
 // RemoveOrderItems removes "order_items" edges to OrderItem entities.
-func (puo *ProductUpdateOne) RemoveOrderItems(o ...*OrderItem) *ProductUpdateOne {
-	ids := make([]uuid.UUID, len(o))
-	for i := range o {
-		ids[i] = o[i].ID
+func (_u *ProductUpdateOne) RemoveOrderItems(v ...*OrderItem) *ProductUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
 	}
-	return puo.RemoveOrderItemIDs(ids...)
+	return _u.RemoveOrderItemIDs(ids...)
+}
+
+// ClearFlavors clears all "flavors" edges to the Flavor entity.
+func (_u *ProductUpdateOne) ClearFlavors() *ProductUpdateOne {
+	_u.mutation.ClearFlavors()
+	return _u
+}
+
+// RemoveFlavorIDs removes the "flavors" edge to Flavor entities by IDs.
+func (_u *ProductUpdateOne) RemoveFlavorIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.RemoveFlavorIDs(ids...)
+	return _u
+}
+
+// RemoveFlavors removes "flavors" edges to Flavor entities.
+func (_u *ProductUpdateOne) RemoveFlavors(v ...*Flavor) *ProductUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveFlavorIDs(ids...)
+}
+
+// ClearAddons clears all "addons" edges to the Addon entity.
+func (_u *ProductUpdateOne) ClearAddons() *ProductUpdateOne {
+	_u.mutation.ClearAddons()
+	return _u
+}
+
+// RemoveAddonIDs removes the "addons" edge to Addon entities by IDs.
+func (_u *ProductUpdateOne) RemoveAddonIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.RemoveAddonIDs(ids...)
+	return _u
+}
+
+// RemoveAddons removes "addons" edges to Addon entities.
+func (_u *ProductUpdateOne) RemoveAddons(v ...*Addon) *ProductUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveAddonIDs(ids...)
 }
 
 // Where appends a list predicates to the ProductUpdate builder.
-func (puo *ProductUpdateOne) Where(ps ...predicate.Product) *ProductUpdateOne {
-	puo.mutation.Where(ps...)
-	return puo
+func (_u *ProductUpdateOne) Where(ps ...predicate.Product) *ProductUpdateOne {
+	_u.mutation.Where(ps...)
+	return _u
 }
 
 // Select allows selecting one or more fields (columns) of the returned entity.
 // The default is selecting all fields defined in the entity schema.
-func (puo *ProductUpdateOne) Select(field string, fields ...string) *ProductUpdateOne {
-	puo.fields = append([]string{field}, fields...)
-	return puo
+func (_u *ProductUpdateOne) Select(field string, fields ...string) *ProductUpdateOne {
+	_u.fields = append([]string{field}, fields...)
+	return _u
 }
 
 // Save executes the query and returns the updated Product entity.
-func (puo *ProductUpdateOne) Save(ctx context.Context) (*Product, error) {
-	puo.defaults()
-	return withHooks(ctx, puo.sqlSave, puo.mutation, puo.hooks)
+func (_u *ProductUpdateOne) Save(ctx context.Context) (*Product, error) {
+	_u.defaults()
+	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (puo *ProductUpdateOne) SaveX(ctx context.Context) *Product {
-	node, err := puo.Save(ctx)
+func (_u *ProductUpdateOne) SaveX(ctx context.Context) *Product {
+	node, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -574,60 +774,55 @@ func (puo *ProductUpdateOne) SaveX(ctx context.Context) *Product {
 }
 
 // Exec executes the query on the entity.
-func (puo *ProductUpdateOne) Exec(ctx context.Context) error {
-	_, err := puo.Save(ctx)
+func (_u *ProductUpdateOne) Exec(ctx context.Context) error {
+	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (puo *ProductUpdateOne) ExecX(ctx context.Context) {
-	if err := puo.Exec(ctx); err != nil {
+func (_u *ProductUpdateOne) ExecX(ctx context.Context) {
+	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (puo *ProductUpdateOne) defaults() {
-	if _, ok := puo.mutation.UpdatedAt(); !ok {
+func (_u *ProductUpdateOne) defaults() {
+	if _, ok := _u.mutation.UpdatedAt(); !ok {
 		v := product.UpdateDefaultUpdatedAt()
-		puo.mutation.SetUpdatedAt(v)
+		_u.mutation.SetUpdatedAt(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (puo *ProductUpdateOne) check() error {
-	if v, ok := puo.mutation.Name(); ok {
+func (_u *ProductUpdateOne) check() error {
+	if v, ok := _u.mutation.Name(); ok {
 		if err := product.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Product.name": %w`, err)}
 		}
 	}
-	if v, ok := puo.mutation.Price(); ok {
+	if v, ok := _u.mutation.Price(); ok {
 		if err := product.PriceValidator(v); err != nil {
 			return &ValidationError{Name: "price", err: fmt.Errorf(`ent: validator failed for field "Product.price": %w`, err)}
 		}
 	}
-	if v, ok := puo.mutation.StockStatus(); ok {
-		if err := product.StockStatusValidator(v); err != nil {
-			return &ValidationError{Name: "stock_status", err: fmt.Errorf(`ent: validator failed for field "Product.stock_status": %w`, err)}
-		}
-	}
-	if puo.mutation.CategoryCleared() && len(puo.mutation.CategoryIDs()) > 0 {
+	if _u.mutation.CategoryCleared() && len(_u.mutation.CategoryIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "Product.category"`)
 	}
 	return nil
 }
 
-func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err error) {
-	if err := puo.check(); err != nil {
+func (_u *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err error) {
+	if err := _u.check(); err != nil {
 		return _node, err
 	}
 	_spec := sqlgraph.NewUpdateSpec(product.Table, product.Columns, sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID))
-	id, ok := puo.mutation.ID()
+	id, ok := _u.mutation.ID()
 	if !ok {
 		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "Product.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
-	if fields := puo.fields; len(fields) > 0 {
+	if fields := _u.fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
 		_spec.Node.Columns = append(_spec.Node.Columns, product.FieldID)
 		for _, f := range fields {
@@ -639,41 +834,38 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 			}
 		}
 	}
-	if ps := puo.mutation.predicates; len(ps) > 0 {
+	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	if value, ok := puo.mutation.Name(); ok {
+	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(product.FieldName, field.TypeString, value)
 	}
-	if value, ok := puo.mutation.Description(); ok {
+	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(product.FieldDescription, field.TypeString, value)
 	}
-	if value, ok := puo.mutation.Price(); ok {
+	if value, ok := _u.mutation.Price(); ok {
 		_spec.SetField(product.FieldPrice, field.TypeFloat64, value)
 	}
-	if value, ok := puo.mutation.AddedPrice(); ok {
+	if value, ok := _u.mutation.AddedPrice(); ok {
 		_spec.AddField(product.FieldPrice, field.TypeFloat64, value)
 	}
-	if value, ok := puo.mutation.ImagePath(); ok {
+	if value, ok := _u.mutation.ImagePath(); ok {
 		_spec.SetField(product.FieldImagePath, field.TypeString, value)
 	}
-	if puo.mutation.ImagePathCleared() {
+	if _u.mutation.ImagePathCleared() {
 		_spec.ClearField(product.FieldImagePath, field.TypeString)
 	}
-	if value, ok := puo.mutation.IsAvailable(); ok {
+	if value, ok := _u.mutation.IsAvailable(); ok {
 		_spec.SetField(product.FieldIsAvailable, field.TypeBool, value)
 	}
-	if value, ok := puo.mutation.StockStatus(); ok {
-		_spec.SetField(product.FieldStockStatus, field.TypeEnum, value)
-	}
-	if value, ok := puo.mutation.UpdatedAt(); ok {
+	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)
 	}
-	if puo.mutation.CategoryCleared() {
+	if _u.mutation.CategoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: true,
@@ -686,7 +878,7 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := puo.mutation.CategoryIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.CategoryIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.M2O,
 			Inverse: true,
@@ -702,7 +894,7 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if puo.mutation.OrderItemsCleared() {
+	if _u.mutation.OrderItemsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -715,7 +907,7 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := puo.mutation.RemovedOrderItemsIDs(); len(nodes) > 0 && !puo.mutation.OrderItemsCleared() {
+	if nodes := _u.mutation.RemovedOrderItemsIDs(); len(nodes) > 0 && !_u.mutation.OrderItemsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -731,7 +923,7 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := puo.mutation.OrderItemsIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.OrderItemsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
@@ -747,10 +939,100 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	_node = &Product{config: puo.config}
+	if _u.mutation.FlavorsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedFlavorsIDs(); len(nodes) > 0 && !_u.mutation.FlavorsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FlavorsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.FlavorsTable,
+			Columns: []string{product.FlavorsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.AddonsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedAddonsIDs(); len(nodes) > 0 && !_u.mutation.AddonsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.AddonsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   product.AddonsTable,
+			Columns: []string{product.AddonsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	_node = &Product{config: _u.config}
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues
-	if err = sqlgraph.UpdateNode(ctx, puo.driver, _spec); err != nil {
+	if err = sqlgraph.UpdateNode(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{product.Label}
 		} else if sqlgraph.IsConstraintError(err) {
@@ -758,6 +1040,6 @@ func (puo *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err e
 		}
 		return nil, err
 	}
-	puo.mutation.done = true
+	_u.mutation.done = true
 	return _node, nil
 }

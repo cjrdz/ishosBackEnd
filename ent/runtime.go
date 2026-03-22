@@ -5,7 +5,9 @@ package ent
 import (
 	"time"
 
+	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
@@ -18,6 +20,44 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	addonFields := schema.Addon{}.Fields()
+	_ = addonFields
+	// addonDescName is the schema descriptor for name field.
+	addonDescName := addonFields[1].Descriptor()
+	// addon.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	addon.NameValidator = addonDescName.Validators[0].(func(string) error)
+	// addonDescPrice is the schema descriptor for price field.
+	addonDescPrice := addonFields[2].Descriptor()
+	// addon.DefaultPrice holds the default value on creation for the price field.
+	addon.DefaultPrice = addonDescPrice.Default.(float64)
+	// addonDescGroupName is the schema descriptor for group_name field.
+	addonDescGroupName := addonFields[3].Descriptor()
+	// addon.DefaultGroupName holds the default value on creation for the group_name field.
+	addon.DefaultGroupName = addonDescGroupName.Default.(string)
+	// addon.GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.
+	addon.GroupNameValidator = addonDescGroupName.Validators[0].(func(string) error)
+	// addonDescDisplayOrder is the schema descriptor for display_order field.
+	addonDescDisplayOrder := addonFields[4].Descriptor()
+	// addon.DefaultDisplayOrder holds the default value on creation for the display_order field.
+	addon.DefaultDisplayOrder = addonDescDisplayOrder.Default.(int)
+	// addonDescIsActive is the schema descriptor for is_active field.
+	addonDescIsActive := addonFields[5].Descriptor()
+	// addon.DefaultIsActive holds the default value on creation for the is_active field.
+	addon.DefaultIsActive = addonDescIsActive.Default.(bool)
+	// addonDescCreatedAt is the schema descriptor for created_at field.
+	addonDescCreatedAt := addonFields[6].Descriptor()
+	// addon.DefaultCreatedAt holds the default value on creation for the created_at field.
+	addon.DefaultCreatedAt = addonDescCreatedAt.Default.(func() time.Time)
+	// addonDescUpdatedAt is the schema descriptor for updated_at field.
+	addonDescUpdatedAt := addonFields[7].Descriptor()
+	// addon.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	addon.DefaultUpdatedAt = addonDescUpdatedAt.Default.(func() time.Time)
+	// addon.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	addon.UpdateDefaultUpdatedAt = addonDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// addonDescID is the schema descriptor for id field.
+	addonDescID := addonFields[0].Descriptor()
+	// addon.DefaultID holds the default value on creation for the id field.
+	addon.DefaultID = addonDescID.Default.(func() uuid.UUID)
 	categoryFields := schema.Category{}.Fields()
 	_ = categoryFields
 	// categoryDescName is the schema descriptor for name field.
@@ -54,6 +94,38 @@ func init() {
 	categoryDescID := categoryFields[0].Descriptor()
 	// category.DefaultID holds the default value on creation for the id field.
 	category.DefaultID = categoryDescID.Default.(func() uuid.UUID)
+	flavorFields := schema.Flavor{}.Fields()
+	_ = flavorFields
+	// flavorDescName is the schema descriptor for name field.
+	flavorDescName := flavorFields[1].Descriptor()
+	// flavor.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	flavor.NameValidator = flavorDescName.Validators[0].(func(string) error)
+	// flavorDescDisplayOrder is the schema descriptor for display_order field.
+	flavorDescDisplayOrder := flavorFields[2].Descriptor()
+	// flavor.DefaultDisplayOrder holds the default value on creation for the display_order field.
+	flavor.DefaultDisplayOrder = flavorDescDisplayOrder.Default.(int)
+	// flavorDescIsSeasonal is the schema descriptor for is_seasonal field.
+	flavorDescIsSeasonal := flavorFields[3].Descriptor()
+	// flavor.DefaultIsSeasonal holds the default value on creation for the is_seasonal field.
+	flavor.DefaultIsSeasonal = flavorDescIsSeasonal.Default.(bool)
+	// flavorDescIsActive is the schema descriptor for is_active field.
+	flavorDescIsActive := flavorFields[4].Descriptor()
+	// flavor.DefaultIsActive holds the default value on creation for the is_active field.
+	flavor.DefaultIsActive = flavorDescIsActive.Default.(bool)
+	// flavorDescCreatedAt is the schema descriptor for created_at field.
+	flavorDescCreatedAt := flavorFields[5].Descriptor()
+	// flavor.DefaultCreatedAt holds the default value on creation for the created_at field.
+	flavor.DefaultCreatedAt = flavorDescCreatedAt.Default.(func() time.Time)
+	// flavorDescUpdatedAt is the schema descriptor for updated_at field.
+	flavorDescUpdatedAt := flavorFields[6].Descriptor()
+	// flavor.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	flavor.DefaultUpdatedAt = flavorDescUpdatedAt.Default.(func() time.Time)
+	// flavor.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	flavor.UpdateDefaultUpdatedAt = flavorDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// flavorDescID is the schema descriptor for id field.
+	flavorDescID := flavorFields[0].Descriptor()
+	// flavor.DefaultID holds the default value on creation for the id field.
+	flavor.DefaultID = flavorDescID.Default.(func() uuid.UUID)
 	orderFields := schema.Order{}.Fields()
 	_ = orderFields
 	// orderDescCustomerName is the schema descriptor for customer_name field.
@@ -115,11 +187,11 @@ func init() {
 	// product.DefaultIsAvailable holds the default value on creation for the is_available field.
 	product.DefaultIsAvailable = productDescIsAvailable.Default.(bool)
 	// productDescCreatedAt is the schema descriptor for created_at field.
-	productDescCreatedAt := productFields[7].Descriptor()
+	productDescCreatedAt := productFields[6].Descriptor()
 	// product.DefaultCreatedAt holds the default value on creation for the created_at field.
 	product.DefaultCreatedAt = productDescCreatedAt.Default.(func() time.Time)
 	// productDescUpdatedAt is the schema descriptor for updated_at field.
-	productDescUpdatedAt := productFields[8].Descriptor()
+	productDescUpdatedAt := productFields[7].Descriptor()
 	// product.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	product.DefaultUpdatedAt = productDescUpdatedAt.Default.(func() time.Time)
 	// product.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

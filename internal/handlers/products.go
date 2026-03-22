@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -35,17 +37,18 @@ func NewProductHandler(db *ent.Client, cfg *config.Config) *ProductHandler {
 // productResponse is what the API returns to the Astro frontend.
 // image_url is built from the stored image_path + Supabase public URL.
 type productResponse struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description"`
-	Price        float64   `json:"price"`
-	CategoryID   uuid.UUID `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	ImagePath    *string   `json:"image_path,omitempty"`
-	ImageURL     *string   `json:"image_url"` // full Supabase public URL
-	IsAvailable  bool      `json:"is_available"`
-	StockStatus  string    `json:"stock_status"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	Description  string           `json:"description"`
+	Price        float64          `json:"price"`
+	CategoryID   uuid.UUID        `json:"category_id"`
+	CategoryName string           `json:"category_name"`
+	ImagePath    *string          `json:"image_path,omitempty"`
+	ImageURL     *string          `json:"image_url"` // full Supabase public URL
+	IsAvailable  bool             `json:"is_available"`
+	Flavors      []flavorResponse `json:"flavors"`
+	Addons       []addonResponse  `json:"addons"`
+	CreatedAt    time.Time        `json:"created_at"`
 }
 
 // buildImageURL converts a stored path like "products/chocolate.jpg"
@@ -71,10 +74,14 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	products, err := h.productService.List(ctx, r.URL.Query().Get("category"), r.URL.Query().Get("all") == "true")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to list products")
+		log.Error().Err(err).Bool("ctx_canceled", errors.Is(err, context.Canceled)).Bool("ctx_deadline", errors.Is(err, context.DeadlineExceeded)).Msg("Failed to list products")
 		response.Error(w, http.StatusInternalServerError, "Failed to fetch products")
 		return
 	}
+
+	sort.Slice(products, func(i, j int) bool {
+		return products[i].CreatedAt.Before(products[j].CreatedAt)
+	})
 
 	result := make([]productResponse, len(products))
 	for i, p := range products {
@@ -84,6 +91,17 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 			catID = p.Edges.Category.ID
 			catName = p.Edges.Category.Name
 		}
+
+		flavors := make([]flavorResponse, len(p.Edges.Flavors))
+		for j, f := range p.Edges.Flavors {
+			flavors[j] = toFlavorResponse(f)
+		}
+
+		addons := make([]addonResponse, len(p.Edges.Addons))
+		for j, a := range p.Edges.Addons {
+			addons[j] = toAddonResponse(a)
+		}
+
 		result[i] = productResponse{
 			ID:           p.ID,
 			Name:         p.Name,
@@ -94,7 +112,8 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 			ImagePath:    p.ImagePath,
 			ImageURL:     h.buildImageURL(p.ImagePath),
 			IsAvailable:  p.IsAvailable,
-			StockStatus:  string(p.StockStatus),
+			Flavors:      flavors,
+			Addons:       addons,
 			CreatedAt:    p.CreatedAt,
 		}
 	}
@@ -129,6 +148,16 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		catName = p.Edges.Category.Name
 	}
 
+	flavors := make([]flavorResponse, len(p.Edges.Flavors))
+	for i, f := range p.Edges.Flavors {
+		flavors[i] = toFlavorResponse(f)
+	}
+
+	addons := make([]addonResponse, len(p.Edges.Addons))
+	for i, a := range p.Edges.Addons {
+		addons[i] = toAddonResponse(a)
+	}
+
 	response.JSON(w, http.StatusOK, productResponse{
 		ID:           p.ID,
 		Name:         p.Name,
@@ -139,7 +168,8 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		ImagePath:    p.ImagePath,
 		ImageURL:     h.buildImageURL(p.ImagePath),
 		IsAvailable:  p.IsAvailable,
-		StockStatus:  string(p.StockStatus),
+		Flavors:      flavors,
+		Addons:       addons,
 		CreatedAt:    p.CreatedAt,
 	})
 }
@@ -147,7 +177,7 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Create adds a new product. Admin only (enforced by router middleware).
 //
 // POST /api/v1/products
-// Body: { "name", "description", "price", "category_id", "image_path", "stock_status" }
+// Body: { "name", "description", "price", "category_id", "image_path" }
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name        string    `json:"name"`
@@ -155,14 +185,13 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Price       float64   `json:"price"`
 		CategoryID  uuid.UUID `json:"category_id"`
 		ImagePath   *string   `json:"image_path"`
-		StockStatus string    `json:"stock_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if errs := validator.ValidateProductCreate(body.Name, body.Description, body.Price, body.StockStatus); errs.HasErrors() {
+	if errs := validator.ValidateProductCreate(body.Name, body.Description, body.Price, ""); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
 	}
@@ -173,7 +202,6 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Price:       body.Price,
 		CategoryID:  body.CategoryID,
 		ImagePath:   body.ImagePath,
-		StockStatus: body.StockStatus,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create product")
@@ -200,14 +228,13 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Price       *float64 `json:"price"`
 		ImagePath   *string  `json:"image_path"`
 		IsAvailable *bool    `json:"is_available"`
-		StockStatus *string  `json:"stock_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if errs := validator.ValidateProductUpdate(body.Name, body.Price, body.StockStatus); errs.HasErrors() {
+	if errs := validator.ValidateProductUpdate(body.Name, body.Price, nil); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
 	}
@@ -218,7 +245,6 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Price:       body.Price,
 		ImagePath:   body.ImagePath,
 		IsAvailable: body.IsAvailable,
-		StockStatus: body.StockStatus,
 	})
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -277,4 +303,120 @@ func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	response.JSON(w, http.StatusOK, updated)
+}
+
+// LinkFlavor adds a flavor to a product. Admin only.
+//
+// POST /api/v1/products/{id}/flavors/{flavorId}
+func (h *ProductHandler) LinkFlavor(w http.ResponseWriter, r *http.Request) {
+	productID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid product ID")
+		return
+	}
+
+	flavorID, err := uuid.Parse(chi.URLParam(r, "flavorId"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
+		return
+	}
+
+	if err := h.productService.LinkFlavor(r.Context(), productID, flavorID); err != nil {
+		if ent.IsNotFound(err) {
+			response.Error(w, http.StatusNotFound, "Product or flavor not found")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to link flavor to product")
+		response.Error(w, http.StatusInternalServerError, "Failed to link flavor")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Flavor linked"})
+}
+
+// UnlinkFlavor removes a flavor from a product. Admin only.
+//
+// DELETE /api/v1/products/{id}/flavors/{flavorId}
+func (h *ProductHandler) UnlinkFlavor(w http.ResponseWriter, r *http.Request) {
+	productID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid product ID")
+		return
+	}
+
+	flavorID, err := uuid.Parse(chi.URLParam(r, "flavorId"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
+		return
+	}
+
+	if err := h.productService.UnlinkFlavor(r.Context(), productID, flavorID); err != nil {
+		if ent.IsNotFound(err) {
+			response.Error(w, http.StatusNotFound, "Product or flavor not found")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to unlink flavor from product")
+		response.Error(w, http.StatusInternalServerError, "Failed to unlink flavor")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Flavor unlinked"})
+}
+
+// LinkAddon adds an addon to a product. Admin only.
+//
+// POST /api/v1/products/{id}/addons/{addonId}
+func (h *ProductHandler) LinkAddon(w http.ResponseWriter, r *http.Request) {
+	productID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid product ID")
+		return
+	}
+
+	addonID, err := uuid.Parse(chi.URLParam(r, "addonId"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid addon ID")
+		return
+	}
+
+	if err := h.productService.LinkAddon(r.Context(), productID, addonID); err != nil {
+		if ent.IsNotFound(err) {
+			response.Error(w, http.StatusNotFound, "Product or addon not found")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to link addon to product")
+		response.Error(w, http.StatusInternalServerError, "Failed to link addon")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Addon linked"})
+}
+
+// UnlinkAddon removes an addon from a product. Admin only.
+//
+// DELETE /api/v1/products/{id}/addons/{addonId}
+func (h *ProductHandler) UnlinkAddon(w http.ResponseWriter, r *http.Request) {
+	productID, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid product ID")
+		return
+	}
+
+	addonID, err := uuid.Parse(chi.URLParam(r, "addonId"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid addon ID")
+		return
+	}
+
+	if err := h.productService.UnlinkAddon(r.Context(), productID, addonID); err != nil {
+		if ent.IsNotFound(err) {
+			response.Error(w, http.StatusNotFound, "Product or addon not found")
+			return
+		}
+		log.Error().Err(err).Msg("Failed to unlink addon from product")
+		response.Error(w, http.StatusInternalServerError, "Failed to unlink addon")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Addon unlinked"})
 }

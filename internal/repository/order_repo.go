@@ -104,6 +104,18 @@ func (r *OrderRepository) FindByOrderNumberAndPhone(ctx context.Context, orderNu
 		Only(ctx)
 }
 
+func (r *OrderRepository) FindRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]*ent.Order, error) {
+	query := r.db.Order.Query().
+		Where(entOrder.CustomerPhoneEQ(customerPhone)).
+		Order(ent.Desc(entOrder.FieldCreatedAt))
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	return query.All(ctx)
+}
+
 func (r *OrderRepository) Approve(ctx context.Context, id uuid.UUID, reviewerID *string) (*ent.Order, error) {
 	now := time.Now()
 	return r.db.Order.UpdateOneID(id).

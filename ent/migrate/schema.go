@@ -8,6 +8,39 @@ import (
 )
 
 var (
+	// AddonsColumns holds the columns for the "addons" table.
+	AddonsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "price", Type: field.TypeFloat64, Default: 0},
+		{Name: "group_name", Type: field.TypeString, Size: 50, Default: "extras"},
+		{Name: "display_order", Type: field.TypeInt, Default: 0},
+		{Name: "is_active", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "product_addons", Type: field.TypeUUID, Nullable: true},
+	}
+	// AddonsTable holds the schema information for the "addons" table.
+	AddonsTable = &schema.Table{
+		Name:       "addons",
+		Columns:    AddonsColumns,
+		PrimaryKey: []*schema.Column{AddonsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "addons_products_addons",
+				Columns:    []*schema.Column{AddonsColumns[8]},
+				RefColumns: []*schema.Column{ProductsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "addon_group_name_display_order_is_active",
+				Unique:  false,
+				Columns: []*schema.Column{AddonsColumns[3], AddonsColumns[4], AddonsColumns[5]},
+			},
+		},
+	}
 	// CategoriesColumns holds the columns for the "categories" table.
 	CategoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -25,6 +58,38 @@ var (
 		Name:       "categories",
 		Columns:    CategoriesColumns,
 		PrimaryKey: []*schema.Column{CategoriesColumns[0]},
+	}
+	// FlavorsColumns holds the columns for the "flavors" table.
+	FlavorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "display_order", Type: field.TypeInt, Default: 0},
+		{Name: "is_seasonal", Type: field.TypeBool, Default: false},
+		{Name: "is_active", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "product_flavors", Type: field.TypeUUID, Nullable: true},
+	}
+	// FlavorsTable holds the schema information for the "flavors" table.
+	FlavorsTable = &schema.Table{
+		Name:       "flavors",
+		Columns:    FlavorsColumns,
+		PrimaryKey: []*schema.Column{FlavorsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "flavors_products_flavors",
+				Columns:    []*schema.Column{FlavorsColumns[7]},
+				RefColumns: []*schema.Column{ProductsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "flavor_display_order_is_active",
+				Unique:  false,
+				Columns: []*schema.Column{FlavorsColumns[2], FlavorsColumns[4]},
+			},
+		},
 	}
 	// OrdersColumns holds the columns for the "orders" table.
 	OrdersColumns = []*schema.Column{
@@ -111,10 +176,11 @@ var (
 		{Name: "price", Type: field.TypeFloat64},
 		{Name: "image_path", Type: field.TypeString, Nullable: true},
 		{Name: "is_available", Type: field.TypeBool, Default: true},
-		{Name: "stock_status", Type: field.TypeEnum, Enums: []string{"in_stock", "out_of_stock", "discontinued"}, Default: "in_stock"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "addon_products", Type: field.TypeUUID, Nullable: true},
 		{Name: "category_products", Type: field.TypeUUID},
+		{Name: "flavor_products", Type: field.TypeUUID, Nullable: true},
 	}
 	// ProductsTable holds the schema information for the "products" table.
 	ProductsTable = &schema.Table{
@@ -123,17 +189,29 @@ var (
 		PrimaryKey: []*schema.Column{ProductsColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
+				Symbol:     "products_addons_products",
+				Columns:    []*schema.Column{ProductsColumns[8]},
+				RefColumns: []*schema.Column{AddonsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
 				Symbol:     "products_categories_products",
 				Columns:    []*schema.Column{ProductsColumns[9]},
 				RefColumns: []*schema.Column{CategoriesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
+			{
+				Symbol:     "products_flavors_products",
+				Columns:    []*schema.Column{ProductsColumns[10]},
+				RefColumns: []*schema.Column{FlavorsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
 		},
 		Indexes: []*schema.Index{
 			{
-				Name:    "product_is_available_stock_status",
+				Name:    "product_is_available",
 				Unique:  false,
-				Columns: []*schema.Column{ProductsColumns[5], ProductsColumns[6]},
+				Columns: []*schema.Column{ProductsColumns[5]},
 			},
 		},
 	}
@@ -167,7 +245,9 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AddonsTable,
 		CategoriesTable,
+		FlavorsTable,
 		OrdersTable,
 		OrderItemsTable,
 		ProductsTable,
@@ -176,7 +256,11 @@ var (
 )
 
 func init() {
+	AddonsTable.ForeignKeys[0].RefTable = ProductsTable
+	FlavorsTable.ForeignKeys[0].RefTable = ProductsTable
 	OrderItemsTable.ForeignKeys[0].RefTable = OrdersTable
 	OrderItemsTable.ForeignKeys[1].RefTable = ProductsTable
-	ProductsTable.ForeignKeys[0].RefTable = CategoriesTable
+	ProductsTable.ForeignKeys[0].RefTable = AddonsTable
+	ProductsTable.ForeignKeys[1].RefTable = CategoriesTable
+	ProductsTable.ForeignKeys[2].RefTable = FlavorsTable
 }

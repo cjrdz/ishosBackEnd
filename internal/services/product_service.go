@@ -40,3 +40,19 @@ func (s *ProductService) Delete(ctx context.Context, id uuid.UUID) error {
 func (s *ProductService) ToggleAvailability(ctx context.Context, id uuid.UUID) (*ent.Product, error) {
 	return s.repo.ToggleAvailability(ctx, id)
 }
+
+func (s *ProductService) LinkFlavor(ctx context.Context, productID, flavorID uuid.UUID) error {
+	return s.repo.LinkFlavorToProduct(ctx, productID, flavorID)
+}
+
+func (s *ProductService) UnlinkFlavor(ctx context.Context, productID, flavorID uuid.UUID) error {
+	return s.repo.UnlinkFlavorFromProduct(ctx, productID, flavorID)
+}
+
+func (s *ProductService) LinkAddon(ctx context.Context, productID, addonID uuid.UUID) error {
+	return s.repo.LinkAddonToProduct(ctx, productID, addonID)
+}
+
+func (s *ProductService) UnlinkAddon(ctx context.Context, productID, addonID uuid.UUID) error {
+	return s.repo.UnlinkAddonFromProduct(ctx, productID, addonID)
+}

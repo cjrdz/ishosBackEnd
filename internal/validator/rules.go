@@ -3,6 +3,7 @@ package validator
 import (
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -35,8 +36,8 @@ func ValidateEmployeeCreate(email, password, name, phone, role, state string) Va
 
 	if strings.TrimSpace(password) == "" {
 		errs.Add("password", "required")
-	} else if utf8.RuneCountInString(password) < 8 {
-		errs.Add("password", "must be at least 8 characters")
+	} else if !isStrongPassword(password) {
+		errs.Add("password", "must be at least 12 chars and include uppercase, lowercase, number, and symbol")
 	}
 
 	if role != "employee" && role != "admin" {
@@ -72,8 +73,8 @@ func ValidateEmployeeUpdate(email, password, name, phone, role, state *string) V
 
 	if password != nil {
 		v := strings.TrimSpace(*password)
-		if v != "" && utf8.RuneCountInString(v) < 8 {
-			errs.Add("password", "must be at least 8 characters")
+		if v != "" && !isStrongPassword(v) {
+			errs.Add("password", "must be at least 12 chars and include uppercase, lowercase, number, and symbol")
 		}
 	}
 
@@ -263,6 +264,32 @@ func ValidateRejectReason(reason string) ValidationErrors {
 	return errs
 }
 
+func isStrongPassword(password string) bool {
+	if utf8.RuneCountInString(password) < 12 {
+		return false
+	}
+
+	hasUpper := false
+	hasLower := false
+	hasDigit := false
+	hasSymbol := false
+
+	for _, r := range password {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSymbol = true
+		}
+	}
+
+	return hasUpper && hasLower && hasDigit && hasSymbol
+}
+
 func isValidStockStatus(value string) bool {
 	return value == "in_stock" || value == "out_of_stock" || value == "discontinued"
 }
@@ -273,6 +300,84 @@ func isValidPaymentMethod(value string) bool {
 
 func isValidOrderType(value string) bool {
 	return value == "en_local" || value == "para_llevar"
+}
+
+func ValidateFlavorCreate(name string) ValidationErrors {
+	var errs ValidationErrors
+
+	if strings.TrimSpace(name) == "" {
+		errs.Add("name", "required")
+	} else if utf8.RuneCountInString(name) > 100 {
+		errs.Add("name", "max 100 characters")
+	}
+
+	return errs
+}
+
+func ValidateFlavorUpdate(name *string) ValidationErrors {
+	var errs ValidationErrors
+
+	if name != nil {
+		v := strings.TrimSpace(*name)
+		if v == "" {
+			errs.Add("name", "cannot be empty")
+		} else if utf8.RuneCountInString(v) > 100 {
+			errs.Add("name", "max 100 characters")
+		}
+	}
+
+	return errs
+}
+
+func validateAddonGroupName(groupName string, errs *ValidationErrors) {
+	trimmed := strings.TrimSpace(groupName)
+	if trimmed == "" {
+		return
+	}
+	if utf8.RuneCountInString(trimmed) > 50 {
+		errs.Add("group_name", "max 50 characters")
+	}
+}
+
+func ValidateAddonCreate(name string, price float64, groupName string) ValidationErrors {
+	var errs ValidationErrors
+
+	if strings.TrimSpace(name) == "" {
+		errs.Add("name", "required")
+	} else if utf8.RuneCountInString(name) > 100 {
+		errs.Add("name", "max 100 characters")
+	}
+
+	if price < 0 {
+		errs.Add("price", "must be zero or greater")
+	}
+
+	validateAddonGroupName(groupName, &errs)
+
+	return errs
+}
+
+func ValidateAddonUpdate(name *string, price *float64, groupName *string) ValidationErrors {
+	var errs ValidationErrors
+
+	if name != nil {
+		v := strings.TrimSpace(*name)
+		if v == "" {
+			errs.Add("name", "cannot be empty")
+		} else if utf8.RuneCountInString(v) > 100 {
+			errs.Add("name", "max 100 characters")
+		}
+	}
+
+	if price != nil && *price < 0 {
+		errs.Add("price", "must be zero or greater")
+	}
+
+	if groupName != nil {
+		validateAddonGroupName(*groupName, &errs)
+	}
+
+	return errs
 }
 
 func isValidPhone(phone string) bool {

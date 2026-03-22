@@ -6,8 +6,14 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// Addon is the predicate function for addon builders.
+type Addon func(*sql.Selector)
+
 // Category is the predicate function for category builders.
 type Category func(*sql.Selector)
+
+// Flavor is the predicate function for flavor builders.
+type Flavor func(*sql.Selector)
 
 // Order is the predicate function for order builders.
 type Order func(*sql.Selector)

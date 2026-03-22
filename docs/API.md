@@ -39,6 +39,26 @@ The docs below use the **current** paths (`/api/v1/...`).
 Authentication uses **PocketBase JWT tokens** via the `Authorization` header.
 Public endpoints (list products, create order) require no auth.
 
+### Security response headers
+
+All API responses include these hardening headers:
+
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
+
+### JSON request size policy
+
+JSON request bodies parsed by shared handlers are limited to **1 MiB**.
+Requests exceeding that limit are rejected with `400 Bad Request`.
+
+### Auth hardening notes
+
+- Failed login attempts are rate-limited and additionally subject to temporary IP lockout after repeated failures.
+- `POST /api/v1/auth/logout` revokes the presented token server-side and clears the auth cookie.
+- Browser `auth_token` cookie lifetime defaults to 24 hours (configurable by backend env var).
+
 ---
 
 ## Error responses
@@ -317,6 +337,18 @@ Response `201 Created`:
 ```
 
 A WhatsApp notification is automatically sent to the customer.
+
+---
+
+## 4) Analytics
+
+All analytics routes are **admin-only**.
+
+| Operation                    | Method | Path                                  |
+| --------------------------- | ------ | ------------------------------------- |
+| Overview KPIs              | GET    | `/api/v1/analytics/overview`          |
+| Orders over time series    | GET    | `/api/v1/analytics/orders-over-time`  |
+| Top-selling products       | GET    | `/api/v1/analytics/top-products`      |
 
 ### GET `/api/v1/orders/track` — Public tracking
 

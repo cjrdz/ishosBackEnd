@@ -3,7 +3,6 @@
 package product
 
 import (
-	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -26,8 +25,6 @@ const (
 	FieldImagePath = "image_path"
 	// FieldIsAvailable holds the string denoting the is_available field in the database.
 	FieldIsAvailable = "is_available"
-	// FieldStockStatus holds the string denoting the stock_status field in the database.
-	FieldStockStatus = "stock_status"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -36,6 +33,10 @@ const (
 	EdgeCategory = "category"
 	// EdgeOrderItems holds the string denoting the order_items edge name in mutations.
 	EdgeOrderItems = "order_items"
+	// EdgeFlavors holds the string denoting the flavors edge name in mutations.
+	EdgeFlavors = "flavors"
+	// EdgeAddons holds the string denoting the addons edge name in mutations.
+	EdgeAddons = "addons"
 	// Table holds the table name of the product in the database.
 	Table = "products"
 	// CategoryTable is the table that holds the category relation/edge.
@@ -52,6 +53,20 @@ const (
 	OrderItemsInverseTable = "order_items"
 	// OrderItemsColumn is the table column denoting the order_items relation/edge.
 	OrderItemsColumn = "product_order_items"
+	// FlavorsTable is the table that holds the flavors relation/edge.
+	FlavorsTable = "flavors"
+	// FlavorsInverseTable is the table name for the Flavor entity.
+	// It exists in this package in order to avoid circular dependency with the "flavor" package.
+	FlavorsInverseTable = "flavors"
+	// FlavorsColumn is the table column denoting the flavors relation/edge.
+	FlavorsColumn = "product_flavors"
+	// AddonsTable is the table that holds the addons relation/edge.
+	AddonsTable = "addons"
+	// AddonsInverseTable is the table name for the Addon entity.
+	// It exists in this package in order to avoid circular dependency with the "addon" package.
+	AddonsInverseTable = "addons"
+	// AddonsColumn is the table column denoting the addons relation/edge.
+	AddonsColumn = "product_addons"
 )
 
 // Columns holds all SQL columns for product fields.
@@ -62,7 +77,6 @@ var Columns = []string{
 	FieldPrice,
 	FieldImagePath,
 	FieldIsAvailable,
-	FieldStockStatus,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -70,7 +84,9 @@ var Columns = []string{
 // ForeignKeys holds the SQL foreign-keys that are owned by the "products"
 // table and are not defined as standalone fields in the schema.
 var ForeignKeys = []string{
+	"addon_products",
 	"category_products",
+	"flavor_products",
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -105,33 +121,6 @@ var (
 	DefaultID func() uuid.UUID
 )
 
-// StockStatus defines the type for the "stock_status" enum field.
-type StockStatus string
-
-// StockStatusInStock is the default value of the StockStatus enum.
-const DefaultStockStatus = StockStatusInStock
-
-// StockStatus values.
-const (
-	StockStatusInStock      StockStatus = "in_stock"
-	StockStatusOutOfStock   StockStatus = "out_of_stock"
-	StockStatusDiscontinued StockStatus = "discontinued"
-)
-
-func (ss StockStatus) String() string {
-	return string(ss)
-}
-
-// StockStatusValidator is a validator for the "stock_status" field enum values. It is called by the builders before save.
-func StockStatusValidator(ss StockStatus) error {
-	switch ss {
-	case StockStatusInStock, StockStatusOutOfStock, StockStatusDiscontinued:
-		return nil
-	default:
-		return fmt.Errorf("product: invalid enum value for stock_status field: %q", ss)
-	}
-}
-
 // OrderOption defines the ordering options for the Product queries.
 type OrderOption func(*sql.Selector)
 
@@ -165,11 +154,6 @@ func ByIsAvailable(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsAvailable, opts...).ToFunc()
 }
 
-// ByStockStatus orders the results by the stock_status field.
-func ByStockStatus(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldStockStatus, opts...).ToFunc()
-}
-
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
@@ -200,6 +184,34 @@ func ByOrderItems(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newOrderItemsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByFlavorsCount orders the results by flavors count.
+func ByFlavorsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newFlavorsStep(), opts...)
+	}
+}
+
+// ByFlavors orders the results by flavors terms.
+func ByFlavors(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newFlavorsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByAddonsCount orders the results by addons count.
+func ByAddonsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAddonsStep(), opts...)
+	}
+}
+
+// ByAddons orders the results by addons terms.
+func ByAddons(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAddonsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newCategoryStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -212,5 +224,19 @@ func newOrderItemsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(OrderItemsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, OrderItemsTable, OrderItemsColumn),
+	)
+}
+func newFlavorsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(FlavorsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, FlavorsTable, FlavorsColumn),
+	)
+}
+func newAddonsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AddonsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, AddonsTable, AddonsColumn),
 	)
 }

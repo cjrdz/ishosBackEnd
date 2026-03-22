@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -188,10 +189,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
+	ip := clientIPFromRequest(r)
 
 	items := make([]services.OrderItemInput, 0, len(body.Items))
 	for _, item := range body.Items {
@@ -224,7 +222,11 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CreatedByID:   createdByID,
 	})
 	if err != nil {
-		if errors.Is(err, services.ErrProductNotFound) || errors.Is(err, services.ErrProductUnavailable) {
+		if errors.Is(err, services.ErrProductNotFound) ||
+			errors.Is(err, services.ErrProductUnavailable) ||
+			errors.Is(err, services.ErrFlavorRequired) ||
+			errors.Is(err, services.ErrFlavorNotAllowed) ||
+			errors.Is(err, services.ErrAddonNotAllowed) {
 			response.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -239,6 +241,14 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"total":        order.TotalAmount,
 		"message":      "Orden recibida, te notificaremos pronto 🍦",
 	})
+}
+
+func clientIPFromRequest(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	return r.RemoteAddr
 }
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -328,6 +338,57 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 		"created_at":   order.CreatedAt,
 		"total_amount": order.TotalAmount,
 		"order_type":   order.OrderType,
+	})
+}
+
+func (h *OrderHandler) TrackPublicHistory(w http.ResponseWriter, r *http.Request) {
+	customerPhone := strings.TrimSpace(r.URL.Query().Get("customer_phone"))
+	if customerPhone == "" {
+		response.Error(w, http.StatusBadRequest, "customer_phone is required")
+		return
+	}
+
+	if !isTrackPhoneValid(customerPhone) {
+		response.Error(w, http.StatusBadRequest, "invalid customer_phone format")
+		return
+	}
+
+	limit := 20
+	if limitRaw := strings.TrimSpace(r.URL.Query().Get("limit")); limitRaw != "" {
+		if parsed, scanErr := fmt.Sscanf(limitRaw, "%d", &limit); scanErr != nil || parsed != 1 {
+			limit = 20
+		}
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	orders, err := h.orderSvc.ListRecentByPhone(r.Context(), customerPhone, limit)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to fetch order history")
+		return
+	}
+
+	result := make([]map[string]interface{}, 0, len(orders))
+	for _, order := range orders {
+		if order == nil {
+			continue
+		}
+		result = append(result, map[string]interface{}{
+			"order_number": order.OrderNumber,
+			"status":       order.Status,
+			"updated_at":   order.UpdatedAt,
+			"created_at":   order.CreatedAt,
+			"total_amount": order.TotalAmount,
+			"order_type":   order.OrderType,
+		})
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"orders": result,
 	})
 }
 
@@ -493,7 +554,11 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, http.StatusNotFound, "Order not found")
 			return
 		}
-		if errors.Is(err, services.ErrProductNotFound) || errors.Is(err, services.ErrProductUnavailable) {
+		if errors.Is(err, services.ErrProductNotFound) ||
+			errors.Is(err, services.ErrProductUnavailable) ||
+			errors.Is(err, services.ErrFlavorRequired) ||
+			errors.Is(err, services.ErrFlavorNotAllowed) ||
+			errors.Is(err, services.ErrAddonNotAllowed) {
 			response.Error(w, http.StatusBadRequest, err.Error())
 			return
 		}

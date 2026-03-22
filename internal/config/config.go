@@ -46,12 +46,18 @@ type Config struct {
 	WhatsAppPhoneID string // Phone number ID from Meta
 	WhatsAppToken   string // Permanent or temporary token
 	WhatsAppNumber  string // Business phone shown to customers
+	// Browser cookie TTL for auth_token (in hours)
+	AuthCookieTTLHours int
 
 	// Rate Limiting
 	OrdersPerHour int
 	OrdersPerDay  int
 	// Max login attempts per IP per minute
 	LoginAttemptsPerMinute int
+	// Failed-login lockout controls
+	LoginLockoutMaxFailures     int
+	LoginLockoutWindowMinutes   int
+	LoginLockoutDurationMinutes int
 
 	// CORS
 	// Comma separated allowed origins
@@ -68,25 +74,29 @@ func Load() *Config {
 	}
 
 	return &Config{
-		Port:                       getEnv("PORT", "8080"),
-		Env:                        getEnv("ENV", "development"),
-		DatabaseURL:                mustEnv("DATABASE_URL"),
-		PBDataDir:                  getEnv("PB_DATA_DIR", "./pb_data"),
-		EnablePBAdminUI:            getEnvBool("ENABLE_PB_ADMIN_UI", false),
-		PBAdminUIHost:              getEnv("PB_ADMIN_UI_HOST", "127.0.0.1"),
-		PBAdminUIPort:              getEnv("PB_ADMIN_UI_PORT", "8090"),
-		PBAdminUIAllowedOrigins:    getEnv("PB_ADMIN_UI_ALLOWED_ORIGINS", "http://localhost:8090"),
-		AllowPBAdminUIInProduction: getEnvBool("ALLOW_PB_ADMIN_UI_IN_PRODUCTION", false),
-		SupabaseURL:                mustEnv("SUPABASE_URL"),
-		SupabaseKey:                mustEnv("SUPABASE_KEY"),
-		SupabaseBucket:             getEnv("SUPABASE_BUCKET", "product-images"),
-		WhatsAppPhoneID:            getEnv("WHATSAPP_PHONE_ID", ""),
-		WhatsAppToken:              getEnv("WHATSAPP_TOKEN", ""),
-		WhatsAppNumber:             getEnv("WHATSAPP_NUMBER", ""),
-		OrdersPerHour:              getEnvInt("ORDERS_PER_HOUR", 5),
-		OrdersPerDay:               getEnvInt("ORDERS_PER_DAY", 20),
-		LoginAttemptsPerMinute:     getEnvInt("LOGIN_ATTEMPTS_PER_MINUTE", 10),
-		AllowedOrigins:             getEnv("ALLOWED_ORIGINS", "http://localhost:4321"),
+		Port:                        getEnv("PORT", "8080"),
+		Env:                         getEnv("ENV", "development"),
+		DatabaseURL:                 mustEnv("DATABASE_URL"),
+		PBDataDir:                   getEnv("PB_DATA_DIR", "./pb_data"),
+		EnablePBAdminUI:             getEnvBool("ENABLE_PB_ADMIN_UI", false),
+		PBAdminUIHost:               getEnv("PB_ADMIN_UI_HOST", "127.0.0.1"),
+		PBAdminUIPort:               getEnv("PB_ADMIN_UI_PORT", "8090"),
+		PBAdminUIAllowedOrigins:     getEnv("PB_ADMIN_UI_ALLOWED_ORIGINS", "http://localhost:8090"),
+		AllowPBAdminUIInProduction:  getEnvBool("ALLOW_PB_ADMIN_UI_IN_PRODUCTION", false),
+		SupabaseURL:                 mustEnv("SUPABASE_URL"),
+		SupabaseKey:                 mustEnv("SUPABASE_KEY"),
+		SupabaseBucket:              getEnv("SUPABASE_BUCKET", "product-images"),
+		WhatsAppPhoneID:             getEnv("WHATSAPP_PHONE_ID", ""),
+		WhatsAppToken:               getEnv("WHATSAPP_TOKEN", ""),
+		WhatsAppNumber:              getEnv("WHATSAPP_NUMBER", ""),
+		AuthCookieTTLHours:          getEnvInt("AUTH_COOKIE_TTL_HOURS", 24),
+		OrdersPerHour:               getEnvInt("ORDERS_PER_HOUR", 5),
+		OrdersPerDay:                getEnvInt("ORDERS_PER_DAY", 20),
+		LoginAttemptsPerMinute:      getEnvInt("LOGIN_ATTEMPTS_PER_MINUTE", 10),
+		LoginLockoutMaxFailures:     getEnvInt("LOGIN_LOCKOUT_MAX_FAILURES", 5),
+		LoginLockoutWindowMinutes:   getEnvInt("LOGIN_LOCKOUT_WINDOW_MINUTES", 15),
+		LoginLockoutDurationMinutes: getEnvInt("LOGIN_LOCKOUT_DURATION_MINUTES", 15),
+		AllowedOrigins:              getEnv("ALLOWED_ORIGINS", "http://localhost:4321"),
 	}
 }
 
