@@ -38,6 +38,11 @@ if [ -z "${DATABASE_URL:-}" ]; then
   exit 1
 fi
 
+if ! command -v psql >/dev/null 2>&1; then
+  echo "Required command 'psql' not found. Please install PostgreSQL client tools." >&2
+  exit 1
+fi
+
 # Flags
 FORCE=0
 DRY_RUN=0

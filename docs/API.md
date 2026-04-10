@@ -111,7 +111,7 @@ Fields:
 | `description`  | string | yes      | Product description                                             |
 | `price`        | float  | yes      | Must be positive (e.g. `3.50`)                                  |
 | `category_id`  | UUID   | yes      | Must reference an existing category                             |
-| `image_path`   | string | no       | Supabase object path — get it from `POST /api/v1/upload/image`  |
+| `image_path`   | string | no       | Object path — get it from `POST /api/v1/upload/image`           |
 | `stock_status` | string | no       | `"in_stock"` (default) \| `"out_of_stock"` \| `"discontinued"` |
 
 Response `201 Created`:
@@ -124,7 +124,7 @@ Response `201 Created`:
   "price": 3.5,
   "category_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "category_name": "Gelatos",
-  "image_url": "https://xxx.supabase.co/storage/v1/object/public/product-images/products/chocolate_20250215T143000.jpg",
+  "image_url": "https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev/products/chocolate.jpg",
   "is_available": true,
   "stock_status": "in_stock",
   "created_at": "2025-02-15T14:30:00Z"
@@ -172,10 +172,10 @@ Response `200 OK`:
 | List all active (sorted)    | GET    | `/api/v1/categories`        |
 | Get by slug (with products) | GET    | `/api/v1/categories/{slug}` |
 | Create (admin)              | POST   | `/api/v1/categories`        |
-| Update (admin, partial)     | PATCH  | `/api/v1/categories/{id}`   |
-| Delete (admin)              | DELETE | `/api/v1/categories/{id}`   |
+| Update (admin, partial)     | PATCH  | `/api/v1/categories/{slug}` |
+| Delete (admin)              | DELETE | `/api/v1/categories/{slug}` |
 
-> **Important:** GET uses `{slug}` (e.g. `gelatos`), but PATCH and DELETE use `{id}` (UUID).
+> **Important:** category routes use `{slug}` (e.g. `gelatos`) for GET/PATCH/DELETE.
 
 ### POST `/api/v1/categories` — Create
 
@@ -198,7 +198,7 @@ Fields:
 | `name`          | string | yes      | Max 100, unique                                |
 | `slug`          | string | yes      | Max 100, unique, URL-friendly (e.g. `gelatos`) |
 | `description`   | string | no       | Defaults to empty string                       |
-| `image_path`    | string | no       | Supabase object path                           |
+| `image_path`    | string | no       | Object path returned by the upload endpoint    |
 | `display_order` | int    | no       | Controls sort order, defaults to `0`           |
 
 Response `201 Created`:
@@ -216,7 +216,7 @@ Response `201 Created`:
 }
 ```
 
-### PATCH `/api/v1/categories/{id}` — Update (partial)
+### PATCH `/api/v1/categories/{slug}` — Update (partial)
 
 ```json
 {
@@ -248,7 +248,7 @@ Patchable fields: `name`, `slug`, `description`, `image_path`, `display_order`, 
 
 Response `200 OK`: returns the updated category.
 
-### DELETE `/api/v1/categories/{id}`
+### DELETE `/api/v1/categories/{slug}`
 
 Products in this category are **not** deleted — they become uncategorised.
 
@@ -267,7 +267,7 @@ Response `200 OK`:
 | Operation                                    | Method | Path                                                           |
 | -------------------------------------------- | ------ | -------------------------------------------------------------- |
 | Create order (public, rate-limited)          | POST   | `/api/v1/orders`                                               |
-| Track order by number + phone (public)       | GET    | `/api/v1/orders/track?order_number=...&customer_phone=...`    |
+| Track order by number + token (public)       | GET    | `/api/v1/orders/track?order_number=...&tracking_token=...`    |
 | List all (employee/admin, paginated)         | GET    | `/api/v1/orders`                                               |
 | Filter by status                             | GET    | `/api/v1/orders?status=pendiente_revision`                     |
 | Get one (employee/admin)                     | GET    | `/api/v1/orders/{id}`                                          |
@@ -332,6 +332,8 @@ Response `201 Created`:
   "order_number": "ORD-20250215-4821",
   "status": "pendiente_revision",
   "total": 10.50,
+  "tracking_token": "<token>",
+  "tracking_expires_at": "2026-05-10T14:30:00Z",
   "message": "Orden recibida, te notificaremos pronto 🍦"
 }
 ```
@@ -355,7 +357,7 @@ All analytics routes are **admin-only**.
 Query params:
 
 - `order_number` (required)
-- `customer_phone` (required)
+- `tracking_token` (required)
 
 Response `200 OK`:
 
@@ -687,7 +689,7 @@ Response `200 OK`:
 
 ---
 
-## 8) Image upload (Supabase Storage)
+## 8) Image upload (Cloudflare R2)
 
 | Operation      | Method | Path                    |
 | -------------- | ------ | ----------------------- |
@@ -710,7 +712,7 @@ Response `200 OK`:
 
 ```json
 {
-  "path": "products/chocolate_20250215T143000.jpg",
+  "path": "products/chocolate.jpg",
   "message": "Image uploaded successfully"
 }
 ```
@@ -723,7 +725,7 @@ Body (`application/json`):
 
 ```json
 {
-  "path": "products/chocolate_20250215T143000.jpg"
+  "path": "products/chocolate.jpg"
 }
 ```
 
@@ -737,7 +739,7 @@ Response `200 OK`:
 
 ### GET `/api/v1/upload/images` — List all images (Media Library)
 
-Returns all images in the Supabase bucket for the media library. Requires admin auth.
+Returns all images in the Cloudflare R2 bucket for the media library. Requires admin auth.
 
 Response `200 OK`:
 
@@ -745,10 +747,10 @@ Response `200 OK`:
 {
   "images": [
     {
-      "name": "products/chocolate_20250215T143000.jpg",
+      "name": "products/chocolate.jpg",
       "size": 245000,
       "created_at": "2025-02-15T14:30:00Z",
-      "url": "https://qtfvvltfzjgpenwddqyr.supabase.co/storage/v1/object/public/menu/products/chocolate_20250215T143000.jpg"
+      "url": "https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev/products/chocolate.jpg"
     }
   ]
 }

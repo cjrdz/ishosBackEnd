@@ -15,7 +15,7 @@ This backend follows a layered Go architecture:
 - **Neon direct endpoint recommended** for stable query execution (avoid `-pooler` hosts for this API runtime)
 - **PocketBase embedded library** for auth and employee accounts
 - **Optional PocketBase Admin UI server** (separate port, disabled by default; enabled via `ENABLE_PB_ADMIN_UI`)
-- **Supabase Storage** for product image storage
+- **Cloudflare R2** for product image storage
 - **WhatsApp service** for customer notifications
 
 ## Request Flow
@@ -32,7 +32,7 @@ This backend follows a layered Go architecture:
 
 - PostgreSQL (Ent): categories, products, orders, order items, rate-limit entities.
 - PocketBase SQLite (`pb_data`): employees, credentials, JWT token validation state.
-- Supabase Storage: image binaries and paths.
+- Cloudflare R2: image binaries and paths.
 
 ## Design Principles
 

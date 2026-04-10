@@ -35,10 +35,12 @@ var freeAddonAllowanceByGroup = map[string]int{
 }
 
 type OrderService struct {
-	db          *ent.Client
-	orderRepo   *repository.OrderRepository
-	productRepo *repository.ProductRepository
-	whatsapp    *WhatsAppService
+	db             *ent.Client
+	orderRepo      *repository.OrderRepository
+	productRepo    *repository.ProductRepository
+	whatsapp       *WhatsAppService
+	tracker        *TrackingTokenService
+	publicStoreURL string
 }
 
 type CreateOrderInput struct {
@@ -71,13 +73,40 @@ type UpdateOrderInput struct {
 	Items         []OrderItemInput
 }
 
-func NewOrderService(db *ent.Client, orderRepo *repository.OrderRepository, productRepo *repository.ProductRepository, whatsapp *WhatsAppService) *OrderService {
+func NewOrderService(db *ent.Client, orderRepo *repository.OrderRepository, productRepo *repository.ProductRepository, whatsapp *WhatsAppService, tracker *TrackingTokenService, publicStoreURL string) *OrderService {
 	return &OrderService{
-		db:          db,
-		orderRepo:   orderRepo,
-		productRepo: productRepo,
-		whatsapp:    whatsapp,
+		db:             db,
+		orderRepo:      orderRepo,
+		productRepo:    productRepo,
+		whatsapp:       whatsapp,
+		tracker:        tracker,
+		publicStoreURL: strings.TrimRight(strings.TrimSpace(publicStoreURL), "/"),
 	}
+}
+
+func (s *OrderService) IssueTrackingAccess(ctx context.Context, orderNumber string) (*TrackingAccess, error) {
+	if s.tracker == nil {
+		return nil, ErrInvalidOrderState
+	}
+
+	token, expiresAt, err := s.tracker.Issue(ctx, orderNumber, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	return &TrackingAccess{
+		Token:     token,
+		ExpiresAt: expiresAt,
+		URL:       s.tracker.BuildTrackingURL(s.publicStoreURL, orderNumber, token),
+	}, nil
+}
+
+func (s *OrderService) buildTrackingURL(ctx context.Context, orderNumber string) string {
+	trackingAccess, err := s.IssueTrackingAccess(ctx, orderNumber)
+	if err != nil {
+		return ""
+	}
+	return trackingAccess.URL
 }
 
 func (s *OrderService) ListPaginated(ctx context.Context, status string, page, limit int) ([]*ent.Order, int, error) {
@@ -86,6 +115,17 @@ func (s *OrderService) ListPaginated(ctx context.Context, status string, page, l
 
 func (s *OrderService) GetByIDWithItems(ctx context.Context, id uuid.UUID) (*ent.Order, error) {
 	return s.orderRepo.FindByIDWithItems(ctx, id)
+}
+
+func (s *OrderService) GetByOrderNumber(ctx context.Context, orderNumber string) (*ent.Order, error) {
+	order, err := s.orderRepo.FindByOrderNumber(ctx, orderNumber)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, ErrOrderNotFound
+		}
+		return nil, err
+	}
+	return order, nil
 }
 
 func (s *OrderService) GetByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (*ent.Order, error) {
@@ -480,7 +520,7 @@ func (s *OrderService) Create(ctx context.Context, input CreateOrderInput) (*ent
 		return nil, err
 	}
 
-	go s.whatsapp.SendOrderCreated(input.CustomerPhone, order.OrderNumber, total)
+	go s.whatsapp.SendOrderCreated(input.CustomerPhone, order.OrderNumber, total, s.buildTrackingURL(context.Background(), order.OrderNumber))
 	return order, nil
 }
 
@@ -501,7 +541,7 @@ func (s *OrderService) Approve(ctx context.Context, id uuid.UUID, reviewerID str
 		return nil, err
 	}
 
-	go s.whatsapp.SendOrderApproved(order.CustomerPhone, order.OrderNumber)
+	go s.whatsapp.SendOrderApproved(order.CustomerPhone, order.OrderNumber, s.buildTrackingURL(context.Background(), order.OrderNumber))
 	return updated, nil
 }
 
@@ -519,7 +559,7 @@ func (s *OrderService) Reject(ctx context.Context, id uuid.UUID, reason, reviewe
 		return nil, err
 	}
 
-	go s.whatsapp.SendOrderRejected(order.CustomerPhone, order.OrderNumber, reason)
+	go s.whatsapp.SendOrderRejected(order.CustomerPhone, order.OrderNumber, reason, s.buildTrackingURL(context.Background(), order.OrderNumber))
 	return updated, nil
 }
 
@@ -538,7 +578,7 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id uuid.UUID, status st
 	}
 
 	if status == "lista" {
-		go s.whatsapp.SendOrderReady(order.CustomerPhone, order.OrderNumber)
+		go s.whatsapp.SendOrderReady(order.CustomerPhone, order.OrderNumber, s.buildTrackingURL(context.Background(), order.OrderNumber))
 	}
 
 	return updated, nil
@@ -671,11 +711,17 @@ func (s *OrderService) UpdateNotes(ctx context.Context, id uuid.UUID, notes *str
 }
 
 func (s *OrderService) Delete(ctx context.Context, id uuid.UUID) error {
-	if _, err := s.orderRepo.FindByID(ctx, id); err != nil {
+	order, err := s.orderRepo.FindByID(ctx, id)
+	if err != nil {
 		if ent.IsNotFound(err) {
 			return ErrOrderNotFound
 		}
 		return err
+	}
+	if s.tracker != nil {
+		if revokeErr := s.tracker.RevokeAllByOrder(ctx, order.OrderNumber); revokeErr != nil {
+			return revokeErr
+		}
 	}
 
 	return s.orderRepo.Delete(ctx, id)

@@ -69,7 +69,7 @@ func (h *UploadHandler) DeleteImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.uploadSvc.DeleteImage(r.Context(), body.Path); err != nil {
-		log.Error().Err(err).Str("path", body.Path).Msg("Supabase delete failed")
+		log.Error().Err(err).Str("path", body.Path).Msg("R2 delete failed")
 		response.Error(w, http.StatusInternalServerError, "Failed to delete image")
 		return
 	}

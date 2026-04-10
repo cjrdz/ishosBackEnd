@@ -5,9 +5,7 @@
     "slug": "especiales",
     "description": "Productos especiales de la casa",
     "image": "",
-    "is_active": true,
-    "created_at": "2026-02-08 05:04:26.040305+00",
-    "updated_at": "2026-02-08 05:04:26.040322+00"
+    "is_active": true
   },
   {
     "id": 2,
@@ -15,9 +13,7 @@
     "slug": "gelatos",
     "description": "Gelato cremoso artesanal",
     "image": "",
-    "is_active": true,
-    "created_at": "2026-02-08 05:04:26.276007+00",
-    "updated_at": "2026-02-08 05:04:26.276019+00"
+    "is_active": true
   },
   {
     "id": 3,
@@ -25,18 +21,6 @@
     "slug": "sorbetes",
     "description": "Sorbetes refrescantes sin lactosa",
     "image": "",
-    "is_active": true,
-    "created_at": "2026-02-08 05:04:26.509471+00",
-    "updated_at": "2026-02-08 05:04:26.509484+00"
-  },
-  {
-    "id": 4,
-    "name": "Extras",
-    "slug": "extras",
-    "description": "Complementos y extras para personalizar",
-    "image": "",
-    "is_active": true,
-    "created_at": "2026-02-08 05:04:26.742398+00",
-    "updated_at": "2026-02-08 05:04:26.742408+00"
+    "is_active": true
   }
 ]

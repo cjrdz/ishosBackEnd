@@ -1,20 +1,21 @@
 package validator
 
 import (
+	"net/mail"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-var emailRe = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+var emailLocalAllowedRe = regexp.MustCompile(`^[A-Za-z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+$`)
 
 func ValidateLogin(email, password string) ValidationErrors {
 	var errs ValidationErrors
 
 	if strings.TrimSpace(email) == "" {
 		errs.Add("email", "required")
-	} else if !emailRe.MatchString(email) {
+	} else if !isValidEmail(email) {
 		errs.Add("email", "invalid format")
 	}
 
@@ -30,7 +31,7 @@ func ValidateEmployeeCreate(email, password, name, phone, role, state string) Va
 
 	if strings.TrimSpace(email) == "" {
 		errs.Add("email", "required")
-	} else if !emailRe.MatchString(email) {
+	} else if !isValidEmail(email) {
 		errs.Add("email", "invalid format")
 	}
 
@@ -66,7 +67,7 @@ func ValidateEmployeeUpdate(email, password, name, phone, role, state *string) V
 		v := strings.TrimSpace(*email)
 		if v == "" {
 			errs.Add("email", "cannot be empty")
-		} else if !emailRe.MatchString(v) {
+		} else if !isValidEmail(v) {
 			errs.Add("email", "invalid format")
 		}
 	}
@@ -129,6 +130,57 @@ func ValidateCategoryCreate(name, slug string, displayOrder int) ValidationError
 	}
 
 	return errs
+}
+
+func isValidEmail(value string) bool {
+	email := strings.TrimSpace(value)
+	if email == "" || len(email) > 254 || strings.ContainsAny(email, " \t\r\n") {
+		return false
+	}
+
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || parsed.Address != email {
+		return false
+	}
+
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+
+	localPart := parts[0]
+	domainPart := strings.ToLower(parts[1])
+	if localPart == "" || len(localPart) > 64 || domainPart == "" || len(domainPart) > 253 {
+		return false
+	}
+	if strings.HasPrefix(localPart, ".") || strings.HasSuffix(localPart, ".") || strings.Contains(localPart, "..") {
+		return false
+	}
+	if !emailLocalAllowedRe.MatchString(localPart) {
+		return false
+	}
+	if strings.HasPrefix(domainPart, ".") || strings.HasSuffix(domainPart, ".") || strings.Contains(domainPart, "..") {
+		return false
+	}
+
+	labels := strings.Split(domainPart, ".")
+	if len(labels) < 2 {
+		return false
+	}
+
+	for _, label := range labels {
+		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+		for _, r := range label {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				continue
+			}
+			return false
+		}
+	}
+
+	return true
 }
 
 func ValidateCategoryUpdate(name, slug *string, displayOrder *int) ValidationErrors {
@@ -375,6 +427,81 @@ func ValidateAddonUpdate(name *string, price *float64, groupName *string) Valida
 
 	if groupName != nil {
 		validateAddonGroupName(*groupName, &errs)
+	}
+
+	return errs
+}
+
+func ValidateUserCreate(name, userType, phone, email, status string) ValidationErrors {
+	var errs ValidationErrors
+
+	if strings.TrimSpace(name) == "" {
+		errs.Add("name", "required")
+	} else if utf8.RuneCountInString(name) > 200 {
+		errs.Add("name", "max 200 characters")
+	}
+
+	if userType != "user" && userType != "company" {
+		errs.Add("user_type", "must be user or company")
+	}
+
+	if strings.TrimSpace(phone) == "" {
+		errs.Add("phone", "required")
+	} else if !isValidPhone(phone) {
+		errs.Add("phone", "invalid format")
+	}
+
+	if strings.TrimSpace(email) != "" && !isValidEmail(strings.TrimSpace(email)) {
+		errs.Add("email", "invalid format")
+	}
+
+	if status != "active" && status != "inactive" {
+		errs.Add("status", "must be active or inactive")
+	}
+
+	return errs
+}
+
+func ValidateUserUpdate(name, userType, phone, email, status *string) ValidationErrors {
+	var errs ValidationErrors
+
+	if name != nil {
+		v := strings.TrimSpace(*name)
+		if v == "" {
+			errs.Add("name", "cannot be empty")
+		} else if utf8.RuneCountInString(v) > 200 {
+			errs.Add("name", "max 200 characters")
+		}
+	}
+
+	if userType != nil {
+		v := strings.TrimSpace(*userType)
+		if v != "user" && v != "company" {
+			errs.Add("user_type", "must be user or company")
+		}
+	}
+
+	if phone != nil {
+		v := strings.TrimSpace(*phone)
+		if v == "" {
+			errs.Add("phone", "cannot be empty")
+		} else if !isValidPhone(v) {
+			errs.Add("phone", "invalid format")
+		}
+	}
+
+	if email != nil {
+		v := strings.TrimSpace(*email)
+		if v != "" && !isValidEmail(v) {
+			errs.Add("email", "invalid format")
+		}
+	}
+
+	if status != nil {
+		v := strings.TrimSpace(*status)
+		if v != "active" && v != "inactive" {
+			errs.Add("status", "must be active or inactive")
+		}
 	}
 
 	return errs

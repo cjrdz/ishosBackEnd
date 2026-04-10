@@ -95,6 +95,12 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Orde
 	return r.db.Order.Get(ctx, id)
 }
 
+func (r *OrderRepository) FindByOrderNumber(ctx context.Context, orderNumber string) (*ent.Order, error) {
+	return r.db.Order.Query().
+		Where(entOrder.OrderNumberEQ(orderNumber)).
+		Only(ctx)
+}
+
 func (r *OrderRepository) FindByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (*ent.Order, error) {
 	return r.db.Order.Query().
 		Where(

@@ -41,6 +41,20 @@ var (
 			},
 		},
 	}
+	// AdminSettingsColumns holds the columns for the "admin_settings" table.
+	AdminSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "key", Type: field.TypeString, Unique: true, Size: 120},
+		{Name: "value", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AdminSettingsTable holds the schema information for the "admin_settings" table.
+	AdminSettingsTable = &schema.Table{
+		Name:       "admin_settings",
+		Columns:    AdminSettingsColumns,
+		PrimaryKey: []*schema.Column{AdminSettingsColumns[0]},
+	}
 	// CategoriesColumns holds the columns for the "categories" table.
 	CategoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -58,6 +72,35 @@ var (
 		Name:       "categories",
 		Columns:    CategoriesColumns,
 		PrimaryKey: []*schema.Column{CategoriesColumns[0]},
+	}
+	// CustomersColumns holds the columns for the "customers" table.
+	CustomersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString, Size: 200},
+		{Name: "user_type", Type: field.TypeEnum, Enums: []string{"user", "company"}, Default: "user"},
+		{Name: "phone", Type: field.TypeString, Unique: true, Size: 20},
+		{Name: "email", Type: field.TypeString, Unique: true, Nullable: true},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"active", "inactive"}, Default: "active"},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CustomersTable holds the schema information for the "customers" table.
+	CustomersTable = &schema.Table{
+		Name:       "customers",
+		Columns:    CustomersColumns,
+		PrimaryKey: []*schema.Column{CustomersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "customer_status",
+				Unique:  false,
+				Columns: []*schema.Column{CustomersColumns[5]},
+			},
+			{
+				Name:    "customer_name",
+				Unique:  false,
+				Columns: []*schema.Column{CustomersColumns[1]},
+			},
+		},
 	}
 	// FlavorsColumns holds the columns for the "flavors" table.
 	FlavorsColumns = []*schema.Column{
@@ -246,7 +289,9 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		AddonsTable,
+		AdminSettingsTable,
 		CategoriesTable,
+		CustomersTable,
 		FlavorsTable,
 		OrdersTable,
 		OrderItemsTable,

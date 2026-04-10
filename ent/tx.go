@@ -14,8 +14,12 @@ type Tx struct {
 	config
 	// Addon is the client for interacting with the Addon builders.
 	Addon *AddonClient
+	// AdminSetting is the client for interacting with the AdminSetting builders.
+	AdminSetting *AdminSettingClient
 	// Category is the client for interacting with the Category builders.
 	Category *CategoryClient
+	// Customer is the client for interacting with the Customer builders.
+	Customer *CustomerClient
 	// Flavor is the client for interacting with the Flavor builders.
 	Flavor *FlavorClient
 	// Order is the client for interacting with the Order builders.
@@ -158,7 +162,9 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Addon = NewAddonClient(tx.config)
+	tx.AdminSetting = NewAdminSettingClient(tx.config)
 	tx.Category = NewCategoryClient(tx.config)
+	tx.Customer = NewCustomerClient(tx.config)
 	tx.Flavor = NewFlavorClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)
 	tx.OrderItem = NewOrderItemClient(tx.config)

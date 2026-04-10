@@ -1,6 +1,6 @@
 # IshosFactory Backend
 
-Go + Chi + PocketBase + Ent backend for the IshosFactory gelato shop, integrating **Neon PostgreSQL**, **Supabase Storage**, **PocketBase** authentication, and **WhatsApp Business API** notifications.
+Go + Chi + PocketBase + Ent backend for the IshosFactory gelato shop, integrating **Neon PostgreSQL**, **Cloudflare R2**, **PocketBase** authentication, and **WhatsApp Business API** notifications.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ The backend is organized in clear layers to keep HTTP, business logic, and data 
 - **Persistence/integration**:
   - Neon PostgreSQL via Ent ORM for business data
   - PocketBase embedded library for employee auth and JWT validation
-  - Supabase Storage for image objects
+  - Cloudflare R2 for image objects
 
 ### Request Lifecycle
 
@@ -31,7 +31,7 @@ The backend is organized in clear layers to keep HTTP, business logic, and data 
 | Service              | What it stores                                       | How Go connects                              |
 | -------------------- | ---------------------------------------------------- | -------------------------------------------- |
 | **Neon PostgreSQL**  | Categories, Products, Orders, OrderItems, RateLimits | Ent ORM via `database/sql` + `pgx` stdlib driver (pooler-safe simple protocol auto-applied) |
-| **Supabase Storage** | Product images (JPEG, PNG, WebP)                     | `storage-go` SDK with service-role key       |
+| **Cloudflare R2**    | Product images (JPEG, PNG, WebP)                     | AWS SDK v2 S3 client with R2 credentials     |
 | **PocketBase**       | Admin & employee accounts, JWT tokens                | Embedded Go library via `PBAuth` wrapper     |
 
 ## Auth Flow
@@ -48,7 +48,7 @@ The backend is organized in clear layers to keep HTTP, business logic, and data 
 
 - [Go 1.23+](https://go.dev/dl/)
 - [Neon](https://neon.tech) PostgreSQL database
-- [Supabase](https://supabase.com) project with a Storage bucket
+- [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket with S3 API credentials
 - (Optional) [WhatsApp Business API](https://developers.facebook.com/docs/whatsapp) credentials
 
 ## Quick Start
@@ -192,7 +192,7 @@ ishosBackend/
 │   │   ├── helpers.go          # Shared handler utilities
 │   │   ├── orders.go           # Order lifecycle
 │   │   ├── products.go         # Product CRUD
-│   │   └── upload.go           # Supabase image upload/delete
+│   │   └── upload.go           # R2 image upload/delete
 │   ├── middleware/
 │   │   ├── auth.go             # PBAuth session validation (Chi middleware)
 │   │   ├── optional_auth.go    # Optional auth (public + staff mixed routes)
@@ -304,8 +304,8 @@ These controls are intentionally conservative and can be relaxed per endpoint if
 | GET    | `/api/v1/categories`        | Public | List all active categories |
 | GET    | `/api/v1/categories/{slug}` | Public | Get category by slug       |
 | POST   | `/api/v1/categories`        | Admin  | Create a category          |
-| PATCH  | `/api/v1/categories/{id}`   | Admin  | Update a category          |
-| DELETE | `/api/v1/categories/{id}`   | Admin  | Delete a category          |
+| PATCH  | `/api/v1/categories/{slug}` | Admin  | Update a category          |
+| DELETE | `/api/v1/categories/{slug}` | Admin  | Delete a category          |
 
 ### Products
 
@@ -324,7 +324,7 @@ These controls are intentionally conservative and can be relaxed per endpoint if
 | Method | Path                                           | Auth    | Description                                |
 | ------ | ---------------------------------------------- | ------- | ------------------------------------------ |
 | POST   | `/api/v1/orders`                               | Public* | Create order (* rate limited)              |
-| GET    | `/api/v1/orders/track?order_number=...&customer_phone=...` | Public  | Public order tracking by number + phone    |
+| GET    | `/api/v1/orders/track?order_number=...&tracking_token=...` | Public  | Public order tracking by number + token    |
 | GET    | `/api/v1/orders`                               | Staff   | List orders (supports `status`, `page`, `limit`) |
 | GET    | `/api/v1/orders/{id}`                          | Staff   | Get single order                           |
 | PATCH  | `/api/v1/orders/{id}`                          | Staff   | Update order details and items             |
@@ -357,7 +357,7 @@ These controls are intentionally conservative and can be relaxed per endpoint if
 | GET    | `/api/v1/employees`                | Admin | List all staff accounts         |
 | POST   | `/api/v1/employees`                | Admin | Create employee                 |
 | PATCH  | `/api/v1/employees/{id}`           | Admin | Update employee fields/state    |
-| POST   | `/api/v1/employees/{id}/deactivate`| Admin | Deactivate employee             |
+| PATCH  | `/api/v1/employees/{id}/deactivate`| Admin | Deactivate employee             |
 | DELETE | `/api/v1/employees/{id}`           | Admin | Permanently delete employee     |
 
 ### Health
@@ -402,14 +402,21 @@ Customer submits order
 | `PB_ADMIN_UI_PORT`  | No       | `8090`                  | Port for PocketBase admin UI          |
 | `PB_ADMIN_UI_ALLOWED_ORIGINS` | No | `http://localhost:8090` | Allowed origins for PocketBase admin UI |
 | `ALLOW_PB_ADMIN_UI_IN_PRODUCTION` | No | `false`          | Explicit override to allow PB admin UI in production |
-| `SUPABASE_URL`      | Yes      | —                       | Supabase project URL                  |
-| `SUPABASE_KEY`      | Yes      | —                       | Supabase service-role key             |
-| `SUPABASE_BUCKET`   | No       | `product-images`        | Supabase Storage bucket name          |
+| `R2_ACCESS_KEY_ID`  | Yes      | —                       | Cloudflare R2 S3 access key ID        |
+| `R2_SECRET_ACCESS_KEY` | Yes   | —                       | Cloudflare R2 S3 secret access key    |
+| `R2_BUCKET_NAME`    | No       | `product-images`        | R2 bucket name                        |
+| `R2_REGION`         | No       | `auto`                  | R2 region for the S3 SDK              |
+| `R2_ENDPOINT`       | Cond.    | derived from account ID | R2 S3 endpoint                        |
+| `R2_ACCOUNT_ID`     | Cond.    | —                       | Used to derive `R2_ENDPOINT` if unset |
+| `R2_PUBLIC_BASE_URL`| Yes      | —                       | Public bucket URL or custom domain    |
 | `WHATSAPP_PHONE_ID` | No       | —                       | Meta WhatsApp phone number ID         |
 | `WHATSAPP_TOKEN`    | No       | —                       | Meta WhatsApp API token               |
 | `WHATSAPP_NUMBER`   | No       | —                       | Business phone displayed to customers |
+| `PUBLIC_STORE_URL`  | No       | `http://localhost:4321` | Storefront base URL used in customer links |
 | `ORDERS_PER_HOUR`   | No       | `5`                     | Max orders per IP per hour            |
 | `ORDERS_PER_DAY`    | No       | `20`                    | Max orders per phone per day          |
+| `TRACKING_REQUESTS_PER_HOUR` | No | `60`                | Max public tracking requests per IP per hour |
+| `TRACKING_TOKEN_SECRET` | No   | `DATABASE_URL` fallback | Signing key for public tracking tokens (set explicitly in production) |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | No | `10`                  | Max login attempts per IP per minute  |
 | `LOGIN_LOCKOUT_MAX_FAILURES` | No | `5`                  | Failed logins before lockout is applied |
 | `LOGIN_LOCKOUT_WINDOW_MINUTES` | No | `15`               | Rolling window used to count failed logins |

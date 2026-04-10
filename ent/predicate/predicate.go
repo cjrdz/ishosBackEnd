@@ -9,8 +9,14 @@ import (
 // Addon is the predicate function for addon builders.
 type Addon func(*sql.Selector)
 
+// AdminSetting is the predicate function for adminsetting builders.
+type AdminSetting func(*sql.Selector)
+
 // Category is the predicate function for category builders.
 type Category func(*sql.Selector)
+
+// Customer is the predicate function for customer builders.
+type Customer func(*sql.Selector)
 
 // Flavor is the predicate function for flavor builders.
 type Flavor func(*sql.Selector)

@@ -31,6 +31,11 @@ if [[ -z "${EMAIL}" || -z "${PASSWORD}" ]]; then
   exit 1
 fi
 
+if ! command -v go >/dev/null 2>&1; then
+  echo "Required command 'go' not found. Please install Go first." >&2
+  exit 1
+fi
+
 echo "Creating first admin user..."
 go run ./cmd/bootstrap -email "${EMAIL}" -password "${PASSWORD}" -name "${NAME}" -phone "${PHONE}"
 echo "Done. You can now log in at /api/v1/auth/login and create more users from the admin UI."

@@ -1,84 +1,196 @@
 package middleware
 
 import (
+	"context"
+	"fmt"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 )
 
-// OrderRateLimiter tracks order creation attempts in memory.
-// For production with multiple instances, swap the map for Redis.
-type OrderRateLimiter struct {
-	mu sync.Mutex
-	// ip → list of timestamps in the current hour
-	ipAttempts map[string][]time.Time
-	// phone → list of timestamps in the current day
-	phoneAttempts map[string][]time.Time
-	maxPerHour    int
-	maxPerDay     int
+type rateLimitStore interface {
+	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
 }
 
-func NewOrderRateLimiter(maxPerHour, maxPerDay int) *OrderRateLimiter {
-	return &OrderRateLimiter{
-		ipAttempts:    make(map[string][]time.Time),
-		phoneAttempts: make(map[string][]time.Time),
-		maxPerHour:    maxPerHour,
-		maxPerDay:     maxPerDay,
-	}
+type memoryRateLimitStore struct {
+	mu       sync.Mutex
+	attempts map[string][]time.Time
 }
 
-// CheckIP returns true when the IP is allowed to make another order.
-func (rl *OrderRateLimiter) CheckIP(ip string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
+func newMemoryRateLimitStore() *memoryRateLimitStore {
+	return &memoryRateLimitStore{attempts: make(map[string][]time.Time)}
+}
+
+func (s *memoryRateLimitStore) Allow(_ context.Context, key string, limit int, window time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	now := time.Now()
-	cutoff := now.Add(-time.Hour)
+	cutoff := now.Add(-window)
 
-	// Keep only attempts within the last hour
-	var recent []time.Time
-	for _, t := range rl.ipAttempts[ip] {
-		if t.After(cutoff) {
-			recent = append(recent, t)
+	recent := s.attempts[key][:0]
+	for _, attempt := range s.attempts[key] {
+		if attempt.After(cutoff) {
+			recent = append(recent, attempt)
 		}
 	}
 
-	if len(recent) >= rl.maxPerHour {
-		log.Warn().Str("ip", ip).Msg("IP rate limit exceeded")
-		return false
+	if len(recent) >= limit {
+		s.attempts[key] = append([]time.Time(nil), recent...)
+		return false, nil
 	}
 
-	rl.ipAttempts[ip] = append(recent, now)
-	return true
+	recent = append(recent, now)
+	s.attempts[key] = append([]time.Time(nil), recent...)
+	return true, nil
+}
+
+type redisRateLimitStore struct {
+	client *redis.Client
+	prefix string
+}
+
+var slidingWindowScript = redis.NewScript(`
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local member = ARGV[4]
+redis.call("ZREMRANGEBYSCORE", key, "-inf", now - window)
+local count = redis.call("ZCARD", key)
+if count >= limit then
+  redis.call("PEXPIRE", key, window)
+  return 0
+end
+redis.call("ZADD", key, now, member)
+redis.call("PEXPIRE", key, window)
+return 1
+`)
+
+func newRedisRateLimitStore(redisURL, prefix string) (*redisRateLimitStore, error) {
+	redisURL = strings.TrimSpace(redisURL)
+	if redisURL == "" {
+		return nil, nil
+	}
+
+	options, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse redis url: %w", err)
+	}
+
+	client := redis.NewClient(options)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("ping redis: %w", err)
+	}
+
+	return &redisRateLimitStore{client: client, prefix: strings.TrimSpace(prefix)}, nil
+}
+
+func (s *redisRateLimitStore) Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
+	nowMillis := time.Now().UnixMilli()
+	member := strconv.FormatInt(time.Now().UnixNano(), 10)
+	redisKey := key
+	if s.prefix != "" {
+		redisKey = s.prefix + ":" + key
+	}
+
+	result, err := slidingWindowScript.Run(ctx, s.client, []string{redisKey}, nowMillis, window.Milliseconds(), limit, member).Int()
+	if err != nil {
+		return false, err
+	}
+
+	return result == 1, nil
+}
+
+// OrderRateLimiter tracks order creation and tracking attempts.
+// It prefers Redis for multi-instance deployments and falls back to in-memory limits.
+type OrderRateLimiter struct {
+	primary            rateLimitStore
+	fallback           rateLimitStore
+	maxOrdersPerHour   int
+	maxOrdersPerDay    int
+	maxTrackingPerHour int
+}
+
+func NewOrderRateLimiter(maxPerHour, maxPerDay, maxTrackingPerHour int, redisURL, redisPrefix string) *OrderRateLimiter {
+	redisStore, err := newRedisRateLimitStore(redisURL, redisPrefix)
+	if err != nil {
+		log.Warn().Err(err).Msg("Rate limiter: Redis unavailable, using in-memory fallback")
+	}
+
+	var primary rateLimitStore
+	if redisStore != nil {
+		primary = redisStore
+	}
+
+	return &OrderRateLimiter{
+		primary:            primary,
+		fallback:           newMemoryRateLimitStore(),
+		maxOrdersPerHour:   maxPerHour,
+		maxOrdersPerDay:    maxPerDay,
+		maxTrackingPerHour: maxTrackingPerHour,
+	}
+}
+
+func (rl *OrderRateLimiter) allow(key string, limit int, window time.Duration, logField, logValue, message string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if rl.primary != nil {
+		allowed, err := rl.primary.Allow(ctx, key, limit, window)
+		if err == nil {
+			if !allowed {
+				log.Warn().Str(logField, logValue).Msg(message)
+			}
+			return allowed
+		}
+		log.Error().Err(err).Str(logField, logValue).Msg("Rate limiter: primary store failed, falling back to memory")
+	}
+
+	allowed, err := rl.fallback.Allow(ctx, key, limit, window)
+	if err != nil {
+		log.Error().Err(err).Str(logField, logValue).Msg("Rate limiter: fallback store failed")
+		return true
+	}
+	if !allowed {
+		log.Warn().Str(logField, logValue).Msg(message)
+	}
+	return allowed
+}
+
+// CheckOrderIP returns true when the IP is allowed to create another order.
+func (rl *OrderRateLimiter) CheckOrderIP(ip string) bool {
+	return rl.allow("orders:ip:"+ip, rl.maxOrdersPerHour, time.Hour, "ip", ip, "Order IP rate limit exceeded")
+}
+
+// CheckTrackingIP returns true when the IP is allowed to query order tracking.
+func (rl *OrderRateLimiter) CheckTrackingIP(ip string) bool {
+	return rl.allow("tracking:ip:"+ip, rl.maxTrackingPerHour, time.Hour, "ip", ip, "Tracking IP rate limit exceeded")
 }
 
 // CheckPhone returns true when the phone is allowed to make another order today.
 func (rl *OrderRateLimiter) CheckPhone(phone string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	now := time.Now()
-	cutoff := now.Add(-24 * time.Hour)
-
-	var recent []time.Time
-	for _, t := range rl.phoneAttempts[phone] {
-		if t.After(cutoff) {
-			recent = append(recent, t)
+	normalizedPhone := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
 		}
+		return -1
+	}, phone)
+	if normalizedPhone == "" {
+		normalizedPhone = strings.TrimSpace(phone)
 	}
-
-	if len(recent) >= rl.maxPerDay {
-		log.Warn().Str("phone", phone).Msg("Phone rate limit exceeded")
-		return false
-	}
-
-	rl.phoneAttempts[phone] = append(recent, now)
-	return true
+	return rl.allow("orders:phone:"+normalizedPhone, rl.maxOrdersPerDay, 24*time.Hour, "phone", normalizedPhone, "Phone rate limit exceeded")
 }
 
 // Middleware returns a Chi middleware that enforces IP-based rate limiting on order creation.
@@ -91,7 +203,7 @@ func (rl *OrderRateLimiter) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		ip := realIP(r)
-		if !rl.CheckIP(ip) {
+		if !rl.CheckOrderIP(ip) {
 			http.Error(w, `{"error":"too many orders from your IP, try later"}`,
 				http.StatusTooManyRequests)
 			return

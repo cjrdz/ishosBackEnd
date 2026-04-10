@@ -18,6 +18,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/database"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers"
 	appmiddleware "github.com/cjrdz/ishosBackEnd/internal/middleware"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 )
 
 // Server wraps the Chi router, Ent database client, and all handlers.
@@ -38,6 +39,14 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to migrate database schema: %w", err)
 	}
+	if err := services.EnsureTrackingTokenSchema(context.Background(), rawDB); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to initialize tracking token schema: %w", err)
+	}
+	if err := auth.InitTokenRevocationStore(rawDB); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to initialize token revocation store: %w", err)
+	}
 	log.Info().Msg("Connected to PostgreSQL database and verified schema")
 
 	// ── Initialize handlers ──────────────────────────────────────────────
@@ -49,10 +58,21 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	addonHandler := handlers.NewAddonHandler(client)
 	uploadHandler := handlers.NewUploadHandler(cfg)
 	analyticsHandler := handlers.NewAnalyticsHandler(client)
+	exportHandler := handlers.NewExportHandler(client)
+	userHandler := handlers.NewUserHandler(client)
+	adminSettingsHandler := handlers.NewAdminSettingsHandler(client)
 
 	// Order handler requires rate limiter
-	orderRateLimiter := appmiddleware.NewOrderRateLimiter(cfg.OrdersPerHour, cfg.OrdersPerDay)
-	orderHandler := handlers.NewOrderHandler(client, cfg, orderRateLimiter)
+	orderRateLimiter := appmiddleware.NewOrderRateLimiter(
+		cfg.OrdersPerHour,
+		cfg.OrdersPerDay,
+		cfg.TrackingRequestsPerHour,
+		cfg.RedisURL,
+		cfg.RedisPrefix,
+	)
+	trackingTokenStore := services.NewSQLTrackingTokenStore(rawDB)
+	trackingTokenService := services.NewTrackingTokenService(cfg.TrackingTokenSecret, trackingTokenStore)
+	orderHandler := handlers.NewOrderHandler(client, trackingTokenService, pb, cfg, orderRateLimiter)
 
 	// ── Middleware ───────────────────────────────────────────────────────
 	loginRateLimiter := appmiddleware.NewLoginRateLimiter(cfg.LoginAttemptsPerMinute)
@@ -113,7 +133,6 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 
 		// Orders (public create)
 		api.Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
-		api.Get("/orders/track/history", orderHandler.TrackPublicHistory)
 		api.Get("/orders/track", orderHandler.TrackPublic)
 
 		// ── Authenticated routes (admin/employee only) ───────────────
@@ -121,11 +140,23 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.Use(pbAuthMiddleware.RequireSession)
 
 			// Employees management
-			protected.Get("/employees", employeeHandler.List)
-			protected.Post("/employees", employeeHandler.Create)
-			protected.Patch("/employees/{id}", employeeHandler.Update)
-			protected.Patch("/employees/{id}/deactivate", employeeHandler.Deactivate)
-			protected.Delete("/employees/{id}", employeeHandler.Delete)
+			protected.With(appmiddleware.RequireAdmin).Get("/employees", employeeHandler.List)
+			protected.With(appmiddleware.RequireAdmin).Post("/employees", employeeHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Patch("/employees/{id}", employeeHandler.Update)
+			protected.With(appmiddleware.RequireAdmin).Patch("/employees/{id}/deactivate", employeeHandler.Deactivate)
+			protected.With(appmiddleware.RequireAdmin).Delete("/employees/{id}", employeeHandler.Delete)
+
+			// Users (customer directory)
+			protected.Get("/users", userHandler.List)
+			protected.Get("/users/{id}", userHandler.Get)
+			protected.With(appmiddleware.RequireAdmin).Get("/users/{id}/orders", userHandler.Orders)
+			protected.With(appmiddleware.RequireAdmin).Post("/users", userHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Patch("/users/{id}", userHandler.Update)
+			protected.With(appmiddleware.RequireAdmin).Delete("/users/{id}", userHandler.Delete)
+
+			// Admin dashboard settings
+			protected.Get("/settings/tabs", adminSettingsHandler.GetTabs)
+			protected.With(appmiddleware.RequireAdmin).Patch("/settings/tabs", adminSettingsHandler.UpdateTabs)
 
 			// Products management
 			protected.Post("/products", productHandler.Create)
@@ -171,9 +202,13 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/orders-over-time", analyticsHandler.OrdersOverTime)
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/top-products", analyticsHandler.TopProducts)
 
+			// Export and purge (admin only)
+			protected.With(appmiddleware.RequireAdmin).Get("/export/orders", exportHandler.ExportOrders)
+			protected.With(appmiddleware.RequireAdmin).Delete("/export/orders", exportHandler.PurgeOrders)
+
 			// Upload
 			protected.Post("/upload/image", uploadHandler.UploadImage)
-			protected.Delete("/upload/image", uploadHandler.DeleteImage)
+			protected.With(appmiddleware.RequireAdmin).Delete("/upload/image", uploadHandler.DeleteImage)
 			protected.Get("/upload/images", uploadHandler.ListImages)
 		})
 	})

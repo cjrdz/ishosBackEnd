@@ -35,7 +35,7 @@ func NewProductHandler(db *ent.Client, cfg *config.Config) *ProductHandler {
 }
 
 // productResponse is what the API returns to the Astro frontend.
-// image_url is built from the stored image_path + Supabase public URL.
+// image_url is built from the stored image_path + configured public object URL.
 type productResponse struct {
 	ID           uuid.UUID        `json:"id"`
 	Name         string           `json:"name"`
@@ -44,7 +44,7 @@ type productResponse struct {
 	CategoryID   uuid.UUID        `json:"category_id"`
 	CategoryName string           `json:"category_name"`
 	ImagePath    *string          `json:"image_path,omitempty"`
-	ImageURL     *string          `json:"image_url"` // full Supabase public URL
+	ImageURL     *string          `json:"image_url"` // full public object URL
 	IsAvailable  bool             `json:"is_available"`
 	Flavors      []flavorResponse `json:"flavors"`
 	Addons       []addonResponse  `json:"addons"`
@@ -52,14 +52,12 @@ type productResponse struct {
 }
 
 // buildImageURL converts a stored path like "products/chocolate.jpg"
-// into the full Supabase public URL.
+// into the full public object URL.
 func (h *ProductHandler) buildImageURL(path *string) *string {
 	if path == nil {
 		return nil
 	}
-	url := h.cfg.SupabaseURL +
-		"/storage/v1/object/public/" +
-		h.cfg.SupabaseBucket + "/" + *path
+	url := h.cfg.PublicObjectURL(*path)
 	return &url
 }
 

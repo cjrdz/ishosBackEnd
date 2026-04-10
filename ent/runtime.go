@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
+	"github.com/cjrdz/ishosBackEnd/ent/adminsetting"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
@@ -58,6 +60,30 @@ func init() {
 	addonDescID := addonFields[0].Descriptor()
 	// addon.DefaultID holds the default value on creation for the id field.
 	addon.DefaultID = addonDescID.Default.(func() uuid.UUID)
+	adminsettingFields := schema.AdminSetting{}.Fields()
+	_ = adminsettingFields
+	// adminsettingDescKey is the schema descriptor for key field.
+	adminsettingDescKey := adminsettingFields[1].Descriptor()
+	// adminsetting.KeyValidator is a validator for the "key" field. It is called by the builders before save.
+	adminsetting.KeyValidator = adminsettingDescKey.Validators[0].(func(string) error)
+	// adminsettingDescValue is the schema descriptor for value field.
+	adminsettingDescValue := adminsettingFields[2].Descriptor()
+	// adminsetting.DefaultValue holds the default value on creation for the value field.
+	adminsetting.DefaultValue = adminsettingDescValue.Default.(map[string]interface{})
+	// adminsettingDescCreatedAt is the schema descriptor for created_at field.
+	adminsettingDescCreatedAt := adminsettingFields[3].Descriptor()
+	// adminsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	adminsetting.DefaultCreatedAt = adminsettingDescCreatedAt.Default.(func() time.Time)
+	// adminsettingDescUpdatedAt is the schema descriptor for updated_at field.
+	adminsettingDescUpdatedAt := adminsettingFields[4].Descriptor()
+	// adminsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	adminsetting.DefaultUpdatedAt = adminsettingDescUpdatedAt.Default.(func() time.Time)
+	// adminsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	adminsetting.UpdateDefaultUpdatedAt = adminsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// adminsettingDescID is the schema descriptor for id field.
+	adminsettingDescID := adminsettingFields[0].Descriptor()
+	// adminsetting.DefaultID holds the default value on creation for the id field.
+	adminsetting.DefaultID = adminsettingDescID.Default.(func() uuid.UUID)
 	categoryFields := schema.Category{}.Fields()
 	_ = categoryFields
 	// categoryDescName is the schema descriptor for name field.
@@ -94,6 +120,30 @@ func init() {
 	categoryDescID := categoryFields[0].Descriptor()
 	// category.DefaultID holds the default value on creation for the id field.
 	category.DefaultID = categoryDescID.Default.(func() uuid.UUID)
+	customerFields := schema.Customer{}.Fields()
+	_ = customerFields
+	// customerDescName is the schema descriptor for name field.
+	customerDescName := customerFields[1].Descriptor()
+	// customer.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	customer.NameValidator = customerDescName.Validators[0].(func(string) error)
+	// customerDescPhone is the schema descriptor for phone field.
+	customerDescPhone := customerFields[3].Descriptor()
+	// customer.PhoneValidator is a validator for the "phone" field. It is called by the builders before save.
+	customer.PhoneValidator = customerDescPhone.Validators[0].(func(string) error)
+	// customerDescCreatedAt is the schema descriptor for created_at field.
+	customerDescCreatedAt := customerFields[6].Descriptor()
+	// customer.DefaultCreatedAt holds the default value on creation for the created_at field.
+	customer.DefaultCreatedAt = customerDescCreatedAt.Default.(func() time.Time)
+	// customerDescUpdatedAt is the schema descriptor for updated_at field.
+	customerDescUpdatedAt := customerFields[7].Descriptor()
+	// customer.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	customer.DefaultUpdatedAt = customerDescUpdatedAt.Default.(func() time.Time)
+	// customer.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	customer.UpdateDefaultUpdatedAt = customerDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// customerDescID is the schema descriptor for id field.
+	customerDescID := customerFields[0].Descriptor()
+	// customer.DefaultID holds the default value on creation for the id field.
+	customer.DefaultID = customerDescID.Default.(func() uuid.UUID)
 	flavorFields := schema.Flavor{}.Fields()
 	_ = flavorFields
 	// flavorDescName is the schema descriptor for name field.

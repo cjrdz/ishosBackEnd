@@ -9,8 +9,9 @@ go build -o server ./cmd/api
 ## Required Environment Variables
 
 - `DATABASE_URL`
-- `SUPABASE_URL`
-- `SUPABASE_KEY`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_BASE_URL`
 - `PB_DATA_DIR` (default `./pb_data`)
 - `ALLOWED_ORIGINS`
 
@@ -23,12 +24,18 @@ go build -o server ./cmd/api
 Optional:
 
 - `PORT` (default `8080`)
-- `SUPABASE_BUCKET`
+- `R2_BUCKET_NAME`
+- `R2_REGION` (default `auto`)
+- `R2_ENDPOINT` (optional if `R2_ACCOUNT_ID` is set)
+- `R2_ACCOUNT_ID` (optional if `R2_ENDPOINT` is set)
 - `WHATSAPP_PHONE_ID`
 - `WHATSAPP_TOKEN`
 - `WHATSAPP_NUMBER`
+- `PUBLIC_STORE_URL` (default `http://localhost:4321`)
 - `ORDERS_PER_HOUR`
 - `ORDERS_PER_DAY`
+- `TRACKING_REQUESTS_PER_HOUR` (default `60`)
+- `TRACKING_TOKEN_SECRET` (default falls back to `DATABASE_URL`; set an explicit secret in production)
 - `LOGIN_ATTEMPTS_PER_MINUTE`
 - `ENABLE_PB_ADMIN_UI` (default `false`)
 - `PB_ADMIN_UI_HOST` (default `127.0.0.1`)

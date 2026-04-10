@@ -3,10 +3,10 @@ package services
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"path"
@@ -15,8 +15,10 @@ import (
 	"strings"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/rs/zerolog/log"
-	storage "github.com/supabase-community/storage-go"
 
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
@@ -25,25 +27,39 @@ var ErrInvalidImageType = errors.New("invalid image type")
 var ErrInvalidFolder = errors.New("invalid upload folder")
 
 var uploadFolderRe = regexp.MustCompile(`^[a-z0-9][a-z0-9/_-]{0,63}$`)
+var fileNameSanitizeRe = regexp.MustCompile(`[^a-z0-9._-]`)
+var repeatedDashRe = regexp.MustCompile(`-+`)
 
 type UploadService struct {
-	client      *storage.Client
-	bucket      string
-	supabaseURL string
-	apiKey      string
+	client *s3.Client
+	bucket string
+	cfg    *config.Config
 }
 
 func NewUploadService(cfg *config.Config) *UploadService {
-	client := storage.NewClient(cfg.SupabaseURL+"/storage/v1", cfg.SupabaseKey, nil)
+	awsCfg, err := awsconfig.LoadDefaultConfig(
+		context.Background(),
+		awsconfig.WithRegion(cfg.R2Region),
+		awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(cfg.R2AccessKeyID, cfg.R2SecretAccessKey, ""),
+		),
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to configure Cloudflare R2 client")
+	}
+
+	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
+		o.BaseEndpoint = &cfg.R2Endpoint
+	})
+
 	return &UploadService{
-		client:      client,
-		bucket:      cfg.SupabaseBucket,
-		supabaseURL: cfg.SupabaseURL,
-		apiKey:      cfg.SupabaseKey,
+		client: client,
+		bucket: cfg.R2BucketName,
+		cfg:    cfg,
 	}
 }
 
-func (s *UploadService) UploadImage(_ context.Context, file multipart.File, header *multipart.FileHeader, folder string) (string, error) {
+func (s *UploadService) UploadImage(ctx context.Context, file multipart.File, header *multipart.FileHeader, folder string) (string, error) {
 	data, err := io.ReadAll(file)
 	if err != nil {
 		return "", err
@@ -58,95 +74,84 @@ func (s *UploadService) UploadImage(_ context.Context, file multipart.File, head
 	if err != nil {
 		return "", err
 	}
+	if folder == strings.ToLower(strings.TrimSpace(s.bucket)) {
+		folder = ""
+	}
 
 	ext := extensionFromContentType(contentType)
 	if ext == "" {
-		ext = filepath.Ext(header.Filename)
+		ext = strings.ToLower(filepath.Ext(header.Filename))
 	}
 	if ext == "" {
 		ext = ".bin"
 	}
 
-	base := strings.TrimSuffix(header.Filename, ext)
-	ts := time.Now().Format("20060102T150405")
-	objectPath := fmt.Sprintf("%s/%s_%s%s", folder, sanitize(base), ts, ext)
+	base := strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	filename := sanitize(base)
+	if filename == "" {
+		filename = "image"
+	}
 
-	_, err = s.client.UploadFile(s.bucket, objectPath, bytes.NewReader(data), storage.FileOptions{
+	objectPath := filename + ext
+	if folder != "" {
+		objectPath = fmt.Sprintf("%s/%s", folder, objectPath)
+	}
+
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:      &s.bucket,
+		Key:         &objectPath,
+		Body:        bytes.NewReader(data),
 		ContentType: &contentType,
-		Upsert:      boolPtr(true),
 	})
 	if err != nil {
-		log.Error().Err(err).Str("path", objectPath).Msg("Supabase upload failed")
+		log.Error().Err(err).Str("path", objectPath).Msg("R2 upload failed")
 		return "", err
 	}
 
 	return objectPath, nil
 }
 
-func (s *UploadService) DeleteImage(_ context.Context, path string) error {
-	_, err := s.client.RemoveFile(s.bucket, []string{path})
+func (s *UploadService) DeleteImage(ctx context.Context, path string) error {
+	path = strings.TrimSpace(path)
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: &s.bucket,
+		Key:    &path,
+	})
 	return err
 }
 
-func (s *UploadService) ListImages(_ context.Context) ([]map[string]interface{}, error) {
-	listURL := fmt.Sprintf("%s/storage/v1/object/list/%s", s.supabaseURL, s.bucket)
-
-	reqBody, _ := json.Marshal(map[string]interface{}{
-		"prefix": "",
-		"limit":  100,
-		"offset": 0,
-		"sortBy": map[string]string{
-			"column": "created_at",
-			"order":  "desc",
-		},
+func (s *UploadService) ListImages(ctx context.Context) ([]map[string]interface{}, error) {
+	resp, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket:  &s.bucket,
+		MaxKeys: int32Ptr(1000),
 	})
-
-	req, err := http.NewRequest("POST", listURL, strings.NewReader(string(reqBody)))
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("apikey", s.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("supabase list failed: status=%d body=%s", resp.StatusCode, string(body))
-	}
-
-	var files []struct {
-		Name      string `json:"name"`
-		ID        string `json:"id"`
-		CreatedAt string `json:"created_at"`
-		Metadata  struct {
-			Size     int    `json:"size"`
-			MimeType string `json:"mimetype"`
-		} `json:"metadata"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&files); err != nil {
-		return nil, err
-	}
-
-	images := make([]map[string]interface{}, 0, len(files))
-	for _, f := range files {
-		if f.ID == "" {
+	images := make([]map[string]interface{}, 0, len(resp.Contents))
+	for _, object := range resp.Contents {
+		if object.Key == nil || strings.TrimSpace(*object.Key) == "" {
 			continue
 		}
-		publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s", s.supabaseURL, s.bucket, f.Name)
+
+		createdAt := ""
+		if object.LastModified != nil {
+			createdAt = object.LastModified.UTC().Format(time.RFC3339)
+		}
+
+		mimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(*object.Key)))
+		publicURL := s.cfg.PublicObjectURL(*object.Key)
+		size := int64(0)
+		if object.Size != nil {
+			size = *object.Size
+		}
+
 		images = append(images, map[string]interface{}{
-			"name":       f.Name,
-			"size":       f.Metadata.Size,
-			"mime_type":  f.Metadata.MimeType,
-			"created_at": f.CreatedAt,
+			"name":       *object.Key,
+			"size":       size,
+			"mime_type":  mimeType,
+			"created_at": createdAt,
 			"url":        publicURL,
 		})
 	}
@@ -190,7 +195,7 @@ func extensionFromContentType(contentType string) string {
 func normalizeUploadFolder(folder string) (string, error) {
 	folder = strings.TrimSpace(strings.ToLower(folder))
 	if folder == "" {
-		return "products", nil
+		return "", nil
 	}
 
 	if !uploadFolderRe.MatchString(folder) {
@@ -208,7 +213,10 @@ func normalizeUploadFolder(folder string) (string, error) {
 func sanitize(s string) string {
 	s = strings.ReplaceAll(s, " ", "-")
 	s = strings.ToLower(s)
+	s = strings.Trim(s, "-._")
+	s = fileNameSanitizeRe.ReplaceAllString(s, "-")
+	s = repeatedDashRe.ReplaceAllString(s, "-")
 	return s
 }
 
-func boolPtr(b bool) *bool { return &b }
+func int32Ptr(v int32) *int32 { return &v }

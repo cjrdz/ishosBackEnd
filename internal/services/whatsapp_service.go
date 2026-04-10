@@ -8,10 +8,12 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -65,7 +67,11 @@ func (s *WhatsAppService) send(phone, message string) {
 	}
 	payload.Text.Body = message
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Error().Err(err).Msg("WhatsApp: failed to marshal payload")
+		return
+	}
 	url := fmt.Sprintf("%s/%s/messages", s.baseURL, s.phoneID)
 
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
@@ -75,6 +81,10 @@ func (s *WhatsAppService) send(phone, message string) {
 	}
 	req.Header.Set("Authorization", "Bearer "+s.token)
 	req.Header.Set("Content-Type", "application/json")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -107,48 +117,69 @@ func maskPhone(phone string) string {
 }
 
 // SendOrderCreated notifies customer their order was received.
-func (s *WhatsAppService) SendOrderCreated(phone, orderNumber string, total float64) {
+func (s *WhatsAppService) SendOrderCreated(phone, orderNumber string, total float64, trackingURL string) {
+	trackingLine := ""
+	if trackingURL != "" {
+		trackingLine = fmt.Sprintf("*Seguimiento seguro:* %s\n\n", trackingURL)
+	}
+
 	msg := fmt.Sprintf(
 		"🧊 *Orden Recibida*\n\n"+
 			"¡Gracias por tu pedido!\n\n"+
 			"*Número de orden:* %s\n"+
 			"*Total:* $%.2f\n\n"+
+			"%s"+
 			"Estamos revisando tu orden y te confirmaremos pronto. 🍦",
-		orderNumber, total,
+		orderNumber, total, trackingLine,
 	)
 	s.send(phone, msg)
 }
 
 // SendOrderApproved notifies customer their order was confirmed.
-func (s *WhatsAppService) SendOrderApproved(phone, orderNumber string) {
+func (s *WhatsAppService) SendOrderApproved(phone, orderNumber, trackingURL string) {
+	trackingLine := ""
+	if trackingURL != "" {
+		trackingLine = fmt.Sprintf("\n\n*Seguimiento seguro:* %s", trackingURL)
+	}
+
 	msg := fmt.Sprintf(
 		"✅ *Orden Confirmada*\n\n"+
 			"Tu orden *%s* ha sido confirmada y está en preparación.\n\n"+
-			"Te avisaremos cuando esté lista. 🎉",
-		orderNumber,
+			"Te avisaremos cuando esté lista. 🎉%s",
+		orderNumber, trackingLine,
 	)
 	s.send(phone, msg)
 }
 
 // SendOrderRejected notifies customer their order was not accepted.
-func (s *WhatsAppService) SendOrderRejected(phone, orderNumber, reason string) {
+func (s *WhatsAppService) SendOrderRejected(phone, orderNumber, reason, trackingURL string) {
+	trackingLine := ""
+	if trackingURL != "" {
+		trackingLine = fmt.Sprintf("\n\n*Seguimiento seguro:* %s", trackingURL)
+	}
+
 	msg := fmt.Sprintf(
 		"❌ *Orden No Procesada*\n\n"+
 			"Lamentamos informarte que tu orden *%s* no pudo ser procesada.\n\n"+
 			"*Motivo:* %s\n\n"+
-			"Por favor contáctanos para más información.",
-		orderNumber, reason,
+			"Por favor contáctanos para más información.%s",
+		orderNumber, reason, trackingLine,
 	)
 	s.send(phone, msg)
 }
 
 // SendOrderReady notifies customer their order is ready for pickup.
-func (s *WhatsAppService) SendOrderReady(phone, orderNumber string) {
+func (s *WhatsAppService) SendOrderReady(phone, orderNumber, trackingURL string) {
+	trackingLine := ""
+	if trackingURL != "" {
+		trackingLine = fmt.Sprintf("\n\n*Seguimiento seguro:* %s", trackingURL)
+	}
+
 	msg := fmt.Sprintf(
 		"🎉 *¡Tu Orden Está Lista!*\n\n"+
 			"Tu orden *%s* está lista para recoger.\n\n"+
-			"¡Te esperamos! 🍦",
-		orderNumber,
+			"¡Te esperamos! 🍦%s",
+		orderNumber, trackingLine,
 	)
 	s.send(phone, msg)
 }

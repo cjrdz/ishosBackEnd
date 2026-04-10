@@ -13,7 +13,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
+	"github.com/cjrdz/ishosBackEnd/ent/adminsetting"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
@@ -79,13 +81,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			addon.Table:     addon.ValidColumn,
-			category.Table:  category.ValidColumn,
-			flavor.Table:    flavor.ValidColumn,
-			order.Table:     order.ValidColumn,
-			orderitem.Table: orderitem.ValidColumn,
-			product.Table:   product.ValidColumn,
-			ratelimit.Table: ratelimit.ValidColumn,
+			addon.Table:        addon.ValidColumn,
+			adminsetting.Table: adminsetting.ValidColumn,
+			category.Table:     category.ValidColumn,
+			customer.Table:     customer.ValidColumn,
+			flavor.Table:       flavor.ValidColumn,
+			order.Table:        order.ValidColumn,
+			orderitem.Table:    orderitem.ValidColumn,
+			product.Table:      product.ValidColumn,
+			ratelimit.Table:    ratelimit.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

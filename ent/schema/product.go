@@ -25,8 +25,8 @@ func (Product) Fields() []ent.Field {
 		field.Text("description"),
 		field.Float("price").
 			Positive(),
-		// image_path stores ONLY the Supabase object path, e.g. "products/chocolate.jpg"
-		// The full public URL is built at the service layer using SUPABASE_URL + SUPABASE_BUCKET
+		// image_path stores ONLY the object path, e.g. "products/chocolate.jpg"
+		// The full public URL is built at the handler layer using the configured R2 public base URL.
 		field.String("image_path").
 			Optional().
 			Nillable(),

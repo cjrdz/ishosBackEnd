@@ -16,6 +16,7 @@ make dev
 make test
 make migrate
 make seed
+make seed-flavors
 make lint
 ```
 

@@ -1,4 +1,4 @@
-.PHONY: help dev test test-integration migrate seed bootstrap bootstrap-admin build docker-up docker-down clean generate lint format bruno backup-pb deploy
+.PHONY: help dev test test-integration migrate seed seed-flavors bootstrap bootstrap-admin build docker-up docker-down clean generate lint format bruno backup-pb deploy
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -17,13 +17,13 @@ migrate: ## Run database migrations
 	go run ./cmd/migrate
 
 seed: ## Seed database with test data
-	go run ./cmd/seed
+	bash ./scripts/seed_all.sh
+
+seed-flavors: ## Seed flavor/addon catalog test data
+	go run ./cmd/seed-flavors
 
 bootstrap: ## Create first admin user
-	@read -p "Admin email: " email; \
-	read -sp "Admin password: " password; \
-	echo ""; \
-	go run ./cmd/bootstrap -email $$email -password $$password -name "Admin"
+	bash ./scripts/bootstrap_admin.sh
 
 bootstrap-admin: ## Create first admin user (supports .bootstrap_admin.env or interactive prompts)
 	bash ./scripts/bootstrap_admin.sh

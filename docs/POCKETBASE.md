@@ -21,6 +21,19 @@ This project uses PocketBase as an embedded Go library. The optional PocketBase 
 - Disabling an employee account prevents future login attempts.
 - Keep `ENABLE_PB_ADMIN_UI=false` in production unless there is a short-lived operational need.
 
+## Scope Clarification
+
+**PocketBase handles employees only** (auth account storage, password hashing, JWT validation).
+
+**Users** (customer directory / business entity) are separate and managed via Ent ORM in PostgreSQL. User management endpoints:
+
+- `GET /api/v1/users`
+- `POST /api/v1/users`
+- `GET/PATCH/DELETE /api/v1/users/{id}`
+- `GET /api/v1/users/{id}/orders` (admin only)
+
+See [API.md](API.md) for full Users endpoint documentation.
+
 ## Auth Route Overview
 
 - `POST /api/v1/auth/login`
