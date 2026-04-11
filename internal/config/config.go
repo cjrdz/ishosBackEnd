@@ -79,6 +79,12 @@ type Config struct {
 
 	// Tracking endpoint abuse controls.
 	TrackingRequestsPerHour int
+
+	// One-time bootstrap: if set and no admin employee exists, the server will
+	// create the first admin on startup then ignore the vars on subsequent starts.
+	BootstrapAdminEmail    string
+	BootstrapAdminPassword string
+	BootstrapAdminName     string
 }
 
 // Load reads environment variables (and optional .env file) into Config.
@@ -124,6 +130,9 @@ func Load() *Config {
 		RedisURL:                    getEnv("REDIS_URL", ""),
 		RedisPrefix:                 getEnv("REDIS_PREFIX", "ishos"),
 		TrackingRequestsPerHour:     getEnvInt("TRACKING_REQUESTS_PER_HOUR", 60),
+		BootstrapAdminEmail:         getEnv("BOOTSTRAP_ADMIN_EMAIL", ""),
+		BootstrapAdminPassword:      getEnv("BOOTSTRAP_ADMIN_PASSWORD", ""),
+		BootstrapAdminName:          getEnv("BOOTSTRAP_ADMIN_NAME", "Admin"),
 	}
 }
 

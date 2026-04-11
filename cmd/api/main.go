@@ -50,6 +50,35 @@ func main() {
 	}
 	log.Info().Str("data_dir", cfg.PBDataDir).Msg("PocketBase auth engine ready")
 
+	// ── One-time bootstrap ────────────────────────────────────────────────
+	// When BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are set and no
+	// employee records exist yet, create the first admin automatically. This
+	// is the only way to seed the first admin in a distroless Docker image
+	// (e.g. Render) where there is no shell or Go runtime available.
+	// After the first successful run you can unset these env vars.
+	if cfg.BootstrapAdminEmail != "" && cfg.BootstrapAdminPassword != "" {
+		existing, listErr := pb.ListEmployees()
+		if listErr != nil {
+			log.Warn().Err(listErr).Msg("Bootstrap: could not list employees, skipping auto-bootstrap")
+		} else if len(existing) == 0 {
+			_, createErr := pb.CreateEmployee(
+				cfg.BootstrapAdminEmail,
+				cfg.BootstrapAdminPassword,
+				cfg.BootstrapAdminName,
+				"",
+				"admin",
+				false,
+			)
+			if createErr != nil {
+				log.Error().Err(createErr).Str("email", cfg.BootstrapAdminEmail).Msg("Bootstrap: failed to create admin")
+			} else {
+				log.Info().Str("email", cfg.BootstrapAdminEmail).Msg("Bootstrap: first admin created successfully — remove BOOTSTRAP_ADMIN_* env vars")
+			}
+		} else {
+			log.Info().Int("count", len(existing)).Msg("Bootstrap: employees already exist, skipping")
+		}
+	}
+
 	// ── PocketBase Admin UI (development only) ───────────────────────────
 	// When ENABLE_PB_ADMIN_UI=true, start PocketBase's built-in HTTP server
 	// on a separate port so you can manage employees, inspect tokens, etc.
