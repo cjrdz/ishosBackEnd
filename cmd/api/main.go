@@ -44,7 +44,7 @@ func main() {
 	}
 
 	// ── PocketBase (auth engine — Go API only, no HTTP server) ───────────
-	pb, err := auth.New(cfg.PBDataDir)
+	pb, err := auth.New(cfg.PBDataDir, cfg.AuthTokenTTLHours)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialise PocketBase auth engine")
 	}

@@ -48,7 +48,7 @@ func TestTrackingTokenIssueAndVerify(t *testing.T) {
 	t.Parallel()
 
 	store := newMemoryTrackingTokenStore()
-	svc := NewTrackingTokenService("test-secret", store)
+	svc := NewTrackingTokenService("test-secret", 30*24*time.Hour, store)
 	now := time.Date(2026, time.April, 10, 12, 0, 0, 0, time.UTC)
 
 	token, expiresAt, err := svc.Issue(context.Background(), "ORD-20260410-7544", now)
@@ -71,7 +71,7 @@ func TestTrackingTokenVerifyRejectsWrongOrder(t *testing.T) {
 	t.Parallel()
 
 	store := newMemoryTrackingTokenStore()
-	svc := NewTrackingTokenService("test-secret", store)
+	svc := NewTrackingTokenService("test-secret", 30*24*time.Hour, store)
 	now := time.Date(2026, time.April, 10, 12, 0, 0, 0, time.UTC)
 
 	token, _, err := svc.Issue(context.Background(), "ORD-20260410-7544", now)
@@ -89,7 +89,7 @@ func TestTrackingTokenVerifyRejectsExpiredToken(t *testing.T) {
 	t.Parallel()
 
 	store := newMemoryTrackingTokenStore()
-	svc := NewTrackingTokenService("test-secret", store)
+	svc := NewTrackingTokenService("test-secret", 30*24*time.Hour, store)
 	now := time.Date(2026, time.April, 10, 12, 0, 0, 0, time.UTC)
 
 	token, expiresAt, err := svc.Issue(context.Background(), "ORD-20260410-7544", now)
@@ -107,7 +107,7 @@ func TestTrackingTokenRevokeAllByOrder(t *testing.T) {
 	t.Parallel()
 
 	store := newMemoryTrackingTokenStore()
-	svc := NewTrackingTokenService("test-secret", store)
+	svc := NewTrackingTokenService("test-secret", 30*24*time.Hour, store)
 	now := time.Date(2026, time.April, 10, 12, 0, 0, 0, time.UTC)
 
 	token, _, err := svc.Issue(context.Background(), "ORD-20260410-7544", now)

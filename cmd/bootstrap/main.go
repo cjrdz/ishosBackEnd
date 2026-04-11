@@ -42,7 +42,7 @@ func main() {
 
 	log.Info().Str("data_dir", cfg.PBDataDir).Msg("Connecting to PocketBase")
 
-	pb, err := auth.New(cfg.PBDataDir)
+	pb, err := auth.New(cfg.PBDataDir, cfg.AuthTokenTTLHours)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialise PocketBase")
 	}

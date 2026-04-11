@@ -417,11 +417,13 @@ Customer submits order
 | `ORDERS_PER_DAY`    | No       | `20`                    | Max orders per phone per day          |
 | `TRACKING_REQUESTS_PER_HOUR` | No | `60`                | Max public tracking requests per IP per hour |
 | `TRACKING_TOKEN_SECRET` | No   | `DATABASE_URL` fallback | Signing key for public tracking tokens (set explicitly in production) |
+| `TRACKING_TOKEN_TTL_HOURS` | No | `720`               | Public tracking token lifetime in hours |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | No | `10`                  | Max login attempts per IP per minute  |
 | `LOGIN_LOCKOUT_MAX_FAILURES` | No | `5`                  | Failed logins before lockout is applied |
 | `LOGIN_LOCKOUT_WINDOW_MINUTES` | No | `15`               | Rolling window used to count failed logins |
 | `LOGIN_LOCKOUT_DURATION_MINUTES` | No | `15`             | Lockout duration once threshold is reached |
 | `AUTH_COOKIE_TTL_HOURS` | No | `24`                    | `auth_token` cookie lifetime in browser |
+| `AUTH_TOKEN_TTL_HOURS` | No | `168`                   | PocketBase employee JWT lifetime in hours |
 | `ALLOWED_ORIGINS`   | No       | `http://localhost:4321` | Comma-separated CORS allowed origins  |
 
 ## Deployment

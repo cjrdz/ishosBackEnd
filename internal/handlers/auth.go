@@ -34,21 +34,30 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 // AuthHandler provides login, session inspection and logout endpoints.
 type AuthHandler struct {
-	pb      *auth.PBAuth
-	cfg     *config.Config
-	lockout *loginLockout
+	pb          *auth.PBAuth
+	cfg         *config.Config
+	settingsSvc *services.AdminSettingService
+	defaults    services.TokenTTLConfig
+	lockout     *loginLockout
 }
 
-func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config, settingsSvc *services.AdminSettingService) *AuthHandler {
 	return &AuthHandler{
-		pb:  pb,
-		cfg: cfg,
+		pb:          pb,
+		cfg:         cfg,
+		settingsSvc: settingsSvc,
+		defaults: services.TokenTTLConfig{
+			AuthCookieTTLHours:    cfg.AuthCookieTTLHours,
+			AuthTokenTTLHours:     cfg.AuthTokenTTLHours,
+			TrackingTokenTTLHours: cfg.TrackingTokenTTLHours,
+		},
 		lockout: newLoginLockout(
 			cfg.LoginLockoutMaxFailures,
 			time.Duration(cfg.LoginLockoutWindowMinutes)*time.Minute,
@@ -87,7 +96,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, record, err := h.pb.Login(body.Email, body.Password)
+	ttlConfig := h.resolveTokenTTLConfig(r)
+	token, record, err := h.pb.Login(body.Email, body.Password, time.Duration(ttlConfig.AuthTokenTTLHours)*time.Hour)
 	if err != nil {
 		h.lockout.RecordFailure(ip)
 		log.Warn().Str("ip", ip).Msg("Login failed: invalid credentials")
@@ -107,7 +117,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	log.Info().Str("email", body.Email).Str("role", auth.RoleFromRecord(record)).Msg("Login successful")
 
-	cookieTTL := h.cfg.AuthCookieTTLHours
+	cookieTTL := ttlConfig.AuthCookieTTLHours
 	if cookieTTL <= 0 {
 		cookieTTL = 24
 	}
@@ -133,6 +143,19 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			"role":  auth.RoleFromRecord(record),
 		},
 	})
+}
+
+func (h *AuthHandler) resolveTokenTTLConfig(r *http.Request) services.TokenTTLConfig {
+	if h.settingsSvc == nil {
+		return h.defaults
+	}
+
+	resolved, err := h.settingsSvc.GetTokenTTLConfig(r.Context(), h.defaults)
+	if err != nil {
+		return h.defaults
+	}
+
+	return resolved
 }
 
 // GetSession returns the current authenticated employee's data.

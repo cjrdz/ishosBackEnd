@@ -36,7 +36,10 @@ Optional:
 - `ORDERS_PER_DAY`
 - `TRACKING_REQUESTS_PER_HOUR` (default `60`)
 - `TRACKING_TOKEN_SECRET` (default falls back to `DATABASE_URL`; set an explicit secret in production)
+- `TRACKING_TOKEN_TTL_HOURS` (default `720` / 30 days)
 - `LOGIN_ATTEMPTS_PER_MINUTE`
+- `AUTH_COOKIE_TTL_HOURS` (default `24`)
+- `AUTH_TOKEN_TTL_HOURS` (default `168` / 7 days)
 - `ENABLE_PB_ADMIN_UI` (default `false`)
 - `PB_ADMIN_UI_HOST` (default `127.0.0.1`)
 - `PB_ADMIN_UI_PORT` (default `8090`)

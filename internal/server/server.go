@@ -18,6 +18,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/database"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers"
 	appmiddleware "github.com/cjrdz/ishosBackEnd/internal/middleware"
+	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 )
 
@@ -50,7 +51,15 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	log.Info().Msg("Connected to PostgreSQL database and verified schema")
 
 	// ── Initialize handlers ──────────────────────────────────────────────
-	authHandler := handlers.NewAuthHandler(pb, cfg)
+	settingsRepo := repository.NewAdminSettingRepository(client)
+	settingsSvc := services.NewAdminSettingService(settingsRepo)
+	defaultTokenTTLs := services.TokenTTLConfig{
+		AuthCookieTTLHours:    cfg.AuthCookieTTLHours,
+		AuthTokenTTLHours:     cfg.AuthTokenTTLHours,
+		TrackingTokenTTLHours: cfg.TrackingTokenTTLHours,
+	}
+
+	authHandler := handlers.NewAuthHandler(pb, cfg, settingsSvc)
 	employeeHandler := handlers.NewEmployeeHandler(pb)
 	categoryHandler := handlers.NewCategoryHandler(client)
 	productHandler := handlers.NewProductHandler(client, cfg)
@@ -60,7 +69,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	analyticsHandler := handlers.NewAnalyticsHandler(client)
 	exportHandler := handlers.NewExportHandler(client)
 	userHandler := handlers.NewUserHandler(client)
-	adminSettingsHandler := handlers.NewAdminSettingsHandler(client)
+	adminSettingsHandler := handlers.NewAdminSettingsHandler(client, cfg)
 
 	// Order handler requires rate limiter
 	orderRateLimiter := appmiddleware.NewOrderRateLimiter(
@@ -71,7 +80,18 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		cfg.RedisPrefix,
 	)
 	trackingTokenStore := services.NewSQLTrackingTokenStore(rawDB)
-	trackingTokenService := services.NewTrackingTokenService(cfg.TrackingTokenSecret, trackingTokenStore)
+	trackingTokenService := services.NewTrackingTokenService(
+		cfg.TrackingTokenSecret,
+		time.Duration(cfg.TrackingTokenTTLHours)*time.Hour,
+		trackingTokenStore,
+	)
+	trackingTokenService.SetTTLResolver(func(ctx context.Context) time.Duration {
+		resolved, err := settingsSvc.GetTokenTTLConfig(ctx, defaultTokenTTLs)
+		if err != nil {
+			return time.Duration(defaultTokenTTLs.TrackingTokenTTLHours) * time.Hour
+		}
+		return time.Duration(resolved.TrackingTokenTTLHours) * time.Hour
+	})
 	orderHandler := handlers.NewOrderHandler(client, trackingTokenService, pb, cfg, orderRateLimiter)
 
 	// ── Middleware ───────────────────────────────────────────────────────
@@ -157,6 +177,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			// Admin dashboard settings
 			protected.Get("/settings/tabs", adminSettingsHandler.GetTabs)
 			protected.With(appmiddleware.RequireAdmin).Patch("/settings/tabs", adminSettingsHandler.UpdateTabs)
+			protected.Get("/settings/panel-config", adminSettingsHandler.GetPanelConfig)
+			protected.With(appmiddleware.RequireAdmin).Patch("/settings/panel-config", adminSettingsHandler.UpdatePanelConfig)
 
 			// Products management
 			protected.Post("/products", productHandler.Create)

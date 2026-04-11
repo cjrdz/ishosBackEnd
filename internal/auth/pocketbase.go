@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
@@ -27,7 +28,8 @@ import (
 // PBAuth holds the embedded PocketBase instance used for authentication
 // and employee management.
 type PBAuth struct {
-	App *pocketbase.PocketBase
+	App                 *pocketbase.PocketBase
+	authTokenTTLSeconds int64
 }
 
 // New creates and bootstraps a new PocketBase instance.
@@ -35,7 +37,7 @@ type PBAuth struct {
 // After calling New() the PocketBase database is ready and the "employees"
 // auth collection is guaranteed to exist. The PocketBase HTTP server is NOT
 // started — only the Go API is available.
-func New(dataDir string) (*PBAuth, error) {
+func New(dataDir string, authTokenTTLHours int) (*PBAuth, error) {
 	app := pocketbase.NewWithConfig(pocketbase.Config{
 		DefaultDataDir: dataDir,
 	})
@@ -46,7 +48,8 @@ func New(dataDir string) (*PBAuth, error) {
 		return nil, fmt.Errorf("pocketbase bootstrap: %w", err)
 	}
 
-	pb := &PBAuth{App: app}
+	ttlSeconds := int64(authTokenTTLHours) * int64(time.Hour/time.Second)
+	pb := &PBAuth{App: app, authTokenTTLSeconds: ttlSeconds}
 
 	// Ensure the employees auth collection exists.
 	if err := pb.ensureEmployeesCollection(); err != nil {
@@ -66,7 +69,7 @@ func New(dataDir string) (*PBAuth, error) {
 // This is called from the Chi auth handler (POST /api/v1/auth/login) and
 // does NOT make any HTTP requests — everything goes through PocketBase's
 // embedded SQLite DB.
-func (pb *PBAuth) Login(email, password string) (string, *core.Record, error) {
+func (pb *PBAuth) Login(email, password string, tokenTTL time.Duration) (string, *core.Record, error) {
 	record, err := pb.App.FindAuthRecordByEmail("employees", email)
 	if err != nil {
 		return "", nil, fmt.Errorf("invalid credentials")
@@ -76,7 +79,7 @@ func (pb *PBAuth) Login(email, password string) (string, *core.Record, error) {
 		return "", nil, fmt.Errorf("invalid credentials")
 	}
 
-	token, err := pb.GenerateAuthToken(record)
+	token, err := pb.GenerateAuthToken(record, tokenTTL)
 	if err != nil {
 		return "", nil, fmt.Errorf("generate token: %w", err)
 	}
@@ -89,8 +92,17 @@ func (pb *PBAuth) Login(email, password string) (string, *core.Record, error) {
 // which handles signing, claims and duration automatically.
 //
 // The generated token is fully compatible with ValidateToken / FindAuthRecordByToken.
-func (pb *PBAuth) GenerateAuthToken(record *core.Record) (string, error) {
-	token, err := record.NewAuthToken()
+func (pb *PBAuth) GenerateAuthToken(record *core.Record, tokenTTL time.Duration) (string, error) {
+	var (
+		token string
+		err   error
+	)
+
+	if tokenTTL > 0 {
+		token, err = record.NewStaticAuthToken(tokenTTL)
+	} else {
+		token, err = record.NewAuthToken()
+	}
 	if err != nil {
 		return "", fmt.Errorf("create auth token: %w", err)
 	}
@@ -272,7 +284,7 @@ func (pb *PBAuth) Close() error {
 // email/password authentication and custom role, name, phone fields.
 func (pb *PBAuth) ensureEmployeesCollection() error {
 	if existing, err := pb.App.FindCollectionByNameOrId("employees"); err == nil {
-		if pb.ensureEmployeesCollectionFields(existing) {
+		if pb.ensureEmployeesCollectionFields(existing) || pb.ensureEmployeesAuthTokenDuration(existing) {
 			if err := pb.App.Save(existing); err != nil {
 				return fmt.Errorf("update employees collection fields: %w", err)
 			}
@@ -287,6 +299,7 @@ func (pb *PBAuth) ensureEmployeesCollection() error {
 	collection.Name = "employees"
 
 	pb.ensureEmployeesCollectionFields(collection)
+	pb.ensureEmployeesAuthTokenDuration(collection)
 
 	if err := pb.App.Save(collection); err != nil {
 		return fmt.Errorf("create employees collection: %w", err)
@@ -335,6 +348,20 @@ func (pb *PBAuth) ensureEmployeesCollectionFields(collection *core.Collection) b
 	}
 
 	return changed
+}
+
+func (pb *PBAuth) ensureEmployeesAuthTokenDuration(collection *core.Collection) bool {
+	desiredDurationSeconds := pb.authTokenTTLSeconds
+	if desiredDurationSeconds < 10 {
+		desiredDurationSeconds = 7 * 24 * int64(time.Hour/time.Second)
+	}
+
+	if collection.AuthToken.Duration == desiredDurationSeconds {
+		return false
+	}
+
+	collection.AuthToken.Duration = desiredDurationSeconds
+	return true
 }
 
 // ---------------------------------------------------------------------------

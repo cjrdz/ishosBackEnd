@@ -20,7 +20,7 @@ var (
 	ErrExpiredTrackingToken = errors.New("expired tracking token")
 )
 
-const trackingTokenTTL = 30 * 24 * time.Hour
+const defaultTrackingTokenTTL = 30 * 24 * time.Hour
 
 type trackingTokenStore interface {
 	Store(ctx context.Context, orderNumber, tokenHash string, expiresAt time.Time) error
@@ -44,12 +44,22 @@ type TrackingAccess struct {
 }
 
 type TrackingTokenService struct {
-	secret []byte
-	store  trackingTokenStore
+	secret      []byte
+	ttl         time.Duration
+	ttlResolver func(context.Context) time.Duration
+	store       trackingTokenStore
 }
 
-func NewTrackingTokenService(secret string, store trackingTokenStore) *TrackingTokenService {
-	return &TrackingTokenService{secret: []byte(secret), store: store}
+func NewTrackingTokenService(secret string, ttl time.Duration, store trackingTokenStore) *TrackingTokenService {
+	if ttl <= 0 {
+		ttl = defaultTrackingTokenTTL
+	}
+
+	return &TrackingTokenService{secret: []byte(secret), ttl: ttl, store: store}
+}
+
+func (s *TrackingTokenService) SetTTLResolver(resolver func(context.Context) time.Duration) {
+	s.ttlResolver = resolver
 }
 
 func EnsureTrackingTokenSchema(ctx context.Context, db *stdsql.DB) error {
@@ -94,7 +104,7 @@ func (s *TrackingTokenService) Issue(ctx context.Context, orderNumber string, no
 	}
 
 	token := base64.RawURLEncoding.EncodeToString(raw)
-	expiresAt := now.UTC().Add(trackingTokenTTL)
+	expiresAt := now.UTC().Add(s.resolveTTL(ctx))
 	if err := s.store.Store(ctx, strings.TrimSpace(orderNumber), s.hashToken(token), expiresAt); err != nil {
 		return "", time.Time{}, err
 	}
@@ -154,6 +164,20 @@ func (s *TrackingTokenService) hashToken(token string) string {
 	mac := hmac.New(sha256.New, s.secret)
 	_, _ = mac.Write([]byte(strings.TrimSpace(token)))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (s *TrackingTokenService) resolveTTL(ctx context.Context) time.Duration {
+	if s.ttlResolver != nil {
+		if resolved := s.ttlResolver(ctx); resolved > 0 {
+			return resolved
+		}
+	}
+
+	if s.ttl > 0 {
+		return s.ttl
+	}
+
+	return defaultTrackingTokenTTL
 }
 
 func (s *sqlTrackingTokenStore) Store(ctx context.Context, orderNumber, tokenHash string, expiresAt time.Time) error {

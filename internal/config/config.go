@@ -54,6 +54,8 @@ type Config struct {
 	PublicStoreURL  string // Public storefront base URL, e.g. https://store.example.com
 	// Browser cookie TTL for auth_token (in hours)
 	AuthCookieTTLHours int
+	// PocketBase auth JWT TTL for employee logins (in hours)
+	AuthTokenTTLHours int
 
 	// Rate Limiting
 	OrdersPerHour int
@@ -72,6 +74,8 @@ type Config struct {
 
 	// Public tracking token signing key. Set a dedicated secret in production.
 	TrackingTokenSecret string
+	// Public order tracking token TTL (in hours)
+	TrackingTokenTTLHours int
 
 	// Redis (optional, used for distributed rate limiting).
 	RedisURL    string
@@ -119,6 +123,7 @@ func Load() *Config {
 		WhatsAppNumber:              getEnv("WHATSAPP_NUMBER", ""),
 		PublicStoreURL:              getEnv("PUBLIC_STORE_URL", "http://localhost:4321"),
 		AuthCookieTTLHours:          getEnvInt("AUTH_COOKIE_TTL_HOURS", 24),
+		AuthTokenTTLHours:           getEnvInt("AUTH_TOKEN_TTL_HOURS", 168),
 		OrdersPerHour:               getEnvInt("ORDERS_PER_HOUR", 5),
 		OrdersPerDay:                getEnvInt("ORDERS_PER_DAY", 20),
 		LoginAttemptsPerMinute:      getEnvInt("LOGIN_ATTEMPTS_PER_MINUTE", 10),
@@ -127,6 +132,7 @@ func Load() *Config {
 		LoginLockoutDurationMinutes: getEnvInt("LOGIN_LOCKOUT_DURATION_MINUTES", 15),
 		AllowedOrigins:              getEnv("ALLOWED_ORIGINS", "http://localhost:4321"),
 		TrackingTokenSecret:         getEnv("TRACKING_TOKEN_SECRET", databaseURL),
+		TrackingTokenTTLHours:       getEnvInt("TRACKING_TOKEN_TTL_HOURS", 720),
 		RedisURL:                    getEnv("REDIS_URL", ""),
 		RedisPrefix:                 getEnv("REDIS_PREFIX", "ishos"),
 		TrackingRequestsPerHour:     getEnvInt("TRACKING_REQUESTS_PER_HOUR", 60),

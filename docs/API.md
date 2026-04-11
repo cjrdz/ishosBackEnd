@@ -594,7 +594,7 @@ Response `200 OK`:
 
 ### Token lifecycle
 
-Tokens are PocketBase JWTs with a configurable expiration (default: 14 days). When a token expires, the user must log in again via `POST /api/v1/auth/login`.
+Tokens are PocketBase JWTs with configurable expiration via `AUTH_TOKEN_TTL_HOURS` (default: 168h / 7 days). Browser cookie persistence is configured separately via `AUTH_COOKIE_TTL_HOURS` (default: 24h). When a token expires, the user must log in again via `POST /api/v1/auth/login`.
 
 ---
 

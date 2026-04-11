@@ -8,8 +8,15 @@ import (
 )
 
 const AdminTabOrderSettingKey = "admin.tabs.order"
+const AdminTokenTTLSettingKey = "admin.tokens.ttl"
 
 var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "empleados", "usuarios", "herramientas", "configuracion"}
+
+type TokenTTLConfig struct {
+	AuthCookieTTLHours    int `json:"auth_cookie_ttl_hours"`
+	AuthTokenTTLHours     int `json:"auth_token_ttl_hours"`
+	TrackingTokenTTLHours int `json:"tracking_token_ttl_hours"`
+}
 
 type AdminSettingService struct {
 	repo *repository.AdminSettingRepository
@@ -64,6 +71,44 @@ func (s *AdminSettingService) UpdateTabOrder(ctx context.Context, tabOrder []str
 	return sanitized, nil
 }
 
+func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+	record, err := s.repo.GetByKey(ctx, AdminTokenTTLSettingKey)
+	if err != nil {
+		return sanitizeTokenTTLConfig(TokenTTLConfig{}, defaults), nil
+	}
+
+	raw := record.Value
+	if raw == nil {
+		return sanitizeTokenTTLConfig(TokenTTLConfig{}, defaults), nil
+	}
+
+	resolved := TokenTTLConfig{
+		AuthCookieTTLHours:    parsePositiveInt(raw["auth_cookie_ttl_hours"]),
+		AuthTokenTTLHours:     parsePositiveInt(raw["auth_token_ttl_hours"]),
+		TrackingTokenTTLHours: parsePositiveInt(raw["tracking_token_ttl_hours"]),
+	}
+
+	return sanitizeTokenTTLConfig(resolved, defaults), nil
+}
+
+func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+	sanitized := sanitizeTokenTTLConfig(input, defaults)
+	if !isValidTokenTTLConfig(sanitized) {
+		return TokenTTLConfig{}, fmt.Errorf("invalid token TTL configuration")
+	}
+
+	_, err := s.repo.UpsertByKey(ctx, AdminTokenTTLSettingKey, map[string]any{
+		"auth_cookie_ttl_hours":    sanitized.AuthCookieTTLHours,
+		"auth_token_ttl_hours":     sanitized.AuthTokenTTLHours,
+		"tracking_token_ttl_hours": sanitized.TrackingTokenTTLHours,
+	})
+	if err != nil {
+		return TokenTTLConfig{}, err
+	}
+
+	return sanitized, nil
+}
+
 func DefaultAdminTabOrder() []string {
 	return append([]string(nil), defaultAdminTabOrder...)
 }
@@ -97,4 +142,62 @@ func sanitizeTabOrder(order []string) []string {
 	}
 
 	return sanitized
+}
+
+func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
+	resolved := TokenTTLConfig{
+		AuthCookieTTLHours:    input.AuthCookieTTLHours,
+		AuthTokenTTLHours:     input.AuthTokenTTLHours,
+		TrackingTokenTTLHours: input.TrackingTokenTTLHours,
+	}
+
+	if resolved.AuthCookieTTLHours <= 0 {
+		resolved.AuthCookieTTLHours = defaults.AuthCookieTTLHours
+	}
+	if resolved.AuthTokenTTLHours <= 0 {
+		resolved.AuthTokenTTLHours = defaults.AuthTokenTTLHours
+	}
+	if resolved.TrackingTokenTTLHours <= 0 {
+		resolved.TrackingTokenTTLHours = defaults.TrackingTokenTTLHours
+	}
+
+	if resolved.AuthCookieTTLHours <= 0 {
+		resolved.AuthCookieTTLHours = 24
+	}
+	if resolved.AuthTokenTTLHours <= 0 {
+		resolved.AuthTokenTTLHours = 168
+	}
+	if resolved.TrackingTokenTTLHours <= 0 {
+		resolved.TrackingTokenTTLHours = 720
+	}
+
+	return resolved
+}
+
+func isValidTokenTTLConfig(cfg TokenTTLConfig) bool {
+	const maxHours = 24 * 365 * 3
+	return cfg.AuthCookieTTLHours > 0 && cfg.AuthCookieTTLHours <= maxHours &&
+		cfg.AuthTokenTTLHours > 0 && cfg.AuthTokenTTLHours <= maxHours &&
+		cfg.TrackingTokenTTLHours > 0 && cfg.TrackingTokenTTLHours <= maxHours
+}
+
+func parsePositiveInt(value any) int {
+	maxInt := int(^uint(0) >> 1)
+
+	switch typed := value.(type) {
+	case int:
+		if typed > 0 {
+			return typed
+		}
+	case int64:
+		if typed > 0 && typed <= int64(maxInt) {
+			return int(typed)
+		}
+	case float64:
+		if typed > 0 && typed <= float64(maxInt) {
+			return int(typed)
+		}
+	}
+
+	return 0
 }
