@@ -24,8 +24,8 @@ COPY --from=builder /app/server /app/server
 COPY --from=builder --chown=65532:65532 /app/pb_data /app/pb_data
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Railway does not allow Dockerfile VOLUME declarations.
-# Configure persistent storage as a Railway Volume mounted at /app/pb_data.
+# PocketBase stores its SQLite auth data here
+# VOLUME ["/app/pb_data"]
 
 EXPOSE 8080
 
