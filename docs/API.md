@@ -776,6 +776,284 @@ Response `200 OK`:
 
 ---
 
+---
+
+## 10) Flavors
+
+Flavors represent the available gelato flavors that can be linked to products.
+
+| Operation                        | Method | Path                                       |
+| -------------------------------- | ------ | ------------------------------------------ |
+| List all active flavors (public) | GET    | `/api/v1/flavors`                          |
+| Get flavor by ID (public)        | GET    | `/api/v1/flavors/{id}`                     |
+| Create flavor (staff)            | POST   | `/api/v1/flavors`                          |
+| Update flavor (staff)            | PATCH  | `/api/v1/flavors/{id}`                     |
+| Delete flavor (staff)            | DELETE | `/api/v1/flavors/{id}`                     |
+| Link flavor to product (staff)   | POST   | `/api/v1/products/{id}/flavors/{flavorId}` |
+| Unlink flavor from product (staff)| DELETE | `/api/v1/products/{id}/flavors/{flavorId}`|
+
+### POST `/api/v1/flavors` — Create
+
+Body:
+
+```json
+{
+  "name": "Chocolate",
+  "description": "Rich dark chocolate",
+  "is_active": true
+}
+```
+
+Response `201 Created`: returns the created flavor object.
+
+### PATCH `/api/v1/flavors/{id}` — Update (partial)
+
+Send only the fields to change:
+
+```json
+{
+  "name": "Dark Chocolate",
+  "is_active": false
+}
+```
+
+Response `200 OK`: returns the updated flavor.
+
+### POST `/api/v1/products/{id}/flavors/{flavorId}` — Link flavor to product
+
+No body needed. Associates the flavor with the product.
+
+Response `200 OK`:
+
+```json
+{
+  "message": "Flavor linked to product"
+}
+```
+
+### DELETE `/api/v1/products/{id}/flavors/{flavorId}` — Unlink
+
+Response `200 OK`:
+
+```json
+{
+  "message": "Flavor unlinked from product"
+}
+```
+
+---
+
+## 11) Addons
+
+Addons represent toppings or extras that can be linked to products, organized by `group_name`.
+
+| Operation                        | Method | Path                                       |
+| -------------------------------- | ------ | ------------------------------------------ |
+| List all active addons (public)  | GET    | `/api/v1/addons`                           |
+| Get addon by ID (public)         | GET    | `/api/v1/addons/{id}`                      |
+| Create addon (staff)             | POST   | `/api/v1/addons`                           |
+| Update addon (staff)             | PATCH  | `/api/v1/addons/{id}`                      |
+| Delete addon (staff)             | DELETE | `/api/v1/addons/{id}`                      |
+| Link addon to product (staff)    | POST   | `/api/v1/products/{id}/addons/{addonId}`   |
+| Unlink addon from product (staff)| DELETE | `/api/v1/products/{id}/addons/{addonId}`   |
+
+### POST `/api/v1/addons` — Create
+
+Body:
+
+```json
+{
+  "name": "Sprinkles",
+  "group_name": "toppings",
+  "description": "Colorful sugar sprinkles",
+  "is_active": true
+}
+```
+
+| Field        | Type   | Required | Notes                                      |
+| ------------ | ------ | -------- | ------------------------------------------ |
+| `name`       | string | yes      | Max 200 chars                              |
+| `group_name` | string | no       | Groups addons visually in UI (e.g. `"toppings"`, `"sauces"`) |
+| `description`| string | no       |                                            |
+| `is_active`  | bool   | no       | Default `true`                             |
+
+Response `201 Created`: returns the created addon.
+
+### PATCH `/api/v1/addons/{id}` — Update (partial)
+
+```json
+{
+  "group_name": "extras",
+  "is_active": false
+}
+```
+
+Response `200 OK`: returns the updated addon.
+
+---
+
+## 12) Analytics
+
+All analytics endpoints are **admin-only**.
+
+| Operation                 | Method | Path                                  |
+| ------------------------- | ------ | ------------------------------------- |
+| KPI overview              | GET    | `/api/v1/analytics/overview`          |
+| Orders over time          | GET    | `/api/v1/analytics/orders-over-time`  |
+| Top-selling products      | GET    | `/api/v1/analytics/top-products`      |
+
+### GET `/api/v1/analytics/overview`
+
+Response `200 OK`:
+
+```json
+{
+  "total_orders": 128,
+  "orders_today": 7,
+  "total_revenue": 450.75,
+  "revenue_today": 24.50,
+  "pending_orders": 3
+}
+```
+
+### GET `/api/v1/analytics/orders-over-time`
+
+Response `200 OK`:
+
+```json
+{
+  "data": [
+    { "date": "2026-04-06", "count": 4 },
+    { "date": "2026-04-07", "count": 6 }
+  ]
+}
+```
+
+### GET `/api/v1/analytics/top-products`
+
+Response `200 OK`:
+
+```json
+{
+  "products": [
+    { "product_name": "Gelato de Chocolate", "total_sold": 42 },
+    { "product_name": "Sorbete de Mango",    "total_sold": 31 }
+  ]
+}
+```
+
+---
+
+## 13) Users (Customer Directory)
+
+Users are customer records stored in PostgreSQL via Ent ORM (separate from employees, which are in PocketBase).
+
+| Operation                     | Method | Path                        |
+| ----------------------------- | ------ | --------------------------- |
+| List users (staff)            | GET    | `/api/v1/users`             |
+| Get user by ID (staff)        | GET    | `/api/v1/users/{id}`        |
+| Get user's orders (admin)     | GET    | `/api/v1/users/{id}/orders` |
+| Create user (admin)           | POST   | `/api/v1/users`             |
+| Update user (admin)           | PATCH  | `/api/v1/users/{id}`        |
+| Delete user (admin)           | DELETE | `/api/v1/users/{id}`        |
+
+### POST `/api/v1/users` — Create
+
+Body:
+
+```json
+{
+  "name": "María García",
+  "email": "maria@example.com",
+  "phone": "+50688887777"
+}
+```
+
+Response `201 Created`: returns the created user.
+
+### GET `/api/v1/users/{id}/orders`
+
+Returns the orders associated with this user's email or phone, linked at order-creation time.
+
+Response `200 OK`: returns an array of order objects.
+
+---
+
+## 14) Admin Settings
+
+Settings are persisted in PostgreSQL via the `AdminSetting` Ent entity. They control dashboard tab order and token TTL overrides.
+
+| Operation                         | Method | Path                            |
+| --------------------------------- | ------ | ------------------------------- |
+| Get tab order (staff)             | GET    | `/api/v1/settings/tabs`         |
+| Update tab order (admin)          | PATCH  | `/api/v1/settings/tabs`         |
+| Get panel config (staff)          | GET    | `/api/v1/settings/panel-config` |
+| Update panel config (admin)       | PATCH  | `/api/v1/settings/panel-config` |
+
+### GET & PATCH `/api/v1/settings/tabs`
+
+Stores the admin dashboard tab display order.
+
+PATCH body:
+
+```json
+{
+  "tabs": ["orders", "products", "categories", "flavors", "addons", "employees", "users", "tools", "settings"]
+}
+```
+
+Response `200 OK`: returns the persisted tab order.
+
+### GET & PATCH `/api/v1/settings/panel-config`
+
+Stores configurable TTL overrides for auth and tracking tokens.
+
+PATCH body (all fields optional):
+
+```json
+{
+  "auth_cookie_ttl_hours": 24,
+  "auth_token_ttl_hours": 168,
+  "tracking_token_ttl_hours": 720
+}
+```
+
+Response `200 OK`: returns the current panel configuration.
+
+---
+
+## 15) Export / Purge
+
+Admin-only endpoints for order data management.
+
+| Operation              | Method | Path                    |
+| ---------------------- | ------ | ----------------------- |
+| Export orders (CSV)    | GET    | `/api/v1/export/orders` |
+| Purge old orders       | DELETE | `/api/v1/export/orders` |
+
+### GET `/api/v1/export/orders`
+
+Returns a CSV file download containing all orders. Used for backups and reporting.
+
+Response: `text/csv` attachment with orders data.
+
+### DELETE `/api/v1/export/orders`
+
+Permanently deletes orders that meet the purge criteria (e.g., delivered/cancelled orders older than a configured threshold).
+
+Response `200 OK`:
+
+```json
+{
+  "message": "Orders purged successfully",
+  "count": 14
+}
+```
+
+> **Warning:** This operation is irreversible. Export first with `GET /export/orders` before purging.
+
+---
+
 ## Bruno — Testing Guide
 
 ### Setup

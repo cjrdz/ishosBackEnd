@@ -20,9 +20,10 @@ func NewAdminSettingsHandler(db *ent.Client, cfg *config.Config) *AdminSettingsH
 	return &AdminSettingsHandler{
 		settingsSvc: services.NewAdminSettingService(repo),
 		defaults: services.TokenTTLConfig{
-			AuthCookieTTLHours:    cfg.AuthCookieTTLHours,
-			AuthTokenTTLHours:     cfg.AuthTokenTTLHours,
-			TrackingTokenTTLHours: cfg.TrackingTokenTTLHours,
+			AuthCookieTTLHours:      cfg.AuthCookieTTLHours,
+			AuthTokenTTLHours:       cfg.AuthTokenTTLHours,
+			TrackingTokenTTLHours:   cfg.TrackingTokenTTLHours,
+			InactivityLogoutSeconds: cfg.InactivityLogoutSeconds,
 		},
 	}
 }
@@ -68,9 +69,10 @@ func (h *AdminSettingsHandler) GetPanelConfig(w http.ResponseWriter, r *http.Req
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"auth_cookie_ttl_hours":    configValues.AuthCookieTTLHours,
-		"auth_token_ttl_hours":     configValues.AuthTokenTTLHours,
-		"tracking_token_ttl_hours": configValues.TrackingTokenTTLHours,
+		"auth_cookie_ttl_hours":     configValues.AuthCookieTTLHours,
+		"auth_token_ttl_hours":      configValues.AuthTokenTTLHours,
+		"tracking_token_ttl_hours":  configValues.TrackingTokenTTLHours,
+		"inactivity_logout_seconds": configValues.InactivityLogoutSeconds,
 	})
 }
 
@@ -89,8 +91,9 @@ func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"auth_cookie_ttl_hours":    configValues.AuthCookieTTLHours,
-		"auth_token_ttl_hours":     configValues.AuthTokenTTLHours,
-		"tracking_token_ttl_hours": configValues.TrackingTokenTTLHours,
+		"auth_cookie_ttl_hours":     configValues.AuthCookieTTLHours,
+		"auth_token_ttl_hours":      configValues.AuthTokenTTLHours,
+		"tracking_token_ttl_hours":  configValues.TrackingTokenTTLHours,
+		"inactivity_logout_seconds": configValues.InactivityLogoutSeconds,
 	})
 }

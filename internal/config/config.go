@@ -56,6 +56,8 @@ type Config struct {
 	AuthCookieTTLHours int
 	// PocketBase auth JWT TTL for employee logins (in hours)
 	AuthTokenTTLHours int
+	// Frontend session inactivity timeout (in seconds)
+	InactivityLogoutSeconds int
 
 	// Rate Limiting
 	OrdersPerHour int
@@ -124,6 +126,7 @@ func Load() *Config {
 		PublicStoreURL:              getEnv("PUBLIC_STORE_URL", "http://localhost:4321"),
 		AuthCookieTTLHours:          getEnvInt("AUTH_COOKIE_TTL_HOURS", 24),
 		AuthTokenTTLHours:           getEnvInt("AUTH_TOKEN_TTL_HOURS", 168),
+		InactivityLogoutSeconds:     getEnvInt("INACTIVITY_LOGOUT_SECONDS", getEnvInt("INACTIVITY_LOGOUT_MINUTES", 15)*60),
 		OrdersPerHour:               getEnvInt("ORDERS_PER_HOUR", 5),
 		OrdersPerDay:                getEnvInt("ORDERS_PER_DAY", 20),
 		LoginAttemptsPerMinute:      getEnvInt("LOGIN_ATTEMPTS_PER_MINUTE", 10),

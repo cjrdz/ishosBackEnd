@@ -170,14 +170,17 @@ ishosBackend/
 │   │   └── main.go             # Create first admin employee
 │   ├── migrate/
 │   │   └── main.go             # Apply schema migrations and verify addon grouping column
-│   └── seed/
-│       └── main.go             # Seed data helper
+│   ├── seed/
+│   │   └── main.go             # Seed categories/products from JSON
 ├── ent/
 │   ├── schema/
 │   │   ├── category.go         # Category entity
-│   │   ├── product.go          # Product entity
+│   │   ├── product.go          # Product entity (edges: flavor, addon)
 │   │   ├── order.go            # Order entity
 │   │   ├── orderitem.go        # OrderItem entity
+│   │   ├── flavor.go           # Flavor entity
+│   │   ├── addon.go            # Addon entity
+│   │   ├── adminsetting.go     # AdminSetting entity (panel config, tab order)
 │   │   └── ratelimit.go        # RateLimit entity
 │   └── generate.go             # go:generate directive
 ├── internal/
@@ -189,9 +192,15 @@ ishosBackend/
 │   │   ├── auth.go             # Login, session, logout
 │   │   ├── categories.go       # Category CRUD
 │   │   ├── employees.go        # Employee management
+│   │   ├── flavors.go          # Flavor CRUD
+│   │   ├── addons.go           # Addon CRUD
 │   │   ├── helpers.go          # Shared handler utilities
 │   │   ├── orders.go           # Order lifecycle
-│   │   ├── products.go         # Product CRUD
+│   │   ├── products.go         # Product CRUD + flavor/addon linking
+│   │   ├── users.go            # User (customer directory) CRUD
+│   │   ├── analytics.go        # Analytics endpoints
+│   │   ├── export.go           # Order export and purge
+│   │   ├── admin_settings.go   # Admin panel settings
 │   │   └── upload.go           # R2 image upload/delete
 │   ├── middleware/
 │   │   ├── auth.go             # PBAuth session validation (Chi middleware)
@@ -199,19 +208,22 @@ ishosBackend/
 │   │   ├── logger.go           # Request logging middleware
 │   │   ├── recovery.go         # Panic recovery middleware
 │   │   ├── security_headers.go # Security response headers middleware
-│   │   ├── ratelimit.go        # IP/phone rate limiting
+│   │   ├── ratelimit.go        # IP/phone rate limiting (Redis + in-memory fallback)
 │   │   └── roles.go            # Admin/employee role checks
 │   ├── repository/
 │   │   ├── category_repo.go
 │   │   ├── product_repo.go
 │   │   ├── order_repo.go
-│   │   └── ratelimit_repo.go
+│   │   ├── ratelimit_repo.go
+│   │   └── adminsetting_repo.go
 │   ├── server/
 │   │   └── server.go           # Chi router, DB wiring, route registration
 │   ├── services/
 │   │   ├── order_service.go
 │   │   ├── product_service.go
 │   │   ├── upload_service.go
+│   │   ├── adminsetting_service.go
+│   │   ├── tracking_token_service.go  # Tracking token mint/verify/revoke
 │   │   └── whatsapp_service.go # WhatsApp Business API
 │   └── validator/
 │       ├── validator.go
@@ -281,7 +293,7 @@ These controls are intentionally conservative and can be relaxed per endpoint if
 ## Scripts
 
 - `scripts/bootstrap_admin.sh` — creates the first admin user; reads credentials from `.env` (`BOOTSTRAP_ADMIN_*`) or prompts interactively.
-- `scripts/seed_all.sh` — seeds categories/products from JSON files into the configured database.
+- `scripts/seed_all.sh` — seeds categories, products, flavors, and addons from JSON files into the configured database.
 - `scripts/clean_seeds.sh` — removes seeded data from database tables (supports confirmation and dry-run mode).
 - `scripts/test.sh` — runs Go tests with race detector and generates `coverage.html`.
 - `scripts/backup_pb.sh` — creates a compressed backup of `pb_data` into `pb_data/backups`.
@@ -334,6 +346,30 @@ These controls are intentionally conservative and can be relaxed per endpoint if
 | PATCH  | `/api/v1/orders/{id}/notes`                    | Staff   | Update internal notes only                 |
 | DELETE | `/api/v1/orders/{id}`                          | Admin   | Delete order                               |
 
+### Flavors
+
+| Method | Path                                       | Auth   | Description                         |
+| ------ | ------------------------------------------ | ------ | ----------------------------------- |
+| GET    | `/api/v1/flavors`                          | Public | List all active flavors             |
+| GET    | `/api/v1/flavors/{id}`                     | Public | Get flavor by ID                    |
+| POST   | `/api/v1/flavors`                          | Staff  | Create flavor                       |
+| PATCH  | `/api/v1/flavors/{id}`                     | Staff  | Update flavor                       |
+| DELETE | `/api/v1/flavors/{id}`                     | Staff  | Delete flavor                       |
+| POST   | `/api/v1/products/{id}/flavors/{flavorId}` | Staff  | Link flavor to product              |
+| DELETE | `/api/v1/products/{id}/flavors/{flavorId}` | Staff  | Unlink flavor from product          |
+
+### Addons
+
+| Method | Path                                       | Auth   | Description                         |
+| ------ | ------------------------------------------ | ------ | ----------------------------------- |
+| GET    | `/api/v1/addons`                           | Public | List all active addons              |
+| GET    | `/api/v1/addons/{id}`                      | Public | Get addon by ID                     |
+| POST   | `/api/v1/addons`                           | Staff  | Create addon                        |
+| PATCH  | `/api/v1/addons/{id}`                      | Staff  | Update addon                        |
+| DELETE | `/api/v1/addons/{id}`                      | Staff  | Delete addon                        |
+| POST   | `/api/v1/products/{id}/addons/{addonId}`   | Staff  | Link addon to product               |
+| DELETE | `/api/v1/products/{id}/addons/{addonId}`   | Staff  | Unlink addon from product           |
+
 ### Analytics
 
 | Method | Path                                  | Auth  | Description                    |
@@ -359,6 +395,33 @@ These controls are intentionally conservative and can be relaxed per endpoint if
 | PATCH  | `/api/v1/employees/{id}`           | Admin | Update employee fields/state    |
 | PATCH  | `/api/v1/employees/{id}/deactivate`| Admin | Deactivate employee             |
 | DELETE | `/api/v1/employees/{id}`           | Admin | Permanently delete employee     |
+
+### Users (Customer Directory)
+
+| Method | Path                         | Auth  | Description                               |
+| ------ | ---------------------------- | ----- | ----------------------------------------- |
+| GET    | `/api/v1/users`              | Staff | List all users                            |
+| GET    | `/api/v1/users/{id}`         | Staff | Get user by ID                            |
+| GET    | `/api/v1/users/{id}/orders`  | Admin | Get orders associated with this user      |
+| POST   | `/api/v1/users`              | Admin | Create user                               |
+| PATCH  | `/api/v1/users/{id}`         | Admin | Update user                               |
+| DELETE | `/api/v1/users/{id}`         | Admin | Delete user                               |
+
+### Admin Settings
+
+| Method | Path                             | Auth  | Description                                  |
+| ------ | -------------------------------- | ----- | -------------------------------------------- |
+| GET    | `/api/v1/settings/tabs`          | Staff | Get saved dashboard tab order                |
+| PATCH  | `/api/v1/settings/tabs`          | Admin | Update dashboard tab order                   |
+| GET    | `/api/v1/settings/panel-config`  | Staff | Get panel configuration (token TTLs, etc.)   |
+| PATCH  | `/api/v1/settings/panel-config`  | Admin | Update panel configuration                   |
+
+### Export / Purge
+
+| Method | Path                      | Auth  | Description                       |
+| ------ | ------------------------- | ----- | --------------------------------- |
+| GET    | `/api/v1/export/orders`   | Admin | Export orders as CSV              |
+| DELETE | `/api/v1/export/orders`   | Admin | Purge old orders from the database|
 
 ### Health
 
@@ -418,6 +481,12 @@ Customer submits order
 | `TRACKING_REQUESTS_PER_HOUR` | No | `60`                | Max public tracking requests per IP per hour |
 | `TRACKING_TOKEN_SECRET` | No   | `DATABASE_URL` fallback | Signing key for public tracking tokens (set explicitly in production) |
 | `TRACKING_TOKEN_TTL_HOURS` | No | `720`               | Public tracking token lifetime in hours |
+| `REDIS_URL`             | No       | —                       | Redis connection URL for distributed rate limiting (falls back to in-memory) |
+| `REDIS_PREFIX`          | No       | `ishos:`                | Key prefix for Redis rate limit entries |
+| `AUTH_COOKIE_TTL_HOURS` | No       | `24`                    | `auth_token` cookie lifetime in hours  |
+| `AUTH_TOKEN_TTL_HOURS`  | No       | `168`                   | JWT token validity in hours (7 days)   |
+| `LOGIN_ATTEMPTS_PER_MINUTE` | No   | `5`                     | Max failed login attempts per IP per minute |
+| `ALLOWED_ORIGINS`       | No       | `http://localhost:4321` | Comma-separated CORS allowed origins   |
 | `LOGIN_ATTEMPTS_PER_MINUTE` | No | `10`                  | Max login attempts per IP per minute  |
 | `LOGIN_LOCKOUT_MAX_FAILURES` | No | `5`                  | Failed logins before lockout is applied |
 | `LOGIN_LOCKOUT_WINDOW_MINUTES` | No | `15`               | Rolling window used to count failed logins |

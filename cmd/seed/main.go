@@ -11,19 +11,18 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
-
-	"entgo.io/ent/dialect"
-	"entgo.io/ent/dialect/sql"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/database"
 )
 
 // seedCategory matches the JSON shape from products_category.json
@@ -62,148 +61,274 @@ type seedProduct struct {
 	UpdatedAt      string                 `json:"updated_at"`
 }
 
+type seedFlavor struct {
+	Name         string `json:"name"`
+	DisplayOrder int    `json:"display_order"`
+	IsSeasonal   bool   `json:"is_seasonal"`
+	IsActive     *bool  `json:"is_active"`
+}
+
+type seedAddon struct {
+	Name         string  `json:"name"`
+	Price        float64 `json:"price"`
+	GroupName    string  `json:"group_name"`
+	DisplayOrder int     `json:"display_order"`
+	IsActive     *bool   `json:"is_active"`
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func resolveSeedPath(explicit, fallback string) string {
+	if explicit != "" {
+		return explicit
+	}
+	if fileExists(fallback) {
+		return fallback
+	}
+	return ""
+}
+
+func mustReadJSON(filePath string, target any) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatal().Err(err).Str("file", filePath).Msg("Failed to read JSON seed file")
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		log.Fatal().Err(err).Str("file", filePath).Msg("Failed to parse JSON seed file")
+	}
+}
+
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
 	categoriesFile := flag.String("categories", "", "Path to products_category.json")
 	productsFile := flag.String("products", "", "Path to products_product.json")
+	flavorsFile := flag.String("flavors", "", "Path to flavors.json")
+	addonsFile := flag.String("addons", "", "Path to addons.json")
 	flag.Parse()
 
-	if *categoriesFile == "" || *productsFile == "" {
-		log.Fatal().Msg("Usage: go run ./cmd/seed --categories=<path> --products=<path>")
+	resolvedCategories := resolveSeedPath(*categoriesFile, filepath.FromSlash("seeds/products_category.json"))
+	resolvedProducts := resolveSeedPath(*productsFile, filepath.FromSlash("seeds/products_product.json"))
+	resolvedFlavors := resolveSeedPath(*flavorsFile, filepath.FromSlash("seeds/flavors.json"))
+	resolvedAddons := resolveSeedPath(*addonsFile, filepath.FromSlash("seeds/addons.json"))
+
+	catalogRequested := resolvedCategories != "" || resolvedProducts != ""
+	optionsRequested := resolvedFlavors != "" || resolvedAddons != ""
+
+	if !catalogRequested && !optionsRequested {
+		log.Fatal().Msg("No seed files found. Provide --categories/--products and/or --flavors/--addons, or create default files under seeds/")
+	}
+	if (resolvedCategories == "") != (resolvedProducts == "") {
+		log.Fatal().Msg("Categories and products must be provided together")
+	}
+	if (resolvedFlavors == "") != (resolvedAddons == "") {
+		log.Fatal().Msg("Flavors and addons must be provided together")
 	}
 
 	cfg := config.Load()
-
-	// Connect to database
-	pgCfg, err := pgx.ParseConfig(cfg.DatabaseURL)
+	db, rawDB, err := database.OpenClient(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse database URL")
+		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
 	}
-	drv := sql.OpenDB(dialect.Postgres, stdlib.OpenDB(*pgCfg))
-	db := ent.NewClient(ent.Driver(drv))
+	defer db.Close()
 
 	ctx := context.Background()
 
-	// Run migrations first
-	if err := db.Schema.Create(ctx); err != nil {
-		_ = db.Close()
-		log.Fatal().Err(err).Msg("Failed to run migrations")
+	if err := database.EnsureSchema(ctx, db, rawDB); err != nil {
+		log.Fatal().Err(err).Msg("Failed to verify database schema")
 	}
-	log.Info().Msg("Migrations complete")
+	log.Info().Msg("Database schema verified")
 
-	// ── Seed Categories ──────────────────────────────────────────────────
-	catData, err := os.ReadFile(*categoriesFile)
-	if err != nil {
-		log.Fatal().Err(err).Str("file", *categoriesFile).Msg("Failed to read categories file")
-	}
+	createdCategories := 0
+	createdProducts := 0
+	createdFlavors := 0
+	createdAddons := 0
 
-	var seedCategories []seedCategory
-	if err := json.Unmarshal(catData, &seedCategories); err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse categories JSON")
-	}
+	if resolvedCategories != "" {
+		var seedCategories []seedCategory
+		mustReadJSON(resolvedCategories, &seedCategories)
 
-	// Map old integer IDs to new UUID-based Ent categories
-	// Key: old integer ID from the seed JSON, Value: the Ent category entity
-	catMap := make(map[int]*ent.Category)
+		// Map old integer IDs to UUID-backed Ent categories.
+		catMap := make(map[int]*ent.Category)
 
-	for i, sc := range seedCategories {
-		// Check if category already exists by slug
-		exists, _ := db.Category.Query().Where(category.SlugEQ(sc.Slug)).Exist(ctx)
-		if exists {
-			log.Info().Str("slug", sc.Slug).Msg("Category already exists, skipping")
-			existing, _ := db.Category.Query().Where(category.SlugEQ(sc.Slug)).Only(ctx)
-			catMap[sc.ID] = existing
-			continue
+		for i, sc := range seedCategories {
+			exists, _ := db.Category.Query().Where(category.SlugEQ(sc.Slug)).Exist(ctx)
+			if exists {
+				log.Info().Str("slug", sc.Slug).Msg("Category already exists, skipping")
+				existing, queryErr := db.Category.Query().Where(category.SlugEQ(sc.Slug)).Only(ctx)
+				if queryErr == nil {
+					catMap[sc.ID] = existing
+				}
+				continue
+			}
+
+			now := time.Now()
+			var imgPath *string
+			if sc.Image != "" {
+				imgPath = &sc.Image
+			}
+
+			created, createErr := db.Category.Create().
+				SetName(sc.Name).
+				SetSlug(sc.Slug).
+				SetDescription(sc.Description).
+				SetNillableImagePath(imgPath).
+				SetDisplayOrder(i).
+				SetIsActive(sc.IsActive).
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(ctx)
+			if createErr != nil {
+				log.Error().Err(createErr).Str("name", sc.Name).Msg("Failed to create category")
+				continue
+			}
+
+			createdCategories++
+			catMap[sc.ID] = created
+			log.Info().Str("name", sc.Name).Str("id", created.ID.String()).Msg("Category created")
 		}
 
-		now := time.Now()
-		var imgPath *string
-		if sc.Image != "" {
-			imgPath = &sc.Image
-		}
+		var seedProducts []seedProduct
+		mustReadJSON(resolvedProducts, &seedProducts)
 
-		c, err := db.Category.Create().
-			SetName(sc.Name).
-			SetSlug(sc.Slug).
-			SetDescription(sc.Description).
-			SetNillableImagePath(imgPath).
-			SetDisplayOrder(i).
-			SetIsActive(sc.IsActive).
-			SetCreatedAt(now).
-			SetUpdatedAt(now).
-			Save(ctx)
-		if err != nil {
-			log.Error().Err(err).Str("name", sc.Name).Msg("Failed to create category")
-			continue
-		}
+		for _, sp := range seedProducts {
+			var price float64
+			if _, scanErr := fmt.Sscanf(sp.Price, "%f", &price); scanErr != nil {
+				log.Error().Err(scanErr).Str("name", sp.Name).Msg("Failed to parse price")
+				continue
+			}
 
-		catMap[sc.ID] = c
-		log.Info().Str("name", sc.Name).Str("id", c.ID.String()).Msg("Category created")
+			cat, ok := catMap[sp.CategoryID]
+			if !ok {
+				log.Error().
+					Int("category_id", sp.CategoryID).
+					Str("product", sp.Name).
+					Msg("Category not found for product, skipping")
+				continue
+			}
+
+			now := time.Now()
+			var imgPath *string
+			if sp.Image != "" {
+				imgPath = &sp.Image
+			}
+
+			created, createErr := db.Product.Create().
+				SetName(sp.Name).
+				SetDescription(sp.Description).
+				SetPrice(price).
+				SetNillableImagePath(imgPath).
+				SetIsAvailable(sp.IsActive).
+				SetCategoryID(cat.ID).
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(ctx)
+			if createErr != nil {
+				log.Error().Err(createErr).Str("name", sp.Name).Msg("Failed to create product")
+				continue
+			}
+
+			createdProducts++
+			log.Info().
+				Str("name", sp.Name).
+				Str("id", created.ID.String()).
+				Str("category", cat.Name).
+				Float64("price", price).
+				Msg("Product created")
+		}
 	}
 
-	// ── Seed Products ────────────────────────────────────────────────────
-	prodData, err := os.ReadFile(*productsFile)
-	if err != nil {
-		log.Fatal().Err(err).Str("file", *productsFile).Msg("Failed to read products file")
+	if resolvedFlavors != "" {
+		var seedFlavors []seedFlavor
+		mustReadJSON(resolvedFlavors, &seedFlavors)
+
+		for _, sf := range seedFlavors {
+			exists, _ := db.Flavor.Query().Where(flavor.NameEQ(sf.Name)).Exist(ctx)
+			if exists {
+				log.Info().Str("name", sf.Name).Msg("Flavor already exists, skipping")
+				continue
+			}
+
+			now := time.Now()
+			active := true
+			if sf.IsActive != nil {
+				active = *sf.IsActive
+			}
+
+			created, createErr := db.Flavor.Create().
+				SetName(sf.Name).
+				SetDisplayOrder(sf.DisplayOrder).
+				SetIsSeasonal(sf.IsSeasonal).
+				SetIsActive(active).
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(ctx)
+			if createErr != nil {
+				log.Error().Err(createErr).Str("name", sf.Name).Msg("Failed to create flavor")
+				continue
+			}
+
+			createdFlavors++
+			log.Info().Str("name", sf.Name).Str("id", created.ID.String()).Msg("Flavor created")
+		}
+
+		var seedAddons []seedAddon
+		mustReadJSON(resolvedAddons, &seedAddons)
+
+		for _, sa := range seedAddons {
+			exists, _ := db.Addon.Query().Where(addon.NameEQ(sa.Name)).Exist(ctx)
+			if exists {
+				log.Info().Str("name", sa.Name).Msg("Addon already exists, skipping")
+				continue
+			}
+
+			now := time.Now()
+			active := true
+			if sa.IsActive != nil {
+				active = *sa.IsActive
+			}
+			groupName := sa.GroupName
+			if groupName == "" {
+				groupName = "extras"
+			}
+
+			created, createErr := db.Addon.Create().
+				SetName(sa.Name).
+				SetPrice(sa.Price).
+				SetGroupName(groupName).
+				SetDisplayOrder(sa.DisplayOrder).
+				SetIsActive(active).
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(ctx)
+			if createErr != nil {
+				log.Error().Err(createErr).Str("name", sa.Name).Msg("Failed to create addon")
+				continue
+			}
+
+			createdAddons++
+			log.Info().
+				Str("name", sa.Name).
+				Float64("price", sa.Price).
+				Str("id", created.ID.String()).
+				Msg("Addon created")
+		}
 	}
 
-	var seedProducts []seedProduct
-	if err := json.Unmarshal(prodData, &seedProducts); err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse products JSON")
-	}
-
-	for _, sp := range seedProducts {
-		// Parse price from string to float64
-		var price float64
-		if _, err := fmt.Sscanf(sp.Price, "%f", &price); err != nil {
-			log.Error().Err(err).Str("name", sp.Name).Msg("Failed to parse price")
-			continue
-		}
-
-		// Find the Ent category for this product
-		cat, ok := catMap[sp.CategoryID]
-		if !ok {
-			log.Error().
-				Int("category_id", sp.CategoryID).
-				Str("product", sp.Name).
-				Msg("Category not found for product, skipping")
-			continue
-		}
-
-		now := time.Now()
-		var imgPath *string
-		if sp.Image != "" {
-			imgPath = &sp.Image
-		}
-
-		// Map is_active to is_available
-		p, err := db.Product.Create().
-			SetName(sp.Name).
-			SetDescription(sp.Description).
-			SetPrice(price).
-			SetNillableImagePath(imgPath).
-			SetIsAvailable(sp.IsActive).
-			SetCategoryID(cat.ID).
-			SetCreatedAt(now).
-			SetUpdatedAt(now).
-			Save(ctx)
-		if err != nil {
-			log.Error().Err(err).Str("name", sp.Name).Msg("Failed to create product")
-			continue
-		}
-
-		log.Info().
-			Str("name", sp.Name).
-			Str("id", p.ID.String()).
-			Str("category", cat.Name).
-			Float64("price", price).
-			Msg("Product created")
-	}
-
-	_ = db.Close()
 	log.Info().
-		Int("categories", len(seedCategories)).
-		Int("products", len(seedProducts)).
+		Str("categories_file", resolvedCategories).
+		Str("products_file", resolvedProducts).
+		Str("flavors_file", resolvedFlavors).
+		Str("addons_file", resolvedAddons).
+		Int("categories_created", createdCategories).
+		Int("products_created", createdProducts).
+		Int("flavors_created", createdFlavors).
+		Int("addons_created", createdAddons).
 		Msg("Seed complete!")
 }

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Vainilla",
+    "display_order": 1,
+    "is_seasonal": false,
+    "is_active": true
+  },
+  {
+    "name": "Chocolate",
+    "display_order": 2,
+    "is_seasonal": false,
+    "is_active": true
+  },
+  {
+    "name": "Fresa",
+    "display_order": 3,
+    "is_seasonal": false,
+    "is_active": true
+  },
+  {
+    "name": "Pistacho",
+    "display_order": 4,
+    "is_seasonal": false,
+    "is_active": true
+  },
+  {
+    "name": "Cafe",
+    "display_order": 7,
+    "is_seasonal": false,
+    "is_active": true
+  },
+  {
+    "name": "Mango",
+    "display_order": 9,
+    "is_seasonal": true,
+    "is_active": true
+  },
+  {
+    "name": "Jocote",
+    "display_order": 10,
+    "is_seasonal": true,
+    "is_active": true
+  }
+]

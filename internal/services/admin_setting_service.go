@@ -13,9 +13,10 @@ const AdminTokenTTLSettingKey = "admin.tokens.ttl"
 var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "empleados", "usuarios", "herramientas", "configuracion"}
 
 type TokenTTLConfig struct {
-	AuthCookieTTLHours    int `json:"auth_cookie_ttl_hours"`
-	AuthTokenTTLHours     int `json:"auth_token_ttl_hours"`
-	TrackingTokenTTLHours int `json:"tracking_token_ttl_hours"`
+	AuthCookieTTLHours      int `json:"auth_cookie_ttl_hours"`
+	AuthTokenTTLHours       int `json:"auth_token_ttl_hours"`
+	TrackingTokenTTLHours   int `json:"tracking_token_ttl_hours"`
+	InactivityLogoutSeconds int `json:"inactivity_logout_seconds"`
 }
 
 type AdminSettingService struct {
@@ -83,9 +84,17 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 	}
 
 	resolved := TokenTTLConfig{
-		AuthCookieTTLHours:    parsePositiveInt(raw["auth_cookie_ttl_hours"]),
-		AuthTokenTTLHours:     parsePositiveInt(raw["auth_token_ttl_hours"]),
-		TrackingTokenTTLHours: parsePositiveInt(raw["tracking_token_ttl_hours"]),
+		AuthCookieTTLHours:      parsePositiveInt(raw["auth_cookie_ttl_hours"]),
+		AuthTokenTTLHours:       parsePositiveInt(raw["auth_token_ttl_hours"]),
+		TrackingTokenTTLHours:   parsePositiveInt(raw["tracking_token_ttl_hours"]),
+		InactivityLogoutSeconds: parsePositiveInt(raw["inactivity_logout_seconds"]),
+	}
+
+	if resolved.InactivityLogoutSeconds <= 0 {
+		legacyMinutes := parsePositiveInt(raw["inactivity_logout_minutes"])
+		if legacyMinutes > 0 {
+			resolved.InactivityLogoutSeconds = legacyMinutes * 60
+		}
 	}
 
 	return sanitizeTokenTTLConfig(resolved, defaults), nil
@@ -98,9 +107,10 @@ func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input To
 	}
 
 	_, err := s.repo.UpsertByKey(ctx, AdminTokenTTLSettingKey, map[string]any{
-		"auth_cookie_ttl_hours":    sanitized.AuthCookieTTLHours,
-		"auth_token_ttl_hours":     sanitized.AuthTokenTTLHours,
-		"tracking_token_ttl_hours": sanitized.TrackingTokenTTLHours,
+		"auth_cookie_ttl_hours":     sanitized.AuthCookieTTLHours,
+		"auth_token_ttl_hours":      sanitized.AuthTokenTTLHours,
+		"tracking_token_ttl_hours":  sanitized.TrackingTokenTTLHours,
+		"inactivity_logout_seconds": sanitized.InactivityLogoutSeconds,
 	})
 	if err != nil {
 		return TokenTTLConfig{}, err
@@ -146,9 +156,10 @@ func sanitizeTabOrder(order []string) []string {
 
 func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
 	resolved := TokenTTLConfig{
-		AuthCookieTTLHours:    input.AuthCookieTTLHours,
-		AuthTokenTTLHours:     input.AuthTokenTTLHours,
-		TrackingTokenTTLHours: input.TrackingTokenTTLHours,
+		AuthCookieTTLHours:      input.AuthCookieTTLHours,
+		AuthTokenTTLHours:       input.AuthTokenTTLHours,
+		TrackingTokenTTLHours:   input.TrackingTokenTTLHours,
+		InactivityLogoutSeconds: input.InactivityLogoutSeconds,
 	}
 
 	if resolved.AuthCookieTTLHours <= 0 {
@@ -160,6 +171,9 @@ func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) Token
 	if resolved.TrackingTokenTTLHours <= 0 {
 		resolved.TrackingTokenTTLHours = defaults.TrackingTokenTTLHours
 	}
+	if resolved.InactivityLogoutSeconds <= 0 {
+		resolved.InactivityLogoutSeconds = defaults.InactivityLogoutSeconds
+	}
 
 	if resolved.AuthCookieTTLHours <= 0 {
 		resolved.AuthCookieTTLHours = 24
@@ -170,15 +184,20 @@ func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) Token
 	if resolved.TrackingTokenTTLHours <= 0 {
 		resolved.TrackingTokenTTLHours = 720
 	}
+	if resolved.InactivityLogoutSeconds <= 0 {
+		resolved.InactivityLogoutSeconds = 900
+	}
 
 	return resolved
 }
 
 func isValidTokenTTLConfig(cfg TokenTTLConfig) bool {
 	const maxHours = 24 * 365 * 3
+	const maxSeconds = 24 * 60 * 60
 	return cfg.AuthCookieTTLHours > 0 && cfg.AuthCookieTTLHours <= maxHours &&
 		cfg.AuthTokenTTLHours > 0 && cfg.AuthTokenTTLHours <= maxHours &&
-		cfg.TrackingTokenTTLHours > 0 && cfg.TrackingTokenTTLHours <= maxHours
+		cfg.TrackingTokenTTLHours > 0 && cfg.TrackingTokenTTLHours <= maxHours &&
+		cfg.InactivityLogoutSeconds > 0 && cfg.InactivityLogoutSeconds <= maxSeconds
 }
 
 func parsePositiveInt(value any) int {

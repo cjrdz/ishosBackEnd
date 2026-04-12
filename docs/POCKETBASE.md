@@ -25,14 +25,11 @@ This project uses PocketBase as an embedded Go library. The optional PocketBase 
 
 **PocketBase handles employees only** (auth account storage, password hashing, JWT validation).
 
-**Users** (customer directory / business entity) are separate and managed via Ent ORM in PostgreSQL. User management endpoints:
+**Customers** are not a persistent entity — customer contact data (name, phone, email, IP) is stored directly as fields on each `Order` row. No customer accounts or login are required to place an order.
 
-- `GET /api/v1/users`
-- `POST /api/v1/users`
-- `GET/PATCH/DELETE /api/v1/users/{id}`
-- `GET /api/v1/users/{id}/orders` (admin only)
+**Users** (customer directory) are a separate Ent ORM entity in PostgreSQL, managed via the `/api/v1/users` endpoints. These are distinct from employees (PocketBase) and do not have login credentials.
 
-See [API.md](API.md) for full Users endpoint documentation.
+See [API.md](API.md) for full Users and Employees endpoint documentation.
 
 ## Auth Route Overview
 

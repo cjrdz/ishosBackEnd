@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/seed_all.sh
-# Seeds categories + products via the Go seeder
+# Seeds categories, products, flavors, and addons via the Go seeder
 # Requirements: go
 #
 # Usage:
@@ -37,6 +37,8 @@ done
 SEEDS_DIR="seeds"
 CATEGORIES_FILE="$SEEDS_DIR/products_category.json"
 PRODUCTS_FILE="$SEEDS_DIR/products_product.json"
+FLAVORS_FILE="$SEEDS_DIR/flavors.json"
+ADDONS_FILE="$SEEDS_DIR/addons.json"
 
 if [ ! -f "$CATEGORIES_FILE" ]; then
   echo "Missing categories seed file: $CATEGORIES_FILE" >&2
@@ -46,9 +48,21 @@ if [ ! -f "$PRODUCTS_FILE" ]; then
   echo "Missing products seed file: $PRODUCTS_FILE" >&2
   exit 1
 fi
+if [ ! -f "$FLAVORS_FILE" ]; then
+  echo "Missing flavors seed file: $FLAVORS_FILE" >&2
+  exit 1
+fi
+if [ ! -f "$ADDONS_FILE" ]; then
+  echo "Missing addons seed file: $ADDONS_FILE" >&2
+  exit 1
+fi
 
-# Run Go seeder for categories + products
-echo "Seeding categories and products using Go seeder..."
-go run ./cmd/seed --categories="$CATEGORIES_FILE" --products="$PRODUCTS_FILE"
+# Run unified Go seeder
+echo "Seeding categories, products, flavors, and addons using Go seeder..."
+go run ./cmd/seed \
+  --categories="$CATEGORIES_FILE" \
+  --products="$PRODUCTS_FILE" \
+  --flavors="$FLAVORS_FILE" \
+  --addons="$ADDONS_FILE"
 
 echo "Seeding completed."
