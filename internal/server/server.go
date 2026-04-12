@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -112,9 +113,11 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	// CORS configuration
 	allowedOrigins := parseAllowedOrigins(cfg.AllowedOrigins)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   allowedOrigins,
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			return isOriginAllowed(origin, allowedOrigins)
+		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Requested-With"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -247,6 +250,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 func parseAllowedOrigins(raw string) []string {
 	parts := strings.Split(raw, ",")
 	origins := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts)*3)
 
 	for _, part := range parts {
 		trimmed := strings.TrimSpace(part)
@@ -254,7 +258,30 @@ func parseAllowedOrigins(raw string) []string {
 			continue
 		}
 		trimmed = strings.TrimSuffix(trimmed, "/")
-		origins = append(origins, trimmed)
+
+		if strings.Contains(trimmed, "://") {
+			if _, ok := seen[trimmed]; !ok {
+				seen[trimmed] = struct{}{}
+				origins = append(origins, trimmed)
+			}
+			continue
+		}
+
+		httpsOrigin := "https://" + trimmed
+		httpOrigin := "http://" + trimmed
+
+		if _, ok := seen[httpsOrigin]; !ok {
+			seen[httpsOrigin] = struct{}{}
+			origins = append(origins, httpsOrigin)
+		}
+		if _, ok := seen[httpOrigin]; !ok {
+			seen[httpOrigin] = struct{}{}
+			origins = append(origins, httpOrigin)
+		}
+		if _, ok := seen[trimmed]; !ok {
+			seen[trimmed] = struct{}{}
+			origins = append(origins, trimmed)
+		}
 	}
 
 	if len(origins) == 0 {
@@ -262,6 +289,74 @@ func parseAllowedOrigins(raw string) []string {
 	}
 
 	return origins
+}
+
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	origin = strings.TrimSpace(strings.TrimSuffix(origin, "/"))
+	if origin == "" {
+		return false
+	}
+
+	parsedOrigin, err := url.Parse(origin)
+	if err != nil || parsedOrigin.Scheme == "" || parsedOrigin.Host == "" {
+		return false
+	}
+
+	originScheme := strings.ToLower(parsedOrigin.Scheme)
+	originHost := strings.ToLower(parsedOrigin.Hostname())
+	originHostPort := strings.ToLower(parsedOrigin.Host)
+	originNormalized := strings.ToLower(origin)
+
+	for _, allowed := range allowedOrigins {
+		candidate := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(allowed, "/")))
+		if candidate == "" {
+			continue
+		}
+		if candidate == "*" {
+			return true
+		}
+
+		if strings.Contains(candidate, "://") {
+			parts := strings.SplitN(candidate, "://", 2)
+			if len(parts) != 2 {
+				continue
+			}
+
+			candidateScheme := parts[0]
+			candidateHost := parts[1]
+
+			if candidateScheme != originScheme {
+				continue
+			}
+
+			if strings.HasPrefix(candidateHost, "*.") {
+				suffix := strings.TrimPrefix(candidateHost, "*")
+				if strings.HasSuffix(originHost, suffix) {
+					return true
+				}
+				continue
+			}
+
+			if candidateHost == originHost || candidateHost == originHostPort || candidate == originNormalized {
+				return true
+			}
+			continue
+		}
+
+		if strings.HasPrefix(candidate, "*.") {
+			suffix := strings.TrimPrefix(candidate, "*")
+			if strings.HasSuffix(originHost, suffix) {
+				return true
+			}
+			continue
+		}
+
+		if candidate == originHost || candidate == originHostPort || candidate == originNormalized {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Router returns the configured Chi router.
