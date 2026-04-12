@@ -1,0 +1,51 @@
+# PocketBase Integration
+
+This project uses PocketBase as an embedded Go library. The optional PocketBase Admin UI server can be enabled for development.
+
+## What PocketBase Handles
+
+- Employee/admin account storage
+- Password hashing and auth verification
+- JWT token validation for protected routes
+
+## Where It Lives
+
+- Integration wrapper: `internal/auth/pocketbase.go`
+- Auth middleware: `internal/middleware/auth.go`
+- Data directory: `PB_DATA_DIR` (default `./pb_data`)
+
+## Important Operational Notes
+
+- Persist `pb_data/` in production.
+- Do not commit `.db` files from `pb_data/`.
+- Disabling an employee account prevents future login attempts.
+- Keep `ENABLE_PB_ADMIN_UI=false` in production unless there is a short-lived operational need.
+
+## Scope Clarification
+
+**PocketBase handles employees only** (auth account storage, password hashing, JWT validation).
+
+**Users** (customer directory / business entity) are separate and managed via Ent ORM in PostgreSQL. User management endpoints:
+
+- `GET /api/v1/users`
+- `POST /api/v1/users`
+- `GET/PATCH/DELETE /api/v1/users/{id}`
+- `GET /api/v1/users/{id}/orders` (admin only)
+
+See [API.md](API.md) for full Users endpoint documentation.
+
+## Auth Route Overview
+
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/session` (uses optional-session middleware; returns 401 when token is missing/invalid)
+- `POST /api/v1/auth/logout`
+
+## Employee Management
+
+Admin-only endpoints:
+
+- `GET /api/v1/employees`
+- `POST /api/v1/employees`
+- `PATCH /api/v1/employees/{id}`
+- `PATCH /api/v1/employees/{id}/deactivate`
+- `DELETE /api/v1/employees/{id}` (permanent delete)

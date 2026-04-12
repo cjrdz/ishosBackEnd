@@ -1,0 +1,71 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/server
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+*.prof
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directory
+vendor/
+
+# PocketBase runtime data (SQLite auth DB, logs, etc.)
+pb_data/*.db
+pb_data/backups/
+pb_data/storage/
+pb_public/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE / Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build output
+/bin/
+/dist/
+/tmp/
+
+# Ent generated code (regenerated via go generate)
+# Uncomment the line below if you prefer NOT to commit generated code:
+# ent/client.go
+# ent/config.go
+# ent/context.go
+# ent/ent.go
+# ent/mutation.go
+# ent/tx.go
+# ent/runtime.go
+# ent/migrate/
+# ent/hook/
+# ent/runtime/
+# ent/predicate/
+# ent/category/
+# ent/product/
+# ent/order/
+# ent/orderitem/
+# ent/ratelimit/
+
+# Debug
+debug
+__debug_bin

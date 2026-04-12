@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+      - "127.0.0.1:8090:8090"
+    env_file:
+      - .env
+    environment:
+      # Override DATABASE_URL to use local postgres instead of Neon in dev
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/ishosFactory?sslmode=disable
+      PB_DATA_DIR: /app/pb_data
+      ENABLE_PB_ADMIN_UI: "true"
+      PB_ADMIN_UI_HOST: "0.0.0.0"
+      PB_ADMIN_UI_PORT: "8090"
+    volumes:
+      # Persist PocketBase auth data (SQLite) across container restarts
+      - pbdata:/app/pb_data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Chi HTTP server starts directly — no subcommands needed.
+    # The Dockerfile CMD is just ["./server"].
+
+  # Local Postgres for development only.
+  # In production, Neon PostgreSQL is used directly via DATABASE_URL.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ishosFactory
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+  pbdata:

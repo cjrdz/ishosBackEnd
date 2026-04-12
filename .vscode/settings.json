@@ -1,0 +1,24 @@
+{
+  "go.lintTool": "golangci-lint",
+  "go.lintOnSave": "workspace",
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "golang.go",
+
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "category.go": "category_create.go, category_delete.go, category_update.go, category_query.go",
+    "product.go": "product_create.go, product_delete.go, product_update.go, product_query.go",
+    "order.go": "order_create.go, order_delete.go, order_update.go, order_query.go",
+    "orderitem.go": "orderitem_create.go, orderitem_delete.go, orderitem_update.go, orderitem_query.go",
+    "ratelimit.go": "ratelimit_create.go, ratelimit_delete.go, ratelimit_update.go, ratelimit_query.go",
+    "go.mod": "go.sum",
+    "README.md": "CHANGELOG.md, LICENSE"
+  },
+
+  "files.exclude": {
+    "**/.git": true,
+    "**/pb_data/*.db": true,
+    "**/pb_data/backups": true
+  }
+}

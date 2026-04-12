@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "name": "Especiales",
+    "slug": "especiales",
+    "description": "Productos especiales de la casa",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 2,
+    "name": "Gelatos",
+    "slug": "gelatos",
+    "description": "Gelato cremoso artesanal",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 3,
+    "name": "Sorbetes",
+    "slug": "sorbetes",
+    "description": "Sorbetes refrescantes sin lactosa",
+    "image": "",
+    "is_active": true
+  }
+]

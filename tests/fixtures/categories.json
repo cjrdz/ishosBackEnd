@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Gelatos",
+    "slug": "gelatos",
+    "description": "Italian-style ice cream",
+    "display_order": 1,
+    "is_active": true
+  },
+  {
+    "name": "Sorbetes",
+    "slug": "sorbetes",
+    "description": "Fruit-based frozen desserts",
+    "display_order": 2,
+    "is_active": true
+  }
+]
