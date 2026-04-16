@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   govulncheck:
@@ -17,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -45,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:  
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -67,19 +68,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          version="8.24.3"
+
+          artifact="gitleaks_${version}_linux_x64.tar.gz"
+          base_url="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
+
+          curl -sSfL "${base_url}/${artifact}" -o "${artifact}"
+          curl -sSfL "${base_url}/gitleaks_${version}_checksums.txt" -o checksums.txt
+
+          expected_sha="$(grep "  ${artifact}$" checksums.txt | awk '{print $1}')"
+          if [[ -z "${expected_sha}" ]]; then
+            echo "Failed to locate checksum for ${artifact}" >&2
+            exit 1
+          fi
+
+          echo "${expected_sha}  ${artifact}" | sha256sum -c -
+          tar -xzf "${artifact}"
+          sudo mv gitleaks /usr/local/bin/gitleaks
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gitleaks detect --source . --redact --no-banner --exit-code 1
 
   container-scan:
     name: Container image scan (Trivy)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build container image
         run: docker build -t ishosbackend:ci .
