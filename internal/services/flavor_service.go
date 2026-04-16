@@ -2,23 +2,35 @@ package services
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
 type FlavorService struct {
-	repo *repository.FlavorRepository
+	repo  *repository.FlavorRepository
+	cache *cache.TTLCache
 }
 
 func NewFlavorService(repo *repository.FlavorRepository) *FlavorService {
-	return &FlavorService{repo: repo}
+	return &FlavorService{repo: repo, cache: cache.New(45 * time.Second)}
 }
 
 func (s *FlavorService) List(ctx context.Context, onlyActive bool) ([]*ent.Flavor, error) {
-	return s.repo.FindAll(ctx, onlyActive)
+	key := fmt.Sprintf("list:%t", onlyActive)
+	if v, ok := s.cache.Get(key); ok {
+		return v.([]*ent.Flavor), nil
+	}
+	result, err := s.repo.FindAll(ctx, onlyActive)
+	if err == nil {
+		s.cache.Set(key, result)
+	}
+	return result, err
 }
 
 func (s *FlavorService) GetByID(ctx context.Context, id uuid.UUID) (*ent.Flavor, error) {
@@ -26,15 +38,27 @@ func (s *FlavorService) GetByID(ctx context.Context, id uuid.UUID) (*ent.Flavor,
 }
 
 func (s *FlavorService) Create(ctx context.Context, input repository.CreateFlavorInput) (*ent.Flavor, error) {
-	return s.repo.Create(ctx, input)
+	f, err := s.repo.Create(ctx, input)
+	if err == nil {
+		s.cache.InvalidateAll()
+	}
+	return f, err
 }
 
 func (s *FlavorService) Update(ctx context.Context, id uuid.UUID, input repository.UpdateFlavorInput) (*ent.Flavor, error) {
-	return s.repo.Update(ctx, id, input)
+	f, err := s.repo.Update(ctx, id, input)
+	if err == nil {
+		s.cache.InvalidateAll()
+	}
+	return f, err
 }
 
 func (s *FlavorService) Delete(ctx context.Context, id uuid.UUID) error {
-	return s.repo.Delete(ctx, id)
+	err := s.repo.Delete(ctx, id)
+	if err == nil {
+		s.cache.InvalidateAll()
+	}
+	return err
 }
 
 func (s *FlavorService) LinkToProduct(ctx context.Context, flavorID, productID uuid.UUID) error {

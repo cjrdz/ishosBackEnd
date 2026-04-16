@@ -10,11 +10,13 @@ import (
 	"github.com/cjrdz/ishosBackEnd/ent"
 	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
 	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type AnalyticsHandler struct {
-	db *ent.Client
+	db    *ent.Client
+	cache *cachepkg.TTLCache
 }
 
 type analyticsOverviewResponse struct {
@@ -38,10 +40,16 @@ type analyticsTopProductResponse struct {
 }
 
 func NewAnalyticsHandler(db *ent.Client) *AnalyticsHandler {
-	return &AnalyticsHandler{db: db}
+	return &AnalyticsHandler{db: db, cache: cachepkg.New(5 * time.Minute)}
 }
 
 func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "analytics:overview:" + r.URL.RawQuery
+	if v, ok := h.cache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, v.(analyticsOverviewResponse))
+		return
+	}
+
 	period := r.URL.Query().Get("period")
 	if period == "" {
 		period = "month"
@@ -83,16 +91,24 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		avgOrderValue = totalRevenue / float64(nonCancelledCount)
 	}
 
-	response.JSON(w, http.StatusOK, analyticsOverviewResponse{
+	result := analyticsOverviewResponse{
 		Period:          period,
 		TotalOrders:     len(orders),
 		TotalRevenue:    totalRevenue,
 		AvgOrderValue:   avgOrderValue,
 		StatusBreakdown: statusBreakdown,
-	})
+	}
+	h.cache.Set(cacheKey, result)
+	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "analytics:orders-over-time:" + r.URL.RawQuery
+	if v, ok := h.cache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, v.([]analyticsTimelinePointResponse))
+		return
+	}
+
 	groupBy := r.URL.Query().Get("groupBy")
 	if groupBy == "" {
 		groupBy = "day"
@@ -146,10 +162,17 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		})
 	}
 
+	h.cache.Set(cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "analytics:top-products:" + r.URL.RawQuery
+	if v, ok := h.cache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, v.([]analyticsTopProductResponse))
+		return
+	}
+
 	start, end, err := parseDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
@@ -216,6 +239,7 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 		result = result[:limit]
 	}
 
+	h.cache.Set(cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
 }
 

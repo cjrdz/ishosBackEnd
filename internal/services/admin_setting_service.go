@@ -8,7 +8,7 @@ import (
 )
 
 const AdminTabOrderSettingKey = "admin.tabs.order"
-const AdminTokenTTLSettingKey = "admin.tokens.ttl"
+const AdminTokenTTLSettingKey = "admin.tokens.ttl" // #nosec G101 -- Settings lookup key, not a credential.
 
 var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "empleados", "usuarios", "herramientas", "configuracion"}
 

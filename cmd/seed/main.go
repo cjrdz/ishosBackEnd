@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -95,12 +96,29 @@ func resolveSeedPath(explicit, fallback string) string {
 }
 
 func mustReadJSON(filePath string, target any) {
-	data, err := os.ReadFile(filePath)
+	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		log.Fatal().Err(err).Str("file", filePath).Msg("Failed to read JSON seed file")
+		log.Fatal().Err(err).Str("file", filePath).Msg("Invalid seed file path")
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to resolve current working directory")
+	}
+
+	seedsRoot := filepath.Clean(filepath.Join(cwd, "seeds"))
+	absClean := filepath.Clean(absPath)
+	seedsPrefix := seedsRoot + string(os.PathSeparator)
+	if absClean != seedsRoot && !strings.HasPrefix(absClean, seedsPrefix) {
+		log.Fatal().Str("file", filePath).Msg("invalid seed file path: must be under seeds/")
+	}
+
+	data, err := os.ReadFile(absClean)
+	if err != nil {
+		log.Fatal().Err(err).Str("file", absClean).Msg("Failed to read JSON seed file")
 	}
 	if err := json.Unmarshal(data, target); err != nil {
-		log.Fatal().Err(err).Str("file", filePath).Msg("Failed to parse JSON seed file")
+		log.Fatal().Err(err).Str("file", absClean).Msg("Failed to parse JSON seed file")
 	}
 }
 

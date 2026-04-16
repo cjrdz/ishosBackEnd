@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
+	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
@@ -22,10 +23,14 @@ import (
 
 type CategoryHandler struct {
 	categoryRepo *repository.CategoryRepository
+	cache        *cachepkg.TTLCache
 }
 
 func NewCategoryHandler(db *ent.Client) *CategoryHandler {
-	return &CategoryHandler{categoryRepo: repository.NewCategoryRepository(db)}
+	return &CategoryHandler{
+		categoryRepo: repository.NewCategoryRepository(db),
+		cache:        cachepkg.New(45 * time.Second),
+	}
 }
 
 // categoryResponse is the JSON shape returned to the Astro frontend.
@@ -59,6 +64,16 @@ func toCategoryResponse(c *ent.Category) categoryResponse {
 // GET /api/v1/categories
 func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	showAll := r.URL.Query().Get("all") == "true"
+	cacheKey := "categories:list:active"
+	if showAll {
+		cacheKey = "categories:list:all"
+	}
+
+	if v, ok := h.cache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, v.([]categoryResponse))
+		return
+	}
+
 	var (
 		cats []*ent.Category
 		err  error
@@ -80,6 +95,7 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, c := range cats {
 		result[i] = toCategoryResponse(c)
 	}
+	h.cache.Set(cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
 }
 
@@ -137,6 +153,7 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to create category")
 		return
 	}
+	h.cache.InvalidateAll()
 
 	response.JSON(w, http.StatusCreated, toCategoryResponse(c))
 }
@@ -186,6 +203,7 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to update category")
 		return
 	}
+	h.cache.InvalidateAll()
 
 	response.JSON(w, http.StatusOK, toCategoryResponse(c))
 }
@@ -210,6 +228,7 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete category")
 		return
 	}
+	h.cache.InvalidateAll()
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Category deleted"})
 }

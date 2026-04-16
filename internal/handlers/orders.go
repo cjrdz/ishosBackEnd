@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +18,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/ent"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/events"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -27,7 +28,7 @@ import (
 
 type OrderHandler struct {
 	rateLimiter    *middleware.OrderRateLimiter
-	orderSvc       *services.OrderService
+	orderSvc       services.OrderServiceInterface
 	tracker        *services.TrackingTokenService
 	pb             *auth.PBAuth
 	publicStoreURL string
@@ -37,6 +38,19 @@ func NewOrderHandler(db *ent.Client, tracker *services.TrackingTokenService, pb 
 	orderRepo := repository.NewOrderRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	whatsapp := services.NewWhatsAppService(cfg)
+	dispatcher := events.NewDispatcher()
+	dispatcher.SubscribeOrderStatusChanged(func(evt events.OrderStatusChanged) {
+		switch evt.Status {
+		case events.OrderStatusCreated:
+			whatsapp.SendOrderCreated(evt.Phone, evt.OrderNumber, evt.Total, evt.TrackingURL)
+		case events.OrderStatusApproved:
+			whatsapp.SendOrderApproved(evt.Phone, evt.OrderNumber, evt.TrackingURL)
+		case events.OrderStatusRejected:
+			whatsapp.SendOrderRejected(evt.Phone, evt.OrderNumber, evt.Reason, evt.TrackingURL)
+		case events.OrderStatusReady:
+			whatsapp.SendOrderReady(evt.Phone, evt.OrderNumber, evt.TrackingURL)
+		}
+	})
 
 	return &OrderHandler{
 		rateLimiter:    rl,
@@ -47,8 +61,8 @@ func NewOrderHandler(db *ent.Client, tracker *services.TrackingTokenService, pb 
 			db,
 			orderRepo,
 			productRepo,
-			whatsapp,
 			tracker,
+			dispatcher,
 			cfg.PublicStoreURL,
 		),
 	}
@@ -281,7 +295,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, services.ErrFlavorRequired) ||
 			errors.Is(err, services.ErrFlavorNotAllowed) ||
 			errors.Is(err, services.ErrAddonNotAllowed) {
-			response.Error(w, http.StatusBadRequest, err.Error())
+			writeAppError(w, err, "Failed to create order")
 			return
 		}
 		log.Error().Err(err).Msg("Failed to create order")
@@ -321,17 +335,24 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 
 	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
-		if p, err := fmt.Sscanf(pageStr, "%d", &page); err == nil && p == 1 && page > 0 {
-		} else {
-			page = 1
+		parsed, err := strconv.Atoi(pageStr)
+		if err != nil || parsed <= 0 {
+			response.Error(w, http.StatusBadRequest, "page must be a positive integer")
+			return
 		}
+		page = parsed
 	}
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if l, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil && l == 1 && limit > 0 && limit <= 100 {
-		} else {
-			limit = 50
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil || parsed <= 0 {
+			response.Error(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
 		}
+		if parsed > 100 {
+			parsed = 100
+		}
+		limit = parsed
 	}
 
 	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, page, limit)
@@ -361,10 +382,9 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	order, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
+			err = services.ErrOrderNotFound
 		}
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		writeAppError(w, err, "Failed to fetch order")
 		return
 	}
 	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), order))
@@ -391,11 +411,7 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 
 	order, err := h.orderSvc.GetByOrderNumber(r.Context(), orderNumber)
 	if err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		writeAppError(w, err, "Failed to fetch order")
 		return
 	}
 
@@ -452,12 +468,7 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.orderSvc.Approve(r.Context(), id, reviewerID, allowOverride)
 	if err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) || errors.Is(err, services.ErrInvalidOrderState) {
-			response.Error(w, http.StatusBadRequest,
-				"Order must be in 'pendiente_revision' (or 'cancelada' for admin) to approve")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to approve order")
+		writeAppError(w, err, "Failed to approve order")
 		return
 	}
 
@@ -491,11 +502,7 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.orderSvc.Reject(r.Context(), id, body.Reason, reviewerID)
 	if err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to reject order")
+		writeAppError(w, err, "Failed to reject order")
 		return
 	}
 
@@ -524,11 +531,7 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.orderSvc.UpdateStatus(r.Context(), id, body.Status)
 	if err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to update status")
+		writeAppError(w, err, "Failed to update status")
 		return
 	}
 
@@ -592,19 +595,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Items:         items,
 	})
 	if err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
-		}
-		if errors.Is(err, services.ErrProductNotFound) ||
-			errors.Is(err, services.ErrProductUnavailable) ||
-			errors.Is(err, services.ErrFlavorRequired) ||
-			errors.Is(err, services.ErrFlavorNotAllowed) ||
-			errors.Is(err, services.ErrAddonNotAllowed) {
-			response.Error(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to update order")
+		writeAppError(w, err, "Failed to update order")
 		return
 	}
 
@@ -636,11 +627,7 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.orderSvc.UpdateNotes(r.Context(), id, normalized)
 	if err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to update notes")
+		writeAppError(w, err, "Failed to update notes")
 		return
 	}
 
@@ -655,11 +642,7 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.orderSvc.Delete(r.Context(), id); err != nil {
-		if errors.Is(err, services.ErrOrderNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to delete order")
+		writeAppError(w, err, "Failed to delete order")
 		return
 	}
 

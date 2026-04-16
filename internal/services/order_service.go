@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -14,17 +13,19 @@ import (
 	"github.com/cjrdz/ishosBackEnd/ent"
 	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
 	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/events"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
 var (
-	ErrOrderNotFound      = errors.New("order not found")
-	ErrInvalidOrderState  = errors.New("invalid order state")
-	ErrProductNotFound    = errors.New("product not found")
-	ErrProductUnavailable = errors.New("product unavailable")
-	ErrFlavorRequired     = errors.New("flavor selection required")
-	ErrFlavorNotAllowed   = errors.New("selected flavor is not available for this product")
-	ErrAddonNotAllowed    = errors.New("one or more selected addons are not available for this product")
+	ErrOrderNotFound      = apperror.ErrNotFound
+	ErrInvalidOrderState  = apperror.ErrConflict
+	ErrProductNotFound    = apperror.ErrNotFound
+	ErrProductUnavailable = apperror.ErrConflict
+	ErrFlavorRequired     = apperror.ErrValidation
+	ErrFlavorNotAllowed   = apperror.ErrValidation
+	ErrAddonNotAllowed    = apperror.ErrValidation
 )
 
 const defaultAddonGroupName = "extras"
@@ -38,8 +39,8 @@ type OrderService struct {
 	db             *ent.Client
 	orderRepo      *repository.OrderRepository
 	productRepo    *repository.ProductRepository
-	whatsapp       *WhatsAppService
 	tracker        *TrackingTokenService
+	dispatcher     *events.Dispatcher
 	publicStoreURL string
 }
 
@@ -73,13 +74,13 @@ type UpdateOrderInput struct {
 	Items         []OrderItemInput
 }
 
-func NewOrderService(db *ent.Client, orderRepo *repository.OrderRepository, productRepo *repository.ProductRepository, whatsapp *WhatsAppService, tracker *TrackingTokenService, publicStoreURL string) *OrderService {
+func NewOrderService(db *ent.Client, orderRepo *repository.OrderRepository, productRepo *repository.ProductRepository, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string) *OrderService {
 	return &OrderService{
 		db:             db,
 		orderRepo:      orderRepo,
 		productRepo:    productRepo,
-		whatsapp:       whatsapp,
 		tracker:        tracker,
+		dispatcher:     dispatcher,
 		publicStoreURL: strings.TrimRight(strings.TrimSpace(publicStoreURL), "/"),
 	}
 }
@@ -520,7 +521,15 @@ func (s *OrderService) Create(ctx context.Context, input CreateOrderInput) (*ent
 		return nil, err
 	}
 
-	go s.whatsapp.SendOrderCreated(input.CustomerPhone, order.OrderNumber, total, s.buildTrackingURL(context.Background(), order.OrderNumber))
+	if s.dispatcher != nil {
+		s.dispatcher.PublishOrderStatusChanged(events.OrderStatusChanged{
+			Status:      events.OrderStatusCreated,
+			OrderNumber: order.OrderNumber,
+			Phone:       input.CustomerPhone,
+			Total:       total,
+			TrackingURL: s.buildTrackingURL(context.Background(), order.OrderNumber),
+		})
+	}
 	return order, nil
 }
 
@@ -541,7 +550,14 @@ func (s *OrderService) Approve(ctx context.Context, id uuid.UUID, reviewerID str
 		return nil, err
 	}
 
-	go s.whatsapp.SendOrderApproved(order.CustomerPhone, order.OrderNumber, s.buildTrackingURL(context.Background(), order.OrderNumber))
+	if s.dispatcher != nil {
+		s.dispatcher.PublishOrderStatusChanged(events.OrderStatusChanged{
+			Status:      events.OrderStatusApproved,
+			OrderNumber: order.OrderNumber,
+			Phone:       order.CustomerPhone,
+			TrackingURL: s.buildTrackingURL(context.Background(), order.OrderNumber),
+		})
+	}
 	return updated, nil
 }
 
@@ -559,7 +575,15 @@ func (s *OrderService) Reject(ctx context.Context, id uuid.UUID, reason, reviewe
 		return nil, err
 	}
 
-	go s.whatsapp.SendOrderRejected(order.CustomerPhone, order.OrderNumber, reason, s.buildTrackingURL(context.Background(), order.OrderNumber))
+	if s.dispatcher != nil {
+		s.dispatcher.PublishOrderStatusChanged(events.OrderStatusChanged{
+			Status:      events.OrderStatusRejected,
+			OrderNumber: order.OrderNumber,
+			Phone:       order.CustomerPhone,
+			Reason:      reason,
+			TrackingURL: s.buildTrackingURL(context.Background(), order.OrderNumber),
+		})
+	}
 	return updated, nil
 }
 
@@ -578,7 +602,14 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id uuid.UUID, status st
 	}
 
 	if status == "lista" {
-		go s.whatsapp.SendOrderReady(order.CustomerPhone, order.OrderNumber, s.buildTrackingURL(context.Background(), order.OrderNumber))
+		if s.dispatcher != nil {
+			s.dispatcher.PublishOrderStatusChanged(events.OrderStatusChanged{
+				Status:      events.OrderStatusReady,
+				OrderNumber: order.OrderNumber,
+				Phone:       order.CustomerPhone,
+				TrackingURL: s.buildTrackingURL(context.Background(), order.OrderNumber),
+			})
+		}
 	}
 
 	return updated, nil

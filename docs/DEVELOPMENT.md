@@ -18,6 +18,8 @@ make migrate
 make seed
 make lint
 make bootstrap-admin
+go run ./cmd/tools bootstrap -- -email admin@domain.com -password StrongPass123!
+go run ./cmd/tools seed -- --categories=seeds/products_category.json --products=seeds/products_product.json
 ```
 
 `make seed` runs the unified JSON-based seeder for categories, products, flavors, and addons.
@@ -79,3 +81,19 @@ Follow the pattern used by `Order` as the reference:
 - Regenerate Ent artifacts only via `go generate ./ent`.
 - Rate limiter uses Redis when `REDIS_URL` is set; falls back to in-memory automatically.
 - Security headers are applied globally — do not bypass them per-route without explicit justification.
+
+## Migration Strategy (ADR-001)
+
+When changing persistence, use one migration source of truth per change:
+
+- **Use Ent auto-migrations** for additive, straightforward schema changes that Ent can model safely.
+- **Use raw SQL in `migrations/`** for data backfills, advanced indexes, constraints, or DB-specific operations.
+
+Rules:
+
+1. Do not mix Ent auto-migration and ad-hoc SQL for the same schema change.
+2. If a raw SQL migration is added, ensure Ent schema is updated to match final DB shape.
+3. Validate migration idempotency in local dev before merge.
+4. Prefer reversible SQL patterns where practical.
+
+`scripts/manualUpt.sh` remains available for controlled dependency upgrades, but dependency updates must always be followed by `go build ./...` and test runs before merge.

@@ -22,7 +22,7 @@ func NewUploadHandler(cfg *config.Config) *UploadHandler {
 }
 
 func (h *UploadHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 5<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, 6<<20)
 
 	if err := r.ParseMultipartForm(5 << 20); err != nil {
 		response.Error(w, http.StatusBadRequest, "File too large (max 5MB)")

@@ -17,7 +17,7 @@ import (
 )
 
 type UserHandler struct {
-	customerSvc *services.CustomerService
+	customerSvc services.CustomerServiceInterface
 }
 
 func NewUserHandler(db *ent.Client) *UserHandler {
@@ -62,8 +62,31 @@ func toUserResponse(customer *ent.Customer) userResponse {
 func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	search := r.URL.Query().Get("search")
+	limit := 50
+	offset := 0
 
-	customers, err := h.customerSvc.List(r.Context(), status, search)
+	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed <= 0 {
+			response.Error(w, http.StatusBadRequest, "limit must be a positive integer")
+			return
+		}
+		if parsed > 100 {
+			parsed = 100
+		}
+		limit = parsed
+	}
+
+	if rawOffset := r.URL.Query().Get("offset"); rawOffset != "" {
+		parsed, err := strconv.Atoi(rawOffset)
+		if err != nil || parsed < 0 {
+			response.Error(w, http.StatusBadRequest, "offset must be a non-negative integer")
+			return
+		}
+		offset = parsed
+	}
+
+	customers, total, err := h.customerSvc.ListPaginated(r.Context(), status, search, offset, limit)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to list users")
 		response.Error(w, http.StatusInternalServerError, "No se pudieron listar usuarios")
@@ -75,6 +98,11 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 		result = append(result, toUserResponse(customer))
 	}
 
+	// Preserve array response shape expected by existing admin clients.
+	// Pagination metadata is exposed via headers for forward-compatible consumers.
+	w.Header().Set("X-Pagination-Limit", strconv.Itoa(limit))
+	w.Header().Set("X-Pagination-Offset", strconv.Itoa(offset))
+	w.Header().Set("X-Pagination-Total", strconv.Itoa(total))
 	response.JSON(w, http.StatusOK, result)
 }
 

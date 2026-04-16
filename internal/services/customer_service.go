@@ -22,6 +22,10 @@ func (s *CustomerService) List(ctx context.Context, status, search string) ([]*e
 	return s.repo.List(ctx, status, search)
 }
 
+func (s *CustomerService) ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]*ent.Customer, int, error) {
+	return s.repo.ListPaginated(ctx, status, search, offset, limit)
+}
+
 func (s *CustomerService) GetByID(ctx context.Context, id uuid.UUID) (*ent.Customer, error) {
 	return s.repo.FindByID(ctx, id)
 }

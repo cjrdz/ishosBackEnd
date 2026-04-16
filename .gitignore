@@ -20,10 +20,9 @@ go.work.sum
 # Dependency directory
 vendor/
 
-# PocketBase runtime data (SQLite auth DB, logs, etc.)
-pb_data/*.db
-pb_data/backups/
-pb_data/storage/
+# PocketBase runtime data (SQLite auth DB, WAL files, logs, etc.)
+# Exclude the whole directory — *.db alone misses *.db-shm, *.db-wal, and logs/
+pb_data/
 pb_public/
 
 # Environment variables

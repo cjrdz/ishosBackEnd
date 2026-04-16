@@ -127,9 +127,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,                      // Prevent JS access (XSS protection)
-		Secure:   h.cfg.Env == "production", // HTTPS only in production
-		SameSite: http.SameSiteLaxMode,      // CSRF protection
+		HttpOnly: true,                 // Prevent JS access (XSS protection)
+		Secure:   true,                 // Always HTTPS only
+		SameSite: http.SameSiteLaxMode, // CSRF protection
 		MaxAge:   int((time.Duration(cookieTTL) * time.Hour).Seconds()),
 	})
 
@@ -196,7 +196,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.cfg.Env == "production",
+		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1, // This tells the browser to delete the cookie
 	})

@@ -103,7 +103,7 @@ func Load() *Config {
 
 	databaseURL := mustEnv("DATABASE_URL")
 
-	return &Config{
+	cfg := &Config{
 		Port:                        getEnv("PORT", "8080"),
 		Env:                         getEnv("ENV", "development"),
 		DatabaseURL:                 databaseURL,
@@ -143,6 +143,15 @@ func Load() *Config {
 		BootstrapAdminPassword:      getEnv("BOOTSTRAP_ADMIN_PASSWORD", ""),
 		BootstrapAdminName:          getEnv("BOOTSTRAP_ADMIN_NAME", "Admin"),
 	}
+
+	// In production, TRACKING_TOKEN_SECRET must be explicitly set.
+	// Using DATABASE_URL as the fallback signing key is a security hole —
+	// anyone who knows the DB URL can forge tracking tokens.
+	if cfg.Env == "production" && os.Getenv("TRACKING_TOKEN_SECRET") == "" {
+		log.Fatalf("TRACKING_TOKEN_SECRET must be explicitly set in production (set ENV != production to bypass)")
+	}
+
+	return cfg
 }
 
 func getEnv(key, fallback string) string {

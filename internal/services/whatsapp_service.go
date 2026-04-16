@@ -25,14 +25,31 @@ type WhatsAppService struct {
 	token   string
 	baseURL string
 	enabled bool
+	queue   chan whatsappJob
+}
+
+type whatsappJob struct {
+	phone   string
+	message string
 }
 
 func NewWhatsAppService(cfg *config.Config) *WhatsAppService {
-	return &WhatsAppService{
+	svc := &WhatsAppService{
 		phoneID: cfg.WhatsAppPhoneID,
 		token:   cfg.WhatsAppToken,
 		baseURL: "https://graph.facebook.com/v18.0",
 		enabled: cfg.WhatsAppPhoneID != "" && cfg.WhatsAppToken != "",
+		queue:   make(chan whatsappJob, 256),
+	}
+
+	go svc.startWorker()
+
+	return svc
+}
+
+func (s *WhatsAppService) startWorker() {
+	for job := range s.queue {
+		s.sendWithRetry(job.phone, job.message)
 	}
 }
 
@@ -47,6 +64,14 @@ type whatsappPayload struct {
 }
 
 func (s *WhatsAppService) send(phone, message string) {
+	select {
+	case s.queue <- whatsappJob{phone: phone, message: message}:
+	default:
+		log.Warn().Str("to", maskPhone(phone)).Msg("WhatsApp queue full, dropping notification")
+	}
+}
+
+func (s *WhatsAppService) sendWithRetry(phone, message string) {
 	if !s.enabled {
 		log.Info().
 			Str("to", maskPhone(phone)).
@@ -74,31 +99,39 @@ func (s *WhatsAppService) send(phone, message string) {
 	}
 	url := fmt.Sprintf("%s/%s/messages", s.baseURL, s.phoneID)
 
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		log.Error().Err(err).Msg("WhatsApp: failed to create request")
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+s.token)
-	req.Header.Set("Content-Type", "application/json")
+	const maxAttempts = 3
+	backoff := time.Second
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		// Recreate the request each attempt — body reader cannot be replayed.
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			log.Error().Err(err).Msg("WhatsApp: failed to create request")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+s.token)
+		req.Header.Set("Content-Type", "application/json")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req = req.WithContext(ctx)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		resp, doErr := http.DefaultClient.Do(req.WithContext(ctx))
+		cancel()
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Error().Err(err).Msg("WhatsApp: failed to send message")
-		return
-	}
-	defer resp.Body.Close()
+		if doErr != nil {
+			log.Warn().Err(doErr).Int("attempt", attempt).Str("to", maskPhone(to)).Msg("WhatsApp: send failed")
+		} else {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+				return // success
+			}
+			log.Warn().Int("status", resp.StatusCode).Int("attempt", attempt).Str("to", maskPhone(to)).Msg("WhatsApp: unexpected status")
+		}
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		log.Error().
-			Int("status", resp.StatusCode).
-			Str("to", maskPhone(to)).
-			Msg("WhatsApp: unexpected status")
+		if attempt < maxAttempts {
+			time.Sleep(backoff)
+			backoff *= 2 // exponential: 1s, 2s
+		}
 	}
+
+	log.Error().Str("to", maskPhone(to)).Msg("WhatsApp: failed after all attempts")
 }
 
 func maskPhone(phone string) string {

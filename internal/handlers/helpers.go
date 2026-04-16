@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 const maxJSONBodyBytes = 1 << 20 // 1 MiB
@@ -40,4 +43,14 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 		return fmt.Errorf("invalid JSON: request body must contain a single JSON object")
 	}
 	return nil
+}
+
+// writeAppError maps typed application errors to consistent HTTP responses.
+func writeAppError(w http.ResponseWriter, err error, fallbackMsg string) {
+	status := apperror.StatusCode(err)
+	if status == http.StatusInternalServerError {
+		response.Error(w, status, fallbackMsg)
+		return
+	}
+	response.Error(w, status, err.Error())
 }

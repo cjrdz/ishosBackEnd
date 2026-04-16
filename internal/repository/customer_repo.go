@@ -42,6 +42,39 @@ func (r *CustomerRepository) List(ctx context.Context, status, search string) ([
 	return q.Order(ent.Desc(entCustomer.FieldCreatedAt)).All(ctx)
 }
 
+func (r *CustomerRepository) ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]*ent.Customer, int, error) {
+	q := r.db.Customer.Query()
+
+	if status != "" {
+		q = q.Where(entCustomer.StatusEQ(entCustomer.Status(status)))
+	}
+
+	if search != "" {
+		term := strings.TrimSpace(search)
+		if term != "" {
+			q = q.Where(
+				entCustomer.Or(
+					entCustomer.NameContainsFold(term),
+					entCustomer.PhoneContainsFold(term),
+					entCustomer.EmailContainsFold(term),
+				),
+			)
+		}
+	}
+
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	customers, err := q.Order(ent.Desc(entCustomer.FieldCreatedAt)).Offset(offset).Limit(limit).All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return customers, total, nil
+}
+
 func (r *CustomerRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Customer, error) {
 	return r.db.Customer.Get(ctx, id)
 }
