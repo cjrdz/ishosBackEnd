@@ -1,3 +1,4 @@
+// addon_service.go — CRUD service for addons with a short-lived in-process cache.
 package services
 
 import (
@@ -13,11 +14,19 @@ import (
 )
 
 type AddonService struct {
-	repo  *repository.AddonRepository
+	repo  addonRepository
 	cache *cache.TTLCache
 }
 
-func NewAddonService(repo *repository.AddonRepository) *AddonService {
+type addonRepository interface {
+	FindAll(ctx context.Context, onlyActive bool) ([]*ent.Addon, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*ent.Addon, error)
+	Create(ctx context.Context, input repository.CreateAddonInput) (*ent.Addon, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateAddonInput) (*ent.Addon, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+func NewAddonService(repo addonRepository) *AddonService {
 	return &AddonService{repo: repo, cache: cache.New(45 * time.Second)}
 }
 

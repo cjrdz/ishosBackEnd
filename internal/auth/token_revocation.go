@@ -1,3 +1,6 @@
+// token_revocation.go — Tracks explicitly revoked JWTs using a pluggable backend.
+// Defaults to an in-memory store; call InitTokenRevocationStore to switch to Postgres.
+// RevokeToken and IsTokenRevoked are the only public entry points.
 package auth
 
 import (
@@ -21,6 +24,8 @@ type tokenRevocationBackend interface {
 	IsTokenRevoked(ctx context.Context, token string, now time.Time) (bool, error)
 }
 
+// tokenRevocationHolder wraps the backend so atomic.Value always stores the same
+// concrete type regardless of which backend implementation is active.
 type tokenRevocationHolder struct {
 	backend tokenRevocationBackend
 }
@@ -68,6 +73,7 @@ func RevokeToken(token string) {
 	}
 
 	expiresAt := tokenExpiry(token)
+	// token is already expired but may still be in-flight; keep it blocked for 24 h to cover clock skew.
 	if expiresAt.Before(time.Now()) {
 		expiresAt = time.Now().Add(24 * time.Hour)
 	}
@@ -114,6 +120,7 @@ func (s *memoryTokenRevocationStore) IsTokenRevoked(_ context.Context, token str
 	return ok && expiresAt.After(now), nil
 }
 
+// cleanupLocked removes expired entries; caller must hold mu.
 func (s *memoryTokenRevocationStore) cleanupLocked(now time.Time) {
 	for token, expiresAt := range s.expiresAt {
 		if !expiresAt.After(now) {
@@ -150,6 +157,7 @@ INSERT INTO auth_revoked_tokens (token_hash, expires_at)
 VALUES ($1, $2)
 ON CONFLICT (token_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at, revoked_at = NOW();`
 
+	// purge expired rows first so the table doesn't grow unboundedly before the insert.
 	if _, err := s.db.ExecContext(ctx, cleanupQuery); err != nil {
 		return fmt.Errorf("cleanup auth token revocations: %w", err)
 	}
@@ -187,6 +195,8 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// tokenExpiry extracts the exp claim from a JWT without verifying its signature.
+// Falls back to 24 h when the token is malformed or has no parseable expiry.
 func tokenExpiry(token string) time.Time {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {

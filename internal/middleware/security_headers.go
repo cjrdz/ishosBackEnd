@@ -1,3 +1,4 @@
+// security_headers.go — Sets defensive HTTP response headers on every response.
 package middleware
 
 import "net/http"

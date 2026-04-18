@@ -1,3 +1,4 @@
+// flavor_repo.go — Ent-backed repository for flavor CRUD and product many-to-many linking.
 package repository
 
 import (

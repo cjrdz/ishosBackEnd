@@ -1,3 +1,4 @@
+// interfaces.go — Service interface contracts consumed by HTTP handlers.
 package services
 
 import (

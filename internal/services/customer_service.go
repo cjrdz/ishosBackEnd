@@ -1,3 +1,4 @@
+// customer_service.go — Customer management service with input sanitization.
 package services
 
 import (
@@ -67,6 +68,7 @@ func (s *CustomerService) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *CustomerService) OrdersByCustomer(ctx context.Context, customerID uuid.UUID, limit int) ([]*ent.Order, error) {
+	// Look up by phone because there is no FK from orders to customers.
 	customer, err := s.repo.FindByID(ctx, customerID)
 	if err != nil {
 		return nil, err

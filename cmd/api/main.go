@@ -58,9 +58,10 @@ func main() {
 	// After the first successful run you can unset these env vars.
 	if cfg.BootstrapAdminEmail != "" && cfg.BootstrapAdminPassword != "" {
 		existing, listErr := pb.ListEmployees()
-		if listErr != nil {
+		switch {
+		case listErr != nil:
 			log.Warn().Err(listErr).Msg("Bootstrap: could not list employees, skipping auto-bootstrap")
-		} else if len(existing) == 0 {
+		case len(existing) == 0:
 			_, createErr := pb.CreateEmployee(
 				cfg.BootstrapAdminEmail,
 				cfg.BootstrapAdminPassword,
@@ -74,7 +75,7 @@ func main() {
 			} else {
 				log.Info().Str("email", cfg.BootstrapAdminEmail).Msg("Bootstrap: first admin created successfully — remove BOOTSTRAP_ADMIN_* env vars")
 			}
-		} else {
+		default:
 			log.Info().Int("count", len(existing)).Msg("Bootstrap: employees already exist, skipping")
 		}
 	}

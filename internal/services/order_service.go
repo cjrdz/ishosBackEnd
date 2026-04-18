@@ -1,3 +1,4 @@
+// order_service.go — Creates, validates, and transitions orders; fires lifecycle notifications via the event dispatcher.
 package services
 
 import (
@@ -28,8 +29,10 @@ var (
 	ErrAddonNotAllowed    = apperror.ErrValidation
 )
 
+// Addons without a recognised group name fall into "extras" and are always charged.
 const defaultAddonGroupName = "extras"
 
+// Each group key maps to the number of free (zero-cost) addons included per item in that group.
 var freeAddonAllowanceByGroup = map[string]int{
 	"toppings": 1,
 	"jalea":    1,
@@ -103,6 +106,7 @@ func (s *OrderService) IssueTrackingAccess(ctx context.Context, orderNumber stri
 }
 
 func (s *OrderService) buildTrackingURL(ctx context.Context, orderNumber string) string {
+	// Returns empty string rather than propagating; tracking URL is best-effort for notifications.
 	trackingAccess, err := s.IssueTrackingAccess(ctx, orderNumber)
 	if err != nil {
 		return ""
@@ -541,6 +545,7 @@ func (s *OrderService) Approve(ctx context.Context, id uuid.UUID, reviewerID str
 		}
 		return nil, err
 	}
+	// allowOverride lets staff re-approve an order that was previously cancelled.
 	if order.Status != entOrder.StatusPendienteRevision && !(allowOverride && order.Status == entOrder.StatusCancelada) {
 		return nil, ErrInvalidOrderState
 	}

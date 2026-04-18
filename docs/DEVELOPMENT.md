@@ -14,6 +14,7 @@ go run ./cmd/api
 ```sh
 make dev
 make test
+make coverage-focus
 make migrate
 make seed
 make lint
@@ -46,7 +47,19 @@ With race detector + coverage:
 ```sh
 make test
 # generates coverage.html
+
+# focused coverage used by CI gates
+make coverage-focus
 ```
+
+Current CI enforces a baseline coverage threshold on packages that already have unit tests:
+
+- `internal/apperror`
+- `internal/events`
+- `internal/services`
+- `internal/validator`
+
+The long-term target remains **80%** overall coverage. Keep adding package tests and then include them in `coverage-focus` as new suites become stable.
 
 Integration scaffolding:
 

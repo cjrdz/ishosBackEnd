@@ -1,3 +1,4 @@
+// validator.go — ValidationError and ValidationErrors types shared across all request validation.
 package validator
 
 import (

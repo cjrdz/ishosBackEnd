@@ -62,6 +62,7 @@ type seedProduct struct {
 	UpdatedAt      string                 `json:"updated_at"`
 }
 
+// seedFlavor matches the JSON shape from flavors.json
 type seedFlavor struct {
 	Name         string `json:"name"`
 	DisplayOrder int    `json:"display_order"`
@@ -69,6 +70,7 @@ type seedFlavor struct {
 	IsActive     *bool  `json:"is_active"`
 }
 
+// seedAddon matches the JSON shape from addons.json
 type seedAddon struct {
 	Name         string  `json:"name"`
 	Price        float64 `json:"price"`
@@ -77,6 +79,7 @@ type seedAddon struct {
 	IsActive     *bool   `json:"is_active"`
 }
 
+// fileExists checks if a file exists at the given path
 func fileExists(path string) bool {
 	if path == "" {
 		return false
@@ -85,6 +88,7 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// resolveSeedPath determines which file path to use for a seed file
 func resolveSeedPath(explicit, fallback string) string {
 	if explicit != "" {
 		return explicit
@@ -95,6 +99,7 @@ func resolveSeedPath(explicit, fallback string) string {
 	return ""
 }
 
+// mustReadJSON reads a JSON file and unmarshals it into the target struct, with safety checks on the file path
 func mustReadJSON(filePath string, target any) {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
@@ -122,6 +127,7 @@ func mustReadJSON(filePath string, target any) {
 	}
 }
 
+// main is the entry point for the seed command. It reads seed data from JSON files
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
@@ -140,26 +146,31 @@ func main() {
 	optionsRequested := resolvedFlavors != "" || resolvedAddons != ""
 
 	if !catalogRequested && !optionsRequested {
-		log.Fatal().Msg("No seed files found. Provide --categories/--products and/or --flavors/--addons, or create default files under seeds/")
+		log.Error().Msg("No seed files found. Provide --categories/--products and/or --flavors/--addons, or create default files under seeds/")
+		return
 	}
 	if (resolvedCategories == "") != (resolvedProducts == "") {
-		log.Fatal().Msg("Categories and products must be provided together")
+		log.Error().Msg("Categories and products must be provided together")
+		return
 	}
 	if (resolvedFlavors == "") != (resolvedAddons == "") {
-		log.Fatal().Msg("Flavors and addons must be provided together")
+		log.Error().Msg("Flavors and addons must be provided together")
+		return
 	}
 
 	cfg := config.Load()
 	db, rawDB, err := database.OpenClient(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
+		log.Error().Err(err).Msg("Failed to connect to PostgreSQL")
+		return
 	}
 	defer db.Close()
 
 	ctx := context.Background()
 
 	if err := database.EnsureSchema(ctx, db, rawDB); err != nil {
-		log.Fatal().Err(err).Msg("Failed to verify database schema")
+		log.Error().Err(err).Msg("Failed to verify database schema")
+		return
 	}
 	log.Info().Msg("Database schema verified")
 

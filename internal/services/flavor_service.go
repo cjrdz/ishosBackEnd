@@ -1,3 +1,4 @@
+// flavor_service.go — CRUD service for flavors with a short-lived in-process cache.
 package services
 
 import (
@@ -13,11 +14,21 @@ import (
 )
 
 type FlavorService struct {
-	repo  *repository.FlavorRepository
+	repo  flavorRepository
 	cache *cache.TTLCache
 }
 
-func NewFlavorService(repo *repository.FlavorRepository) *FlavorService {
+type flavorRepository interface {
+	FindAll(ctx context.Context, onlyActive bool) ([]*ent.Flavor, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*ent.Flavor, error)
+	Create(ctx context.Context, input repository.CreateFlavorInput) (*ent.Flavor, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateFlavorInput) (*ent.Flavor, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	LinkToProduct(ctx context.Context, flavorID, productID uuid.UUID) error
+	UnlinkFromProduct(ctx context.Context, flavorID, productID uuid.UUID) error
+}
+
+func NewFlavorService(repo flavorRepository) *FlavorService {
 	return &FlavorService{repo: repo, cache: cache.New(45 * time.Second)}
 }
 

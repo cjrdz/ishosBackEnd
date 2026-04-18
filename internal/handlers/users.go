@@ -1,3 +1,5 @@
+// users.go — Customer (end-user) management handlers.
+// Customers are stored in Postgres (not PocketBase); they are created automatically on first order.
 package handlers
 
 import (

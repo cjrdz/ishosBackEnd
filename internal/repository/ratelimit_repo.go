@@ -1,3 +1,4 @@
+// ratelimit_repo.go — Ent-backed repository for persisted per-IP and per-phone rate-limit records.
 package repository
 
 import (

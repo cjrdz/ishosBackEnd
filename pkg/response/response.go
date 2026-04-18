@@ -1,3 +1,4 @@
+// response.go — Shared helpers for writing JSON and structured error responses.
 package response
 
 import (

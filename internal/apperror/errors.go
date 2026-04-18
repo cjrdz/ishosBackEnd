@@ -5,6 +5,7 @@ import (
 	"net/http"
 )
 
+// Common errors types that can be use across the codebase
 var (
 	ErrNotFound   = errors.New("resource not found")
 	ErrConflict   = errors.New("conflict")
@@ -12,7 +13,7 @@ var (
 	ErrValidation = errors.New("validation failed")
 )
 
-// StatusCode maps typed app errors to HTTP status codes.
+// StatusCode maps typed app errors to HTTP status codes
 func StatusCode(err error) int {
 	switch {
 	case errors.Is(err, ErrValidation):

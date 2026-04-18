@@ -11,6 +11,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/database"
 )
 
+// ── This function is intended to be run as a one-off command to migrate the database schema.
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
@@ -22,7 +23,8 @@ func main() {
 	defer client.Close()
 
 	if err := database.EnsureSchema(context.Background(), client, rawDB); err != nil {
-		log.Fatal().Err(err).Msg("Failed to migrate database schema")
+		log.Error().Err(err).Msg("Failed to migrate database schema")
+		return
 	}
 
 	log.Info().Msg("Database schema is up to date")

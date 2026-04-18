@@ -1,22 +1,32 @@
+// analytics.go — Read-only analytics endpoints (overview, orders over time, top products).
+// Results are cached for 5 minutes to avoid repeated full-table scans under dashboard load.
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
 	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
 	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
+	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 type AnalyticsHandler struct {
-	db    *ent.Client
-	cache *cachepkg.TTLCache
+	db          *ent.Client
+	cache       *cachepkg.TTLCache
+	redis       *redis.Client
+	redisPrefix string
 }
 
 type analyticsOverviewResponse struct {
@@ -39,14 +49,42 @@ type analyticsTopProductResponse struct {
 	TotalValue float64 `json:"total_value"`
 }
 
-func NewAnalyticsHandler(db *ent.Client) *AnalyticsHandler {
-	return &AnalyticsHandler{db: db, cache: cachepkg.New(5 * time.Minute)}
+func NewAnalyticsHandler(db *ent.Client, cfg *config.Config) *AnalyticsHandler {
+	h := &AnalyticsHandler{db: db, cache: cachepkg.New(5 * time.Minute)}
+
+	if cfg == nil || strings.TrimSpace(cfg.RedisURL) == "" {
+		return h
+	}
+
+	options, err := redis.ParseURL(strings.TrimSpace(cfg.RedisURL))
+	if err != nil {
+		log.Warn().Err(err).Msg("analytics cache: invalid REDIS_URL, falling back to in-memory cache")
+		return h
+	}
+
+	h.redis = redis.NewClient(options)
+	h.redisPrefix = strings.TrimSpace(cfg.RedisPrefix)
+	if h.redisPrefix == "" {
+		h.redisPrefix = "ishos"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if pingErr := h.redis.Ping(ctx).Err(); pingErr != nil {
+		log.Warn().Err(pingErr).Msg("analytics cache: redis unavailable, using in-memory cache")
+		_ = h.redis.Close()
+		h.redis = nil
+	}
+
+	return h
 }
 
 func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
+	// cache key includes the full query string so period variants are cached independently.
 	cacheKey := "analytics:overview:" + r.URL.RawQuery
-	if v, ok := h.cache.Get(cacheKey); ok {
-		response.JSON(w, http.StatusOK, v.(analyticsOverviewResponse))
+	var cached analyticsOverviewResponse
+	if h.cacheGet(r.Context(), cacheKey, &cached) {
+		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
@@ -98,14 +136,15 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		AvgOrderValue:   avgOrderValue,
 		StatusBreakdown: statusBreakdown,
 	}
-	h.cache.Set(cacheKey, result)
+	h.cacheSet(r.Context(), cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request) {
 	cacheKey := "analytics:orders-over-time:" + r.URL.RawQuery
-	if v, ok := h.cache.Get(cacheKey); ok {
-		response.JSON(w, http.StatusOK, v.([]analyticsTimelinePointResponse))
+	var cached []analyticsTimelinePointResponse
+	if h.cacheGet(r.Context(), cacheKey, &cached) {
+		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
@@ -162,14 +201,15 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	h.cache.Set(cacheKey, result)
+	h.cacheSet(r.Context(), cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 	cacheKey := "analytics:top-products:" + r.URL.RawQuery
-	if v, ok := h.cache.Get(cacheKey); ok {
-		response.JSON(w, http.StatusOK, v.([]analyticsTopProductResponse))
+	var cached []analyticsTopProductResponse
+	if h.cacheGet(r.Context(), cacheKey, &cached) {
+		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
@@ -187,6 +227,7 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if parsedLimit > 50 {
+			// hard cap: top-products is a full-scan aggregation, capped to keep response size bounded.
 			parsedLimit = 50
 		}
 		limit = parsedLimit
@@ -239,8 +280,50 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 		result = result[:limit]
 	}
 
-	h.cache.Set(cacheKey, result)
+	h.cacheSet(r.Context(), cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
+}
+
+func (h *AnalyticsHandler) cacheGet(ctx context.Context, key string, target interface{}) bool {
+	if h.redis != nil {
+		redisKey := h.redisPrefix + ":" + key
+		redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		if payload, err := h.redis.Get(redisCtx, redisKey).Bytes(); err == nil {
+			if unmarshalErr := json.Unmarshal(payload, target); unmarshalErr == nil {
+				return true
+			}
+		}
+	}
+
+	v, ok := h.cache.Get(key)
+	if !ok {
+		return false
+	}
+
+	payload, err := json.Marshal(v)
+	if err != nil {
+		return false
+	}
+
+	return json.Unmarshal(payload, target) == nil
+}
+
+func (h *AnalyticsHandler) cacheSet(ctx context.Context, key string, value interface{}) {
+	h.cache.Set(key, value)
+	if h.redis == nil {
+		return
+	}
+
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+
+	redisKey := h.redisPrefix + ":" + key
+	redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_ = h.redis.Set(redisCtx, redisKey, payload, 5*time.Minute).Err()
 }
 
 func parseDateRange(startRaw, endRaw string) (time.Time, time.Time, error) {
@@ -308,6 +391,8 @@ func buildSeriesKeys(start, end time.Time, groupBy string) []string {
 			cursor = cursor.AddDate(0, 1, 0)
 		}
 	case "week":
+		// Advance day-by-day and deduplicate ISO week keys; a simple week-count
+		// arithmetic would misalign when start/end straddle a year boundary.
 		cursor := start
 		seen := map[string]struct{}{}
 		for !cursor.After(end) {

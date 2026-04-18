@@ -1,3 +1,4 @@
+// optional_auth.go — Thin adapter exposing OptionalSession as a standalone middleware constructor.
 package middleware
 
 import "net/http"

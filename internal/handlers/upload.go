@@ -1,3 +1,6 @@
+// upload.go — Image upload/delete/list handlers backed by Cloudflare R2.
+// UploadImage enforces a 6 MiB hard limit at the HTTP layer and a 5 MiB multipart limit;
+// the 1 MiB gap ensures oversized requests are rejected before multipart parsing begins.
 package handlers
 
 import (

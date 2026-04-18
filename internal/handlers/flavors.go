@@ -1,3 +1,5 @@
+// flavors.go — Flavor CRUD handlers (ice cream flavors associated with products).
+// Public users can list active flavors; only admins can create, update, or delete.
 package handlers
 
 import (

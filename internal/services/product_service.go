@@ -1,3 +1,4 @@
+// product_service.go — CRUD service for products with a short-lived in-process cache.
 package services
 
 import (
@@ -13,11 +14,24 @@ import (
 )
 
 type ProductService struct {
-	repo  *repository.ProductRepository
+	repo  productRepository
 	cache *cache.TTLCache
 }
 
-func NewProductService(repo *repository.ProductRepository) *ProductService {
+type productRepository interface {
+	FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]*ent.Product, error)
+	FindByIDWithCategory(ctx context.Context, id uuid.UUID) (*ent.Product, error)
+	Create(ctx context.Context, input repository.CreateProductInput) (*ent.Product, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateProductInput) (*ent.Product, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	ToggleAvailability(ctx context.Context, id uuid.UUID) (*ent.Product, error)
+	LinkFlavorToProduct(ctx context.Context, productID, flavorID uuid.UUID) error
+	UnlinkFlavorFromProduct(ctx context.Context, productID, flavorID uuid.UUID) error
+	LinkAddonToProduct(ctx context.Context, productID, addonID uuid.UUID) error
+	UnlinkAddonFromProduct(ctx context.Context, productID, addonID uuid.UUID) error
+}
+
+func NewProductService(repo productRepository) *ProductService {
 	return &ProductService{repo: repo, cache: cache.New(45 * time.Second)}
 }
 

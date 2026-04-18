@@ -1,3 +1,4 @@
+// tracking_token.go — Issues and verifies HMAC-signed, time-limited order tracking tokens backed by a SQL store.
 package services
 
 import (
@@ -161,12 +162,14 @@ func (s *TrackingTokenService) BuildTrackingURL(baseURL, orderNumber, token stri
 }
 
 func (s *TrackingTokenService) hashToken(token string) string {
+	// HMAC avoids storing raw tokens in the DB and guards against length-extension attacks.
 	mac := hmac.New(sha256.New, s.secret)
 	_, _ = mac.Write([]byte(strings.TrimSpace(token)))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func (s *TrackingTokenService) resolveTTL(ctx context.Context) time.Duration {
+	// Resolution order: dynamic resolver → configured TTL → hardcoded 30-day default.
 	if s.ttlResolver != nil {
 		if resolved := s.ttlResolver(ctx); resolved > 0 {
 			return resolved
@@ -181,6 +184,7 @@ func (s *TrackingTokenService) resolveTTL(ctx context.Context) time.Duration {
 }
 
 func (s *sqlTrackingTokenStore) Store(ctx context.Context, orderNumber, tokenHash string, expiresAt time.Time) error {
+	// Piggyback cleanup: remove expired tokens on every insert to avoid a separate maintenance job.
 	const cleanupQuery = `
 DELETE FROM order_tracking_tokens WHERE expires_at <= NOW()`
 	const insertQuery = `

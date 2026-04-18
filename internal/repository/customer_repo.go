@@ -1,3 +1,4 @@
+// customer_repo.go — Ent-backed repository for customer CRUD and order lookup by phone.
 package repository
 
 import (
@@ -124,6 +125,7 @@ func (r *CustomerRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 func (r *CustomerRepository) ListOrdersByPhone(ctx context.Context, phone string, limit int) ([]*ent.Order, error) {
+	// Orders are looked up by phone because there is no FK from orders to customers.
 	q := r.db.Order.Query().
 		Where(entOrder.CustomerPhoneEQ(phone)).
 		WithItems().

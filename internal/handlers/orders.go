@@ -1,3 +1,6 @@
+// orders.go — Order lifecycle handlers (create, list, approve, reject, track, purge).
+// Public customers submit orders and track them by token; staff manage status transitions.
+// WhatsApp notifications are dispatched asynchronously via the event dispatcher.
 package handlers
 
 import (
@@ -31,10 +34,11 @@ type OrderHandler struct {
 	orderSvc       services.OrderServiceInterface
 	tracker        *services.TrackingTokenService
 	pb             *auth.PBAuth
+	settingsSvc    *services.AdminSettingService
 	publicStoreURL string
 }
 
-func NewOrderHandler(db *ent.Client, tracker *services.TrackingTokenService, pb *auth.PBAuth, cfg *config.Config, rl *middleware.OrderRateLimiter) *OrderHandler {
+func NewOrderHandler(db *ent.Client, tracker *services.TrackingTokenService, pb *auth.PBAuth, cfg *config.Config, rl *middleware.OrderRateLimiter, settingsSvc *services.AdminSettingService) *OrderHandler {
 	orderRepo := repository.NewOrderRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	whatsapp := services.NewWhatsAppService(cfg)
@@ -56,6 +60,7 @@ func NewOrderHandler(db *ent.Client, tracker *services.TrackingTokenService, pb 
 		rateLimiter:    rl,
 		pb:             pb,
 		tracker:        tracker,
+		settingsSvc:    settingsSvc,
 		publicStoreURL: strings.TrimRight(strings.TrimSpace(cfg.PublicStoreURL), "/"),
 		orderSvc: services.NewOrderService(
 			db,
@@ -250,6 +255,10 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isStaff {
+		if !h.settingsSvc.AreOrdersEnabled(r.Context()) {
+			response.Error(w, http.StatusServiceUnavailable, "Los pedidos están temporalmente desactivados")
+			return
+		}
 		if !h.rateLimiter.CheckAndRecordPhone(body.CustomerPhone) {
 			response.Error(w, http.StatusTooManyRequests,
 				"too many orders from this phone number, try again tomorrow")
@@ -423,6 +432,7 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 				Str("token_prefix", maskTrackingToken(trackingToken)).
 				Err(err).
 				Msg("public tracking verification failed")
+			// Return 404 rather than 401/403 to avoid revealing whether the order number exists.
 			response.Error(w, http.StatusNotFound, "Order not found")
 			return
 		}
@@ -656,6 +666,7 @@ func nilIfEmpty(s string) *string {
 	return &s
 }
 
+// maskTrackingToken returns only the first 8 chars of a token for safe logging.
 func maskTrackingToken(token string) string {
 	trimmed := strings.TrimSpace(token)
 	if len(trimmed) <= 8 {

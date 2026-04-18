@@ -1,3 +1,4 @@
+// roles.go — Chi middlewares that enforce role-based access control after PBAuth.
 package middleware
 
 import (

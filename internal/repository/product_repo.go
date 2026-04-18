@@ -1,3 +1,4 @@
+// product_repo.go — Ent-backed repository for product CRUD and flavor/addon many-to-many relations.
 package repository
 
 import (
@@ -110,16 +111,18 @@ func (r *ProductRepository) ToggleAvailability(ctx context.Context, id uuid.UUID
 
 // GetProductFlavors returns all flavors for a product
 func (r *ProductRepository) GetProductFlavors(ctx context.Context, productID uuid.UUID) ([]*ent.Flavor, error) {
-	return r.db.Product.QueryFlavors(
-		r.db.Product.GetX(ctx, productID),
-	).Order(ent.Asc("display_order")).All(ctx)
+	return r.db.Flavor.Query().
+		Where(entflavor.HasProductsWith(product.IDEQ(productID))).
+		Order(ent.Asc(entflavor.FieldDisplayOrder)).
+		All(ctx)
 }
 
 // GetProductAddons returns all addons for a product
 func (r *ProductRepository) GetProductAddons(ctx context.Context, productID uuid.UUID) ([]*ent.Addon, error) {
-	return r.db.Product.QueryAddons(
-		r.db.Product.GetX(ctx, productID),
-	).Order(ent.Asc("display_order")).All(ctx)
+	return r.db.Addon.Query().
+		Where(entaddon.HasProductsWith(product.IDEQ(productID))).
+		Order(ent.Asc(entaddon.FieldDisplayOrder)).
+		All(ctx)
 }
 
 // LinkFlavorToProduct adds a flavor to a product

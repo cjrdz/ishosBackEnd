@@ -1,3 +1,4 @@
+// upload_service.go — Validates image content type and uploads files to Cloudflare R2 via the S3-compatible API.
 package services
 
 import (
@@ -74,6 +75,7 @@ func (s *UploadService) UploadImage(ctx context.Context, file multipart.File, he
 	if err != nil {
 		return "", err
 	}
+	// Guard against files landing at the bucket root when the folder matches the bucket name.
 	if folder == strings.ToLower(strings.TrimSpace(s.bucket)) {
 		folder = ""
 	}

@@ -1,3 +1,4 @@
+// admin_setting_repo.go — Ent-backed repository for key/value admin settings stored as JSONB.
 package repository
 
 import (
@@ -28,6 +29,7 @@ func (r *AdminSettingRepository) UpsertByKey(ctx context.Context, key string, va
 			SetValue(value).
 			Save(ctx)
 	}
+	// Any error other than NotFound is unexpected; surface it rather than creating a duplicate.
 	if !ent.IsNotFound(err) {
 		return nil, err
 	}

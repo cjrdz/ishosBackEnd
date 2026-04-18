@@ -20,6 +20,8 @@ This backend follows a layered Go architecture:
 - **Redis** (optional) for distributed rate limiting; falls back to in-memory sliding-window counter when `REDIS_URL` is unset
 - **PostgreSQL `auth_revoked_tokens` table** for server-side JWT revocation (initialized at startup via `auth.InitTokenRevocationStore`)
 - **PostgreSQL `order_tracking_tokens` table** for high-entropy tracking token storage (HMAC-hashed, verified by `order_number + token`)
+- **Event dispatcher worker queue** (`internal/events/dispatcher.go`) for asynchronous order lifecycle notifications with bounded queue + worker pool
+- **Analytics cache tiers**: in-memory TTL cache plus optional Redis-backed cache sharing when `REDIS_URL` is configured
 
 ## Request Flow
 
@@ -80,3 +82,17 @@ Public order tracking does not use phone-based or stateless HMAC payloads. Token
 - Keep database specifics in repositories.
 - Fail fast on validation errors.
 - Prefer explicit middleware composition for route security.
+
+## Domain Packaging Roadmap
+
+Current structure keeps `handlers/services/repository` packages separated by concern. The next architectural step is to group by domain while preserving the same layering, for example:
+
+- `internal/domain/orders/{handler,service,repository,events}`
+- `internal/domain/products/{handler,service,repository}`
+- `internal/domain/customers/{handler,service,repository}`
+
+Suggested migration strategy:
+
+1. Move one domain at a time behind existing interfaces.
+2. Keep route registration stable in `internal/server/server.go` during migration.
+3. Add package-level tests before and after each move to prevent regressions.

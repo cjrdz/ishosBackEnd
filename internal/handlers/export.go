@@ -1,3 +1,6 @@
+// export.go — Order export (CSV/JSON download) and admin purge endpoint.
+// ExportOrders streams directly to the response writer; no temp files are created.
+// PurgeOrders deletes completed/cancelled orders in a transaction to keep order items consistent.
 package handlers
 
 import (
@@ -163,6 +166,8 @@ func (h *ExportHandler) PurgeOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
+		// err is the named loop variable; rollback only if it was set by one of the
+		// query/delete calls below, not by the commit itself.
 		if err != nil {
 			_ = tx.Rollback()
 		}

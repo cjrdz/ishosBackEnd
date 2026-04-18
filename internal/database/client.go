@@ -1,3 +1,6 @@
+// client.go — Opens the Ent/PostgreSQL client and verifies the schema on startup.
+// OpenClient wires pgx → database/sql → Ent so a single *sql.DB is shared across both layers.
+// EnsureSchema runs Ent auto-migration and guards against any columns that migrations may have missed.
 package database
 
 import (
@@ -21,6 +24,7 @@ func OpenClient(databaseURL string) (*ent.Client, *stdsql.DB, error) {
 	}
 
 	rawDB := stdlib.OpenDB(*pgCfg)
+	// Pool sized for a single-instance API: enough headroom without exhausting Postgres connection slots.
 	rawDB.SetMaxOpenConns(10)
 	rawDB.SetMaxIdleConns(5)
 	rawDB.SetConnMaxIdleTime(5 * time.Minute)
@@ -42,6 +46,9 @@ func EnsureSchema(ctx context.Context, client *ent.Client, rawDB *stdsql.DB) err
 	return nil
 }
 
+// verifyAddonGroupColumn is a post-migration sanity check: Ent schema.Create does not always
+// apply ALTER TABLE additions when the table already exists, so we assert the column is present
+// rather than discovering the missing column at runtime on the first write.
 func verifyAddonGroupColumn(ctx context.Context, rawDB *stdsql.DB) error {
 	const query = `
 SELECT EXISTS (

@@ -1,3 +1,4 @@
+// logger.go — HTTP request/response logger middleware using zerolog.
 package middleware
 
 import (

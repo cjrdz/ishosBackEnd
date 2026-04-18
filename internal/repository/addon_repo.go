@@ -1,3 +1,4 @@
+// addon_repo.go — Ent-backed repository for addon CRUD operations.
 package repository
 
 import (

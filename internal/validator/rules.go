@@ -1,3 +1,4 @@
+// rules.go — Field-level validation functions for all request inputs; returns ValidationErrors slices.
 package validator
 
 import (

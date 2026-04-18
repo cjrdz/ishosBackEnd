@@ -1,3 +1,5 @@
+// addons.go — Addon CRUD handlers (toppings, syrups, extras priced per item).
+// Public users can list active addons; only admins can create, update, or delete.
 package handlers
 
 import (

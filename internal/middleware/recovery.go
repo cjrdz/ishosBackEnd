@@ -1,3 +1,4 @@
+// recovery.go — Panic recovery middleware that logs the stack trace and returns a 500 JSON error.
 package middleware
 
 import (

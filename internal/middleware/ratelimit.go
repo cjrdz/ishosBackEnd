@@ -1,3 +1,5 @@
+// ratelimit.go — IP- and phone-based rate limiting for order creation and tracking,
+// backed by Redis with an in-memory fallback for single-instance deployments.
 package middleware
 
 import (
@@ -36,6 +38,8 @@ func (s *memoryRateLimitStore) Allow(_ context.Context, key string, limit int, w
 	now := time.Now()
 	cutoff := now.Add(-window)
 
+	// In-place filter: reusing the backing array avoids allocation.
+	// Safe because we only compact leftward, never overwriting ahead of the read cursor.
 	recent := s.attempts[key][:0]
 	for _, attempt := range s.attempts[key] {
 		if attempt.After(cutoff) {
@@ -181,6 +185,7 @@ func (rl *OrderRateLimiter) CheckTrackingIP(ip string) bool {
 
 // CheckPhone returns true when the phone is allowed to make another order today.
 func (rl *OrderRateLimiter) CheckPhone(phone string) bool {
+	// Strip non-digits so different phone formats (e.g. "+52 123-456" and "52123456") share the same rate-limit bucket.
 	normalizedPhone := strings.Map(func(r rune) rune {
 		if r >= '0' && r <= '9' {
 			return r

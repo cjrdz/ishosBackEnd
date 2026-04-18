@@ -1,3 +1,4 @@
+// login_ratelimit.go — IP-based sliding window rate limiter for login endpoints.
 package middleware
 
 import (

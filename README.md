@@ -159,6 +159,13 @@ curl http://localhost:8080/api/v1/categories
 curl http://localhost:8080/health
 ```
 
+### Container health checks (Railway)
+
+The Docker image includes a lightweight healthcheck binary at `cmd/healthcheck`.
+
+- Docker `HEALTHCHECK` probes `http://127.0.0.1:8080/health`.
+- This allows Railway and other orchestrators to mark deployments healthy only when Chi is accepting traffic.
+
 ## Project Structure
 
 ```

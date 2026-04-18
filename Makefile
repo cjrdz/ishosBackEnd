@@ -1,4 +1,4 @@
-.PHONY: help dev test test-integration migrate seed bootstrap bootstrap-admin build docker-up docker-down clean generate lint format bruno backup-pb deploy
+.PHONY: help dev test coverage-focus test-integration migrate seed bootstrap bootstrap-admin build docker-up docker-down clean generate lint format bruno backup-pb deploy
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -9,6 +9,10 @@ dev: ## Start development server
 test: ## Run all tests
 	go test -v -race -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
+
+coverage-focus: ## Run coverage only for currently unit-tested internal packages
+	go test -race -covermode=atomic -coverprofile=coverage.out ./internal/apperror ./internal/events ./internal/services ./internal/validator
+	go tool cover -func=coverage.out | tail -n 1
 
 test-integration: ## Run integration tests only
 	go test -v ./tests/integration/...

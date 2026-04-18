@@ -1,3 +1,5 @@
+// products.go — Product CRUD handlers, including flavor/addon linking and availability toggle.
+// Public users see only available products; admins can manage all products and associations.
 package handlers
 
 import (

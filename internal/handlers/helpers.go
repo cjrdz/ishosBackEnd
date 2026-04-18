@@ -1,3 +1,4 @@
+// helpers.go — Shared HTTP utilities used across all handlers.
 package handlers
 
 import (
@@ -20,6 +21,8 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 	}
 	defer r.Body.Close()
 
+	// Read the full body before checking size; LimitReader is set to max+1 so we can
+	// distinguish "exactly at limit" from "over limit" without a second read.
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
 	if err != nil {
 		return fmt.Errorf("failed to read request body: %w", err)

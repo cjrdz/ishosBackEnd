@@ -1,3 +1,4 @@
+// category_repo.go — Ent-backed repository for category CRUD operations.
 package repository
 
 import (

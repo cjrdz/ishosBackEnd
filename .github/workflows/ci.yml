@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev", "feature"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26.2"
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests with coverage
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./internal/apperror ./internal/events ./internal/services ./internal/validator
+
+      - name: Enforce minimum coverage
+        run: |
+          set -euo pipefail
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')"
+          threshold="10.0"
+          awk -v total="$total" -v threshold="$threshold" 'BEGIN { if (total + 0 < threshold + 0) exit 1 }'
+          echo "Coverage ${total}% meets threshold ${threshold}%"
+
+      - name: Track progress toward target coverage
+        run: |
+          set -euo pipefail
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')"
+          target="80.0"
+          if awk -v total="$total" -v target="$target" 'BEGIN { exit !(total + 0 >= target + 0) }'; then
+            echo "Coverage ${total}% reached target ${target}%"
+          else
+            echo "Coverage ${total}% is below long-term target ${target}%"
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest

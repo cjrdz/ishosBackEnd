@@ -1,3 +1,4 @@
+// order_repo.go — Ent-backed repository for order and order-item persistence.
 package repository
 
 import (
@@ -166,6 +167,7 @@ func (r *OrderRepository) UpdateNotes(ctx context.Context, id uuid.UUID, notes *
 }
 
 func (r *OrderRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	// Delete items first; ent does not cascade deletes from order to order items automatically.
 	if _, err := r.db.OrderItem.Delete().Where(entOrderItem.HasOrderWith(entOrder.IDEQ(id))).Exec(ctx); err != nil {
 		return err
 	}

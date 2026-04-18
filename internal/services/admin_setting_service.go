@@ -1,3 +1,4 @@
+// admin_setting_service.go — Manages persisted admin configuration such as tab order and token TTL settings.
 package services
 
 import (
@@ -10,7 +11,7 @@ import (
 const AdminTabOrderSettingKey = "admin.tabs.order"
 const AdminTokenTTLSettingKey = "admin.tokens.ttl" // #nosec G101 -- Settings lookup key, not a credential.
 
-var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "empleados", "usuarios", "herramientas", "configuracion"}
+var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "personas", "ofertas", "herramientas", "configuracion"}
 
 type TokenTTLConfig struct {
 	AuthCookieTTLHours      int `json:"auth_cookie_ttl_hours"`
@@ -38,6 +39,7 @@ func (s *AdminSettingService) GetTabOrder(ctx context.Context) ([]string, error)
 		return append([]string(nil), defaultAdminTabOrder...), nil
 	}
 
+	// JSONB round-trips arrays as []any when decoded by the Postgres driver, not []string.
 	list, ok := rawOrder.([]any)
 	if !ok {
 		if typed, castOK := rawOrder.([]string); castOK {
@@ -90,6 +92,7 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 		InactivityLogoutSeconds: parsePositiveInt(raw["inactivity_logout_seconds"]),
 	}
 
+	// Legacy migration: older records stored minutes; new records use seconds.
 	if resolved.InactivityLogoutSeconds <= 0 {
 		legacyMinutes := parsePositiveInt(raw["inactivity_logout_minutes"])
 		if legacyMinutes > 0 {
@@ -128,8 +131,8 @@ func sanitizeTabOrder(order []string) []string {
 		"ordenes":       true,
 		"categorias":    true,
 		"productos":     true,
-		"empleados":     true,
-		"usuarios":      true,
+		"personas":      true,
+		"ofertas":       true,
 		"herramientas":  true,
 		"configuracion": true,
 	}
@@ -138,6 +141,9 @@ func sanitizeTabOrder(order []string) []string {
 	sanitized := make([]string, 0, len(defaultAdminTabOrder))
 
 	for _, item := range order {
+		if item == "empleados" || item == "usuarios" {
+			item = "personas"
+		}
 		if !allowed[item] || seen[item] {
 			continue
 		}
@@ -219,4 +225,113 @@ func parsePositiveInt(value any) int {
 	}
 
 	return 0
+}
+
+// ── Store Settings (orders kill-switch + special offers) ─────────────
+
+const StoreOrdersEnabledKey = "store.orders.enabled"
+const StoreOffersKey = "store.offers"
+
+type OfferItem struct {
+	ProductID     string  `json:"product_id"`
+	Label         string  `json:"label"`
+	Note          string  `json:"note,omitempty"`
+	DiscountPrice float64 `json:"discount_price,omitempty"`
+	ExpiresAt     string  `json:"expires_at"` // RFC 3339
+}
+
+type StoreSettings struct {
+	OrdersEnabled bool        `json:"orders_enabled"`
+	Offers        []OfferItem `json:"offers"`
+}
+
+func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
+	result := StoreSettings{OrdersEnabled: true, Offers: []OfferItem{}}
+
+	// Orders enabled
+	rec, err := s.repo.GetByKey(ctx, StoreOrdersEnabledKey)
+	if err == nil {
+		if enabled, ok := rec.Value["enabled"]; ok {
+			if b, castOK := enabled.(bool); castOK {
+				result.OrdersEnabled = b
+			}
+		}
+	}
+
+	// Offers
+	offerRec, err := s.repo.GetByKey(ctx, StoreOffersKey)
+	if err == nil {
+		if rawItems, ok := offerRec.Value["items"]; ok {
+			if list, castOK := rawItems.([]any); castOK {
+				for _, raw := range list {
+					m, mOK := raw.(map[string]any)
+					if !mOK {
+						continue
+					}
+					item := OfferItem{}
+					if v, ok := m["product_id"].(string); ok {
+						item.ProductID = v
+					}
+					if v, ok := m["label"].(string); ok {
+						item.Label = v
+					}
+					if v, ok := m["note"].(string); ok {
+						item.Note = v
+					}
+					if v, ok := m["discount_price"].(float64); ok {
+						item.DiscountPrice = v
+					}
+					if v, ok := m["expires_at"].(string); ok {
+						item.ExpiresAt = v
+					}
+					if item.ProductID != "" {
+						result.Offers = append(result.Offers, item)
+					}
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings) (StoreSettings, error) {
+	// Persist orders enabled
+	_, err := s.repo.UpsertByKey(ctx, StoreOrdersEnabledKey, map[string]any{"enabled": input.OrdersEnabled})
+	if err != nil {
+		return StoreSettings{}, fmt.Errorf("failed to save orders enabled: %w", err)
+	}
+
+	// Persist offers
+	items := make([]map[string]any, 0, len(input.Offers))
+	for _, o := range input.Offers {
+		items = append(items, map[string]any{
+			"product_id":     o.ProductID,
+			"label":          o.Label,
+			"note":           o.Note,
+			"discount_price": o.DiscountPrice,
+			"expires_at":     o.ExpiresAt,
+		})
+	}
+	_, err = s.repo.UpsertByKey(ctx, StoreOffersKey, map[string]any{"items": items})
+	if err != nil {
+		return StoreSettings{}, fmt.Errorf("failed to save offers: %w", err)
+	}
+
+	return input, nil
+}
+
+// AreOrdersEnabled is a convenience helper for the kill-switch check.
+// It returns true on error (fail-open) so a DB hiccup does not block orders.
+func (s *AdminSettingService) AreOrdersEnabled(ctx context.Context) bool {
+	rec, err := s.repo.GetByKey(ctx, StoreOrdersEnabledKey)
+	if err != nil {
+		return true // fail-open
+	}
+	if enabled, ok := rec.Value["enabled"]; ok {
+		if b, castOK := enabled.(bool); castOK {
+			return b
+		}
+	}
+	return true
 }

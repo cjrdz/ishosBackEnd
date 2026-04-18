@@ -10,6 +10,7 @@ RUN go mod download
 # Copy source and build
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/healthcheck ./cmd/healthcheck
 RUN mkdir -p /app/pb_data
 
 # Provide CA roots for outbound TLS calls from the final minimal image.
@@ -21,6 +22,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 COPY --from=builder /app/server /app/server
+COPY --from=builder /app/healthcheck /app/healthcheck
 COPY --from=builder --chown=65532:65532 /app/pb_data /app/pb_data
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
@@ -28,6 +30,8 @@ COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # VOLUME ["/app/pb_data"]
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["/app/healthcheck", "-url", "http://127.0.0.1:8080/health"]
 
 # Chi HTTP server starts directly on :8080.
 # When ENABLE_PB_ADMIN_UI=true, PocketBase admin UI also starts on :8090.

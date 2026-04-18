@@ -1,3 +1,4 @@
+// server.go — Builds the Chi router, wires all handlers and middleware, and manages the DB connection lifecycle.
 package server
 
 import (
@@ -67,7 +68,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	flavorHandler := handlers.NewFlavorHandler(client)
 	addonHandler := handlers.NewAddonHandler(client)
 	uploadHandler := handlers.NewUploadHandler(cfg)
-	analyticsHandler := handlers.NewAnalyticsHandler(client)
+	analyticsHandler := handlers.NewAnalyticsHandler(client, cfg)
 	exportHandler := handlers.NewExportHandler(client)
 	userHandler := handlers.NewUserHandler(client)
 	adminSettingsHandler := handlers.NewAdminSettingsHandler(client, cfg)
@@ -93,7 +94,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		}
 		return time.Duration(resolved.TrackingTokenTTLHours) * time.Hour
 	})
-	orderHandler := handlers.NewOrderHandler(client, trackingTokenService, pb, cfg, orderRateLimiter)
+	orderHandler := handlers.NewOrderHandler(client, trackingTokenService, pb, cfg, orderRateLimiter, settingsSvc)
 
 	// ── Middleware ───────────────────────────────────────────────────────
 	loginRateLimiter := appmiddleware.NewLoginRateLimiter(cfg.LoginAttemptsPerMinute)
@@ -158,6 +159,9 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
 		api.Get("/orders/track", orderHandler.TrackPublic)
 
+		// Public store status (orders kill-switch + active offers)
+		api.Get("/settings/store/public", adminSettingsHandler.GetPublicStoreStatus)
+
 		// ── Authenticated routes (admin/employee only) ───────────────
 		api.Group(func(protected chi.Router) {
 			protected.Use(pbAuthMiddleware.RequireSession)
@@ -182,6 +186,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Patch("/settings/tabs", adminSettingsHandler.UpdateTabs)
 			protected.Get("/settings/panel-config", adminSettingsHandler.GetPanelConfig)
 			protected.With(appmiddleware.RequireAdmin).Patch("/settings/panel-config", adminSettingsHandler.UpdatePanelConfig)
+			protected.Get("/settings/store", adminSettingsHandler.GetStoreSettings)
+			protected.With(appmiddleware.RequireAdmin).Patch("/settings/store", adminSettingsHandler.UpdateStoreSettings)
 
 			// Products management
 			protected.Post("/products", productHandler.Create)
@@ -209,8 +215,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 
 			// Categories management
 			protected.Post("/categories", categoryHandler.Create)
-			protected.Patch("/categories/{slug}", categoryHandler.Update)
-			protected.Delete("/categories/{slug}", categoryHandler.Delete)
+			protected.Patch("/categories/{id}", categoryHandler.Update)
+			protected.Delete("/categories/{id}", categoryHandler.Delete)
 
 			// Orders management
 			protected.Get("/orders", orderHandler.List)
@@ -259,6 +265,8 @@ func parseAllowedOrigins(raw string) []string {
 		}
 		trimmed = strings.TrimSuffix(trimmed, "/")
 
+		// Bare hostnames (no scheme) are expanded to both https and http so
+		// callers can configure origins without repeating the same host twice.
 		if strings.Contains(trimmed, "://") {
 			if _, ok := seen[trimmed]; !ok {
 				seen[trimmed] = struct{}{}
@@ -284,6 +292,7 @@ func parseAllowedOrigins(raw string) []string {
 		}
 	}
 
+	// Fall back to the default Astro dev server when no origins are configured.
 	if len(origins) == 0 {
 		return []string{"http://localhost:4321"}
 	}
@@ -329,6 +338,7 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
 				continue
 			}
 
+			// Wildcard subdomain: *.example.com matches foo.example.com but not example.com itself.
 			if strings.HasPrefix(candidateHost, "*.") {
 				suffix := strings.TrimPrefix(candidateHost, "*")
 				if strings.HasSuffix(originHost, suffix) {
@@ -343,6 +353,7 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
 			continue
 		}
 
+		// Schemeless wildcard: *.example.com without a scheme matches any scheme.
 		if strings.HasPrefix(candidate, "*.") {
 			suffix := strings.TrimPrefix(candidate, "*")
 			if strings.HasSuffix(originHost, suffix) {
