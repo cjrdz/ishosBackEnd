@@ -546,7 +546,7 @@ func (s *OrderService) Approve(ctx context.Context, id uuid.UUID, reviewerID str
 		return nil, err
 	}
 	// allowOverride lets staff re-approve an order that was previously cancelled.
-	if order.Status != entOrder.StatusPendienteRevision && !(allowOverride && order.Status == entOrder.StatusCancelada) {
+	if order.Status != entOrder.StatusPendienteRevision && (!allowOverride || order.Status != entOrder.StatusCancelada) {
 		return nil, ErrInvalidOrderState
 	}
 

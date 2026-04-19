@@ -20,7 +20,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if err := database.EnsureSchema(context.Background(), client, rawDB); err != nil {
 		log.Error().Err(err).Msg("Failed to migrate database schema")

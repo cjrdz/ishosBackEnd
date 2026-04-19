@@ -164,7 +164,7 @@ func main() {
 		log.Error().Err(err).Msg("Failed to connect to PostgreSQL")
 		return
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 

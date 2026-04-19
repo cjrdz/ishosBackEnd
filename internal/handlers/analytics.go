@@ -12,14 +12,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
+
 	"github.com/cjrdz/ishosBackEnd/ent"
 	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
 	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
-	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog/log"
 )
 
 type AnalyticsHandler struct {

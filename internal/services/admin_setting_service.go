@@ -11,6 +11,7 @@ import (
 const AdminTabOrderSettingKey = "admin.tabs.order"
 const AdminTokenTTLSettingKey = "admin.tokens.ttl" // #nosec G101 -- Settings lookup key, not a credential.
 
+//nolint:misspell // Spanish UI tab names, not English typos.
 var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "personas", "ofertas", "herramientas", "configuracion"}
 
 type TokenTTLConfig struct {
@@ -127,6 +128,7 @@ func DefaultAdminTabOrder() []string {
 }
 
 func sanitizeTabOrder(order []string) []string {
+	//nolint:misspell // Spanish UI tab names, not English typos.
 	allowed := map[string]bool{
 		"ordenes":       true,
 		"categorias":    true,

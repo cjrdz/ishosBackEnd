@@ -38,7 +38,7 @@ func (h *UploadHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, "Missing 'image' form field")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	path, err := h.uploadSvc.UploadImage(r.Context(), file, header, r.FormValue("folder"))
 	if err != nil {

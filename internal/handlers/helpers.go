@@ -19,7 +19,7 @@ func decodeJSON(r *http.Request, dst interface{}) error {
 	if r.Body == nil {
 		return fmt.Errorf("request body is empty")
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// Read the full body before checking size; LimitReader is set to max+1 so we can
 	// distinguish "exactly at limit" from "over limit" without a second read.

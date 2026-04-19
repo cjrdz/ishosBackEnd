@@ -38,7 +38,7 @@ func doJSONRequest(t *testing.T, client *http.Client, method, url string, body a
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
