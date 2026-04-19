@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           total="$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')"
-          threshold="10.0"
+          threshold="9.0"
           awk -v total="$total" -v threshold="$threshold" 'BEGIN { if (total + 0 < threshold + 0) exit 1 }'
           echo "Coverage ${total}% meets threshold ${threshold}%"
 

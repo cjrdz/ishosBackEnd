@@ -159,8 +159,22 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
 		api.Get("/orders/track", orderHandler.TrackPublic)
 
-		// Public store status (orders kill-switch + active offers)
-		api.Get("/settings/store/public", adminSettingsHandler.GetPublicStoreStatus)
+		// ── Settings routes (mixed public + protected) ──────────────
+		api.Route("/settings", func(settings chi.Router) {
+			// Public store status (orders kill-switch + active offers)
+			settings.Get("/store/public", adminSettingsHandler.GetPublicStoreStatus)
+
+			// Protected settings (admin/employee)
+			settings.Group(func(protectedSettings chi.Router) {
+				protectedSettings.Use(pbAuthMiddleware.RequireSession)
+				protectedSettings.Get("/tabs", adminSettingsHandler.GetTabs)
+				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/tabs", adminSettingsHandler.UpdateTabs)
+				protectedSettings.Get("/panel-config", adminSettingsHandler.GetPanelConfig)
+				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/panel-config", adminSettingsHandler.UpdatePanelConfig)
+				protectedSettings.Get("/store", adminSettingsHandler.GetStoreSettings)
+				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/store", adminSettingsHandler.UpdateStoreSettings)
+			})
+		})
 
 		// ── Authenticated routes (admin/employee only) ───────────────
 		api.Group(func(protected chi.Router) {
@@ -180,14 +194,6 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Post("/users", userHandler.Create)
 			protected.With(appmiddleware.RequireAdmin).Patch("/users/{id}", userHandler.Update)
 			protected.With(appmiddleware.RequireAdmin).Delete("/users/{id}", userHandler.Delete)
-
-			// Admin dashboard settings
-			protected.Get("/settings/tabs", adminSettingsHandler.GetTabs)
-			protected.With(appmiddleware.RequireAdmin).Patch("/settings/tabs", adminSettingsHandler.UpdateTabs)
-			protected.Get("/settings/panel-config", adminSettingsHandler.GetPanelConfig)
-			protected.With(appmiddleware.RequireAdmin).Patch("/settings/panel-config", adminSettingsHandler.UpdatePanelConfig)
-			protected.Get("/settings/store", adminSettingsHandler.GetStoreSettings)
-			protected.With(appmiddleware.RequireAdmin).Patch("/settings/store", adminSettingsHandler.UpdateStoreSettings)
 
 			// Products management
 			protected.Post("/products", productHandler.Create)
