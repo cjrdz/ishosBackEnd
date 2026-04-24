@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
+
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
-	"github.com/google/uuid"
 )
 
 const AdminTabOrderSettingKey = "admin.tabs.order"
