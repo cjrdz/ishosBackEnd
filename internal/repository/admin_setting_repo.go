@@ -4,10 +4,10 @@ package repository
 import (
 	"context"
 
-	// Removed: "entgo.io/ent/schema/field" (schema definitions do not belong in repository)
+	"github.com/google/uuid"
+
 	"github.com/cjrdz/ishosBackEnd/ent"
 	entAdminSetting "github.com/cjrdz/ishosBackEnd/ent/adminsetting"
-	"github.com/google/uuid"
 )
 
 type AdminSettingRepository struct {

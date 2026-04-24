@@ -6,8 +6,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/google/uuid"
+
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
 // AdminSetting stores global admin panel configuration values.
