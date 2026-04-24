@@ -65,17 +65,31 @@ func init() {
 	// adminsettingDescKey is the schema descriptor for key field.
 	adminsettingDescKey := adminsettingFields[1].Descriptor()
 	// adminsetting.KeyValidator is a validator for the "key" field. It is called by the builders before save.
-	adminsetting.KeyValidator = adminsettingDescKey.Validators[0].(func(string) error)
+	adminsetting.KeyValidator = func() func(string) error {
+		validators := adminsettingDescKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(key string) error {
+			for _, fn := range fns {
+				if err := fn(key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// adminsettingDescValue is the schema descriptor for value field.
 	adminsettingDescValue := adminsettingFields[2].Descriptor()
 	// adminsetting.DefaultValue holds the default value on creation for the value field.
 	adminsetting.DefaultValue = adminsettingDescValue.Default.(map[string]interface{})
 	// adminsettingDescCreatedAt is the schema descriptor for created_at field.
-	adminsettingDescCreatedAt := adminsettingFields[3].Descriptor()
+	adminsettingDescCreatedAt := adminsettingFields[4].Descriptor()
 	// adminsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
 	adminsetting.DefaultCreatedAt = adminsettingDescCreatedAt.Default.(func() time.Time)
 	// adminsettingDescUpdatedAt is the schema descriptor for updated_at field.
-	adminsettingDescUpdatedAt := adminsettingFields[4].Descriptor()
+	adminsettingDescUpdatedAt := adminsettingFields[5].Descriptor()
 	// adminsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	adminsetting.DefaultUpdatedAt = adminsettingDescUpdatedAt.Default.(func() time.Time)
 	// adminsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

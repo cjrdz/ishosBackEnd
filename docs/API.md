@@ -368,7 +368,19 @@ Response `200 OK`:
   "updated_at": "2025-02-15T15:10:00Z",
   "created_at": "2025-02-15T14:30:00Z",
   "total_amount": 10.50,
-  "order_type": "para_llevar"
+  "order_type": "para_llevar",
+  "items": [
+    {
+      "product_name": "Gelato de Pistacho",
+      "quantity": 2,
+      "unit_price": 4.75,
+      "subtotal": 9.50,
+      "customizations": {
+        "flavor_name": "Pistacho",
+        "extra_addon_names": ["Chispas de chocolate"]
+      }
+    }
+  ]
 }
 ```
 

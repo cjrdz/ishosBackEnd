@@ -11,6 +11,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
+	"github.com/google/uuid"
 )
 
 type AdminSettingsHandler struct {
@@ -54,18 +55,16 @@ func (h *AdminSettingsHandler) UpdateTabs(w http.ResponseWriter, r *http.Request
 	var body struct {
 		TabOrder []string `json:"tab_order"`
 	}
-
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
-
-	order, err := h.settingsSvc.UpdateTabOrder(r.Context(), body.TabOrder)
+	adminID := getAdminID(r)
+	order, err := h.settingsSvc.UpdateTabOrder(r.Context(), body.TabOrder, adminID)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "No se pudo guardar configuración")
 		return
 	}
-
 	response.JSON(w, http.StatusOK, map[string]any{
 		"tab_order": order,
 	})
@@ -96,18 +95,16 @@ func (h *AdminSettingsHandler) GetPanelConfig(w http.ResponseWriter, r *http.Req
 // PATCH /api/v1/admin/settings/panel
 func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.Request) {
 	var body services.TokenTTLConfig
-
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
-
-	configValues, err := h.settingsSvc.UpdateTokenTTLConfig(r.Context(), body, h.defaults)
+	adminID := getAdminID(r)
+	configValues, err := h.settingsSvc.UpdateTokenTTLConfig(r.Context(), body, h.defaults, adminID)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "No se pudo guardar configuración")
 		return
 	}
-
 	response.JSON(w, http.StatusOK, map[string]any{
 		"auth_cookie_ttl_hours":     configValues.AuthCookieTTLHours,
 		"auth_token_ttl_hours":      configValues.AuthTokenTTLHours,
@@ -144,14 +141,21 @@ func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *htt
 		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
-
-	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), body)
+	adminID := getAdminID(r)
+	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), body, adminID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración de tienda")
 		return
 	}
-
 	response.JSON(w, http.StatusOK, saved)
+}
+
+// getAdminID extracts the authenticated admin's UUID from the request/session.
+// You must implement this based on your authentication/session logic.
+func getAdminID(r *http.Request) uuid.UUID {
+	// TODO: Replace with real session extraction logic
+	// Example: return r.Context().Value("admin_id").(uuid.UUID)
+	return uuid.Nil // placeholder
 }
 
 // GetPublicStoreStatus returns public-facing store status.

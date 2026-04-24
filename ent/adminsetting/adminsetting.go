@@ -18,6 +18,8 @@ const (
 	FieldKey = "key"
 	// FieldValue holds the string denoting the value field in the database.
 	FieldValue = "value"
+	// FieldChangedBy holds the string denoting the changed_by field in the database.
+	FieldChangedBy = "changed_by"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -31,6 +33,7 @@ var Columns = []string{
 	FieldID,
 	FieldKey,
 	FieldValue,
+	FieldChangedBy,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -71,6 +74,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByKey orders the results by the key field.
 func ByKey(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldKey, opts...).ToFunc()
+}
+
+// ByChangedBy orders the results by the changed_by field.
+func ByChangedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChangedBy, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

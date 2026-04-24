@@ -3,9 +3,12 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/google/uuid"
 )
 
 const AdminTabOrderSettingKey = "admin.tabs.order"
@@ -23,6 +26,19 @@ type TokenTTLConfig struct {
 
 type AdminSettingService struct {
 	repo *repository.AdminSettingRepository
+}
+
+// Helper to validate and upsert a setting with audit
+func (s *AdminSettingService) upsertSetting(ctx context.Context, key string, value map[string]any, changedBy uuid.UUID) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("failed to marshal value: %w", err)
+	}
+	if err := config.ValidateSetting(key, raw); err != nil {
+		return fmt.Errorf("invalid setting for key %s: %w", key, err)
+	}
+	_, err = s.repo.UpsertByKeyWithAudit(ctx, key, value, changedBy)
+	return err
 }
 
 func NewAdminSettingService(repo *repository.AdminSettingRepository) *AdminSettingService {
@@ -61,17 +77,15 @@ func (s *AdminSettingService) GetTabOrder(ctx context.Context) ([]string, error)
 	return sanitizeTabOrder(order), nil
 }
 
-func (s *AdminSettingService) UpdateTabOrder(ctx context.Context, tabOrder []string) ([]string, error) {
+func (s *AdminSettingService) UpdateTabOrder(ctx context.Context, tabOrder []string, changedBy uuid.UUID) ([]string, error) {
 	sanitized := sanitizeTabOrder(tabOrder)
 	if len(sanitized) == 0 {
 		return nil, fmt.Errorf("tab_order cannot be empty")
 	}
-
-	_, err := s.repo.UpsertByKey(ctx, AdminTabOrderSettingKey, map[string]any{"tab_order": sanitized})
-	if err != nil {
+	value := map[string]any{"tab_order": sanitized}
+	if err := s.upsertSetting(ctx, AdminTabOrderSettingKey, value, changedBy); err != nil {
 		return nil, err
 	}
-
 	return sanitized, nil
 }
 
@@ -104,22 +118,20 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 	return sanitizeTokenTTLConfig(resolved, defaults), nil
 }
 
-func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, defaults TokenTTLConfig, changedBy uuid.UUID) (TokenTTLConfig, error) {
 	sanitized := sanitizeTokenTTLConfig(input, defaults)
 	if !isValidTokenTTLConfig(sanitized) {
 		return TokenTTLConfig{}, fmt.Errorf("invalid token TTL configuration")
 	}
-
-	_, err := s.repo.UpsertByKey(ctx, AdminTokenTTLSettingKey, map[string]any{
+	value := map[string]any{
 		"auth_cookie_ttl_hours":     sanitized.AuthCookieTTLHours,
 		"auth_token_ttl_hours":      sanitized.AuthTokenTTLHours,
 		"tracking_token_ttl_hours":  sanitized.TrackingTokenTTLHours,
 		"inactivity_logout_seconds": sanitized.InactivityLogoutSeconds,
-	})
-	if err != nil {
+	}
+	if err := s.upsertSetting(ctx, AdminTokenTTLSettingKey, value, changedBy); err != nil {
 		return TokenTTLConfig{}, err
 	}
-
 	return sanitized, nil
 }
 
@@ -297,13 +309,12 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 	return result, nil
 }
 
-func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings) (StoreSettings, error) {
+func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings, changedBy uuid.UUID) (StoreSettings, error) {
 	// Persist orders enabled
-	_, err := s.repo.UpsertByKey(ctx, StoreOrdersEnabledKey, map[string]any{"enabled": input.OrdersEnabled})
-	if err != nil {
+	ordersValue := map[string]any{"enabled": input.OrdersEnabled}
+	if err := s.upsertSetting(ctx, StoreOrdersEnabledKey, ordersValue, changedBy); err != nil {
 		return StoreSettings{}, fmt.Errorf("failed to save orders enabled: %w", err)
 	}
-
 	// Persist offers
 	items := make([]map[string]any, 0, len(input.Offers))
 	for _, o := range input.Offers {
@@ -315,11 +326,10 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 			"expires_at":     o.ExpiresAt,
 		})
 	}
-	_, err = s.repo.UpsertByKey(ctx, StoreOffersKey, map[string]any{"items": items})
-	if err != nil {
+	offersValue := map[string]any{"items": items}
+	if err := s.upsertSetting(ctx, StoreOffersKey, offersValue, changedBy); err != nil {
 		return StoreSettings{}, fmt.Errorf("failed to save offers: %w", err)
 	}
-
 	return input, nil
 }
 

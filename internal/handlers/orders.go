@@ -446,6 +446,26 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	publicItems := make([]map[string]interface{}, 0, len(order.Edges.Items))
+	for _, item := range order.Edges.Items {
+		if item == nil {
+			continue
+		}
+
+		publicItem := map[string]interface{}{
+			"product_name": item.ProductName,
+			"quantity":     item.Quantity,
+			"unit_price":   item.UnitPrice,
+			"subtotal":     item.Subtotal,
+		}
+
+		if item.Customizations != nil {
+			publicItem["customizations"] = item.Customizations
+		}
+
+		publicItems = append(publicItems, publicItem)
+	}
+
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"order_number": order.OrderNumber,
 		"status":       order.Status,
@@ -453,6 +473,7 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 		"created_at":   order.CreatedAt,
 		"total_amount": order.TotalAmount,
 		"order_type":   order.OrderType,
+		"items":        publicItems,
 	})
 }
 

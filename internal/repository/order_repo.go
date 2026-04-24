@@ -99,6 +99,7 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Orde
 func (r *OrderRepository) FindByOrderNumber(ctx context.Context, orderNumber string) (*ent.Order, error) {
 	return r.db.Order.Query().
 		Where(entOrder.OrderNumberEQ(orderNumber)).
+		WithItems().
 		Only(ctx)
 }
 

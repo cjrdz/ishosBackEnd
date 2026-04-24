@@ -870,6 +870,7 @@ type AdminSettingMutation struct {
 	id            *uuid.UUID
 	key           *string
 	value         *map[string]interface{}
+	changed_by    *uuid.UUID
 	created_at    *time.Time
 	updated_at    *time.Time
 	clearedFields map[string]struct{}
@@ -1054,6 +1055,55 @@ func (m *AdminSettingMutation) ResetValue() {
 	m.value = nil
 }
 
+// SetChangedBy sets the "changed_by" field.
+func (m *AdminSettingMutation) SetChangedBy(u uuid.UUID) {
+	m.changed_by = &u
+}
+
+// ChangedBy returns the value of the "changed_by" field in the mutation.
+func (m *AdminSettingMutation) ChangedBy() (r uuid.UUID, exists bool) {
+	v := m.changed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChangedBy returns the old "changed_by" field's value of the AdminSetting entity.
+// If the AdminSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AdminSettingMutation) OldChangedBy(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChangedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChangedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChangedBy: %w", err)
+	}
+	return oldValue.ChangedBy, nil
+}
+
+// ClearChangedBy clears the value of the "changed_by" field.
+func (m *AdminSettingMutation) ClearChangedBy() {
+	m.changed_by = nil
+	m.clearedFields[adminsetting.FieldChangedBy] = struct{}{}
+}
+
+// ChangedByCleared returns if the "changed_by" field was cleared in this mutation.
+func (m *AdminSettingMutation) ChangedByCleared() bool {
+	_, ok := m.clearedFields[adminsetting.FieldChangedBy]
+	return ok
+}
+
+// ResetChangedBy resets all changes to the "changed_by" field.
+func (m *AdminSettingMutation) ResetChangedBy() {
+	m.changed_by = nil
+	delete(m.clearedFields, adminsetting.FieldChangedBy)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *AdminSettingMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1160,12 +1210,15 @@ func (m *AdminSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AdminSettingMutation) Fields() []string {
-	fields := make([]string, 0, 4)
+	fields := make([]string, 0, 5)
 	if m.key != nil {
 		fields = append(fields, adminsetting.FieldKey)
 	}
 	if m.value != nil {
 		fields = append(fields, adminsetting.FieldValue)
+	}
+	if m.changed_by != nil {
+		fields = append(fields, adminsetting.FieldChangedBy)
 	}
 	if m.created_at != nil {
 		fields = append(fields, adminsetting.FieldCreatedAt)
@@ -1185,6 +1238,8 @@ func (m *AdminSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.Key()
 	case adminsetting.FieldValue:
 		return m.Value()
+	case adminsetting.FieldChangedBy:
+		return m.ChangedBy()
 	case adminsetting.FieldCreatedAt:
 		return m.CreatedAt()
 	case adminsetting.FieldUpdatedAt:
@@ -1202,6 +1257,8 @@ func (m *AdminSettingMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldKey(ctx)
 	case adminsetting.FieldValue:
 		return m.OldValue(ctx)
+	case adminsetting.FieldChangedBy:
+		return m.OldChangedBy(ctx)
 	case adminsetting.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case adminsetting.FieldUpdatedAt:
@@ -1228,6 +1285,13 @@ func (m *AdminSettingMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetValue(v)
+		return nil
+	case adminsetting.FieldChangedBy:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChangedBy(v)
 		return nil
 	case adminsetting.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -1272,7 +1336,11 @@ func (m *AdminSettingMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *AdminSettingMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(adminsetting.FieldChangedBy) {
+		fields = append(fields, adminsetting.FieldChangedBy)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -1285,6 +1353,11 @@ func (m *AdminSettingMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *AdminSettingMutation) ClearField(name string) error {
+	switch name {
+	case adminsetting.FieldChangedBy:
+		m.ClearChangedBy()
+		return nil
+	}
 	return fmt.Errorf("unknown AdminSetting nullable field %s", name)
 }
 
@@ -1297,6 +1370,9 @@ func (m *AdminSettingMutation) ResetField(name string) error {
 		return nil
 	case adminsetting.FieldValue:
 		m.ResetValue()
+		return nil
+	case adminsetting.FieldChangedBy:
+		m.ResetChangedBy()
 		return nil
 	case adminsetting.FieldCreatedAt:
 		m.ResetCreatedAt()

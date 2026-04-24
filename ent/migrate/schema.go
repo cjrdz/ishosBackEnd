@@ -46,6 +46,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "key", Type: field.TypeString, Unique: true, Size: 120},
 		{Name: "value", Type: field.TypeJSON},
+		{Name: "changed_by", Type: field.TypeUUID, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
