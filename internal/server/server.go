@@ -155,8 +155,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Get("/addons", addonHandler.List)
 		api.Get("/addons/{id}", addonHandler.Get)
 
-		// Orders (public create)
-		api.Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
+		// Orders (public create; optionally capture authenticated staff identity)
+		api.With(pbAuthMiddleware.OptionalSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
 		api.Get("/orders/track", orderHandler.TrackPublic)
 
 		// ── Settings routes (mixed public + protected) ──────────────
@@ -179,6 +179,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		// ── Authenticated routes (admin/employee only) ───────────────
 		api.Group(func(protected chi.Router) {
 			protected.Use(pbAuthMiddleware.RequireSession)
+			protected.With(appmiddleware.RequireAdmin).Post("/auth/lockout/reset", authHandler.ResetLoginLockout)
 
 			// Employees management
 			protected.With(appmiddleware.RequireAdmin).Get("/employees", employeeHandler.List)

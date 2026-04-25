@@ -596,6 +596,39 @@ Response `200 OK`:
 
 With token-based auth, the server has no session to destroy. This endpoint returns a confirmation — the frontend should discard the stored token.
 
+
+### POST `/api/v1/auth/lockout/reset` — Admin unlock
+
+Requires: `Authorization: Bearer <token>` with `admin` role.
+
+Use this endpoint to immediately clear login lockout waits for one employee.
+
+Body (target by PocketBase employee ID):
+
+```json
+{
+  "employee_id": "pb-record-id"
+}
+```
+
+Body (target by employee email):
+
+```json
+{
+  "email": "employee@ishos.com"
+}
+```
+
+Response `200 OK`:
+
+```json
+{
+  "message": "Login lockout reset successfully",
+  "scope": "employee",
+  "employee_id": "pb-record-id",
+  "email": "employee@ishos.com"
+}
+```
 Response `200 OK`:
 
 ```json

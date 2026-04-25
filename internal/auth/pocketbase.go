@@ -131,6 +131,11 @@ func (pb *PBAuth) FindEmployeeByID(id string) (*core.Record, error) {
 	return pb.App.FindRecordById("employees", id)
 }
 
+// FindEmployeeByEmail returns an employee auth record by email.
+func (pb *PBAuth) FindEmployeeByEmail(email string) (*core.Record, error) {
+	return pb.App.FindAuthRecordByEmail("employees", strings.TrimSpace(email))
+}
+
 // ListEmployees returns all employee/admin records.
 func (pb *PBAuth) ListEmployees() ([]*core.Record, error) {
 	return pb.App.FindRecordsByFilter(
