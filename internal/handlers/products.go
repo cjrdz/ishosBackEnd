@@ -242,11 +242,12 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Name        *string  `json:"name"`
-		Description *string  `json:"description"`
-		Price       *float64 `json:"price"`
-		ImagePath   *string  `json:"image_path"`
-		IsAvailable *bool    `json:"is_available"`
+		Name        *string    `json:"name"`
+		Description *string    `json:"description"`
+		Price       *float64   `json:"price"`
+		CategoryID  *uuid.UUID `json:"category_id"`
+		ImagePath   *string    `json:"image_path"`
+		IsAvailable *bool      `json:"is_available"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -262,6 +263,7 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:        body.Name,
 		Description: body.Description,
 		Price:       body.Price,
+		CategoryID:  body.CategoryID,
 		ImagePath:   body.ImagePath,
 		IsAvailable: body.IsAvailable,
 	})

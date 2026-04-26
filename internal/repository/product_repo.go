@@ -83,6 +83,9 @@ func (r *ProductRepository) Update(ctx context.Context, id uuid.UUID, input Upda
 	if input.Price != nil {
 		upd = upd.SetPrice(*input.Price)
 	}
+	if input.CategoryID != nil {
+		upd = upd.SetCategoryID(*input.CategoryID)
+	}
 	if input.ImagePath != nil {
 		upd = upd.SetImagePath(*input.ImagePath)
 	}
@@ -165,6 +168,7 @@ type UpdateProductInput struct {
 	Name        *string
 	Description *string
 	Price       *float64
+	CategoryID  *uuid.UUID
 	ImagePath   *string
 	IsAvailable *bool
 }
