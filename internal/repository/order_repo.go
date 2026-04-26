@@ -62,7 +62,9 @@ func (r *OrderRepository) CreateItem(ctx context.Context, input CreateOrderItemI
 }
 
 func (r *OrderRepository) ListPaginated(ctx context.Context, status string, page, limit int) ([]*ent.Order, int, error) {
-	q := r.db.Order.Query().WithItems()
+	q := r.db.Order.Query().WithItems(func(query *ent.OrderItemQuery) {
+		query.WithProduct()
+	})
 	if status != "" {
 		q = q.Where(entOrder.StatusEQ(entOrder.Status(status)))
 	}
@@ -88,7 +90,9 @@ func (r *OrderRepository) ListPaginated(ctx context.Context, status string, page
 func (r *OrderRepository) FindByIDWithItems(ctx context.Context, id uuid.UUID) (*ent.Order, error) {
 	return r.db.Order.Query().
 		Where(entOrder.IDEQ(id)).
-		WithItems().
+		WithItems(func(query *ent.OrderItemQuery) {
+			query.WithProduct()
+		}).
 		Only(ctx)
 }
 
@@ -99,7 +103,9 @@ func (r *OrderRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Orde
 func (r *OrderRepository) FindByOrderNumber(ctx context.Context, orderNumber string) (*ent.Order, error) {
 	return r.db.Order.Query().
 		Where(entOrder.OrderNumberEQ(orderNumber)).
-		WithItems().
+		WithItems(func(query *ent.OrderItemQuery) {
+			query.WithProduct()
+		}).
 		Only(ctx)
 }
 

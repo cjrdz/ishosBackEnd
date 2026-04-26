@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -185,13 +186,16 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Price       float64   `json:"price"`
 		CategoryID  uuid.UUID `json:"category_id"`
 		ImagePath   *string   `json:"image_path"`
+		StockStatus *string   `json:"stock_status"`
+		IsAvailable *bool     `json:"is_available"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	if errs := validator.ValidateProductCreate(body.Name, body.Description, body.Price, ""); errs.HasErrors() {
+	stockStatus := normalizeStockStatus(body.StockStatus, body.IsAvailable)
+	if errs := validator.ValidateProductCreate(body.Name, body.Description, body.Price, stockStatus); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
 	}
@@ -210,6 +214,21 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusCreated, p)
+}
+
+func normalizeStockStatus(stockStatus *string, isAvailable *bool) string {
+	if stockStatus != nil {
+		value := strings.TrimSpace(*stockStatus)
+		if value != "" {
+			return value
+		}
+	}
+
+	if isAvailable != nil && !*isAvailable {
+		return "out_of_stock"
+	}
+
+	return "in_stock"
 }
 
 // Update modifies a product. Admin only.

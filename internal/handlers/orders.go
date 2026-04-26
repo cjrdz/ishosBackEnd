@@ -105,6 +105,7 @@ type updateOrderBody struct {
 
 type orderItemResponse struct {
 	ID             uuid.UUID              `json:"id"`
+	ProductID      uuid.UUID              `json:"product_id"`
 	ProductName    string                 `json:"product_name"`
 	Quantity       int                    `json:"quantity"`
 	UnitPrice      float64                `json:"unit_price"`
@@ -161,8 +162,13 @@ func mapOrderResponseWithPB(order *ent.Order, pb *auth.PBAuth) orderResponse {
 			if item == nil {
 				continue
 			}
+			productID := uuid.Nil
+			if item.Edges.Product != nil {
+				productID = item.Edges.Product.ID
+			}
 			items = append(items, orderItemResponse{
 				ID:             item.ID,
+				ProductID:      productID,
 				ProductName:    item.ProductName,
 				Quantity:       item.Quantity,
 				UnitPrice:      item.UnitPrice,
@@ -619,6 +625,12 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		body.TableNumber = nil
 	}
 
+	notes := strings.TrimSpace(body.Notes)
+	if notes == "" {
+		response.Error(w, http.StatusBadRequest, "notes is required when editing orders")
+		return
+	}
+
 	items := make([]services.OrderItemInput, 0, len(body.Items))
 	for _, item := range body.Items {
 		if item.Quantity <= 0 {
@@ -639,7 +651,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		PaymentMethod: body.PaymentMethod,
 		OrderType:     body.OrderType,
 		TableNumber:   body.TableNumber,
-		Notes:         nilIfEmpty(body.Notes),
+		Notes:         &notes,
 		Items:         items,
 	})
 	if err != nil {
