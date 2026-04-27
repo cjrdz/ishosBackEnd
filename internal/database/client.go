@@ -86,7 +86,7 @@ WHERE table_schema = current_schema()
 	if err != nil {
 		return fmt.Errorf("verify products exclusion columns: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	found := map[string]bool{
 		"exclude_global_flavors": false,

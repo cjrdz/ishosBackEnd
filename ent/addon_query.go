@@ -566,7 +566,7 @@ func (_g *AddonGroupBy) sqlScan(ctx context.Context, root *AddonQuery, v any) er
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -608,6 +608,6 @@ func (_s *AddonSelect) sqlScan(ctx context.Context, root *AddonQuery, v any) err
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return sql.ScanSlice(rows, v)
 }
