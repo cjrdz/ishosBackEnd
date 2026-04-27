@@ -309,7 +309,9 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, services.ErrProductUnavailable) ||
 			errors.Is(err, services.ErrFlavorRequired) ||
 			errors.Is(err, services.ErrFlavorNotAllowed) ||
-			errors.Is(err, services.ErrAddonNotAllowed) {
+			errors.Is(err, services.ErrAddonNotAllowed) ||
+			errors.Is(err, services.ErrToppingRequired) ||
+			errors.Is(err, services.ErrJaleaRequired) {
 			writeAppError(w, err, "Failed to create order")
 			return
 		}

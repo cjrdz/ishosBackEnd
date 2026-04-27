@@ -138,7 +138,7 @@ func Load() *Config {
 		TrackingTokenTTLHours:       getEnvInt("TRACKING_TOKEN_TTL_HOURS", 720),
 		RedisURL:                    getEnv("REDIS_URL", ""),
 		RedisPrefix:                 getEnv("REDIS_PREFIX", "ishos"),
-		TrackingRequestsPerHour:     getEnvInt("TRACKING_REQUESTS_PER_HOUR", 60),
+		TrackingRequestsPerHour:     getEnvInt("TRACKING_REQUESTS_PER_HOUR", 240),
 		BootstrapAdminEmail:         getEnv("BOOTSTRAP_ADMIN_EMAIL", ""),
 		BootstrapAdminPassword:      getEnv("BOOTSTRAP_ADMIN_PASSWORD", ""),
 		BootstrapAdminName:          getEnv("BOOTSTRAP_ADMIN_NAME", "Admin"),

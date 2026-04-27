@@ -43,6 +43,10 @@ func EnsureSchema(ctx context.Context, client *ent.Client, rawDB *stdsql.DB) err
 		return err
 	}
 
+	if err := verifyProductGlobalExclusionColumns(ctx, rawDB); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -65,6 +69,44 @@ SELECT EXISTS (
 	}
 	if !exists {
 		return fmt.Errorf("verify addons.group_name column: missing after migration")
+	}
+
+	return nil
+}
+
+func verifyProductGlobalExclusionColumns(ctx context.Context, rawDB *stdsql.DB) error {
+	const query = `
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name = 'products'
+  AND column_name IN ('exclude_global_flavors', 'exclude_global_addons')`
+
+	rows, err := rawDB.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("verify products exclusion columns: %w", err)
+	}
+	defer rows.Close()
+
+	found := map[string]bool{
+		"exclude_global_flavors": false,
+		"exclude_global_addons":  false,
+	}
+
+	for rows.Next() {
+		var columnName string
+		if scanErr := rows.Scan(&columnName); scanErr != nil {
+			return fmt.Errorf("verify products exclusion columns scan: %w", scanErr)
+		}
+		found[columnName] = true
+	}
+
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return fmt.Errorf("verify products exclusion columns rows: %w", rowsErr)
+	}
+
+	if !found["exclude_global_flavors"] || !found["exclude_global_addons"] {
+		return fmt.Errorf("verify products exclusion columns: missing after migration")
 	}
 
 	return nil

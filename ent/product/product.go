@@ -25,6 +25,10 @@ const (
 	FieldImagePath = "image_path"
 	// FieldIsAvailable holds the string denoting the is_available field in the database.
 	FieldIsAvailable = "is_available"
+	// FieldExcludeGlobalFlavors holds the string denoting the exclude_global_flavors field in the database.
+	FieldExcludeGlobalFlavors = "exclude_global_flavors"
+	// FieldExcludeGlobalAddons holds the string denoting the exclude_global_addons field in the database.
+	FieldExcludeGlobalAddons = "exclude_global_addons"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -77,6 +81,8 @@ var Columns = []string{
 	FieldPrice,
 	FieldImagePath,
 	FieldIsAvailable,
+	FieldExcludeGlobalFlavors,
+	FieldExcludeGlobalAddons,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -111,6 +117,10 @@ var (
 	PriceValidator func(float64) error
 	// DefaultIsAvailable holds the default value on creation for the "is_available" field.
 	DefaultIsAvailable bool
+	// DefaultExcludeGlobalFlavors holds the default value on creation for the "exclude_global_flavors" field.
+	DefaultExcludeGlobalFlavors bool
+	// DefaultExcludeGlobalAddons holds the default value on creation for the "exclude_global_addons" field.
+	DefaultExcludeGlobalAddons bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -152,6 +162,16 @@ func ByImagePath(opts ...sql.OrderTermOption) OrderOption {
 // ByIsAvailable orders the results by the is_available field.
 func ByIsAvailable(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIsAvailable, opts...).ToFunc()
+}
+
+// ByExcludeGlobalFlavors orders the results by the exclude_global_flavors field.
+func ByExcludeGlobalFlavors(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExcludeGlobalFlavors, opts...).ToFunc()
+}
+
+// ByExcludeGlobalAddons orders the results by the exclude_global_addons field.
+func ByExcludeGlobalAddons(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExcludeGlobalAddons, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

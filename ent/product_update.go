@@ -116,6 +116,34 @@ func (_u *ProductUpdate) SetNillableIsAvailable(v *bool) *ProductUpdate {
 	return _u
 }
 
+// SetExcludeGlobalFlavors sets the "exclude_global_flavors" field.
+func (_u *ProductUpdate) SetExcludeGlobalFlavors(v bool) *ProductUpdate {
+	_u.mutation.SetExcludeGlobalFlavors(v)
+	return _u
+}
+
+// SetNillableExcludeGlobalFlavors sets the "exclude_global_flavors" field if the given value is not nil.
+func (_u *ProductUpdate) SetNillableExcludeGlobalFlavors(v *bool) *ProductUpdate {
+	if v != nil {
+		_u.SetExcludeGlobalFlavors(*v)
+	}
+	return _u
+}
+
+// SetExcludeGlobalAddons sets the "exclude_global_addons" field.
+func (_u *ProductUpdate) SetExcludeGlobalAddons(v bool) *ProductUpdate {
+	_u.mutation.SetExcludeGlobalAddons(v)
+	return _u
+}
+
+// SetNillableExcludeGlobalAddons sets the "exclude_global_addons" field if the given value is not nil.
+func (_u *ProductUpdate) SetNillableExcludeGlobalAddons(v *bool) *ProductUpdate {
+	if v != nil {
+		_u.SetExcludeGlobalAddons(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ProductUpdate) SetUpdatedAt(v time.Time) *ProductUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -338,6 +366,12 @@ func (_u *ProductUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.IsAvailable(); ok {
 		_spec.SetField(product.FieldIsAvailable, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExcludeGlobalFlavors(); ok {
+		_spec.SetField(product.FieldExcludeGlobalFlavors, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExcludeGlobalAddons(); ok {
+		_spec.SetField(product.FieldExcludeGlobalAddons, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)
@@ -609,6 +643,34 @@ func (_u *ProductUpdateOne) SetNillableIsAvailable(v *bool) *ProductUpdateOne {
 	return _u
 }
 
+// SetExcludeGlobalFlavors sets the "exclude_global_flavors" field.
+func (_u *ProductUpdateOne) SetExcludeGlobalFlavors(v bool) *ProductUpdateOne {
+	_u.mutation.SetExcludeGlobalFlavors(v)
+	return _u
+}
+
+// SetNillableExcludeGlobalFlavors sets the "exclude_global_flavors" field if the given value is not nil.
+func (_u *ProductUpdateOne) SetNillableExcludeGlobalFlavors(v *bool) *ProductUpdateOne {
+	if v != nil {
+		_u.SetExcludeGlobalFlavors(*v)
+	}
+	return _u
+}
+
+// SetExcludeGlobalAddons sets the "exclude_global_addons" field.
+func (_u *ProductUpdateOne) SetExcludeGlobalAddons(v bool) *ProductUpdateOne {
+	_u.mutation.SetExcludeGlobalAddons(v)
+	return _u
+}
+
+// SetNillableExcludeGlobalAddons sets the "exclude_global_addons" field if the given value is not nil.
+func (_u *ProductUpdateOne) SetNillableExcludeGlobalAddons(v *bool) *ProductUpdateOne {
+	if v != nil {
+		_u.SetExcludeGlobalAddons(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ProductUpdateOne) SetUpdatedAt(v time.Time) *ProductUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -861,6 +923,12 @@ func (_u *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err er
 	}
 	if value, ok := _u.mutation.IsAvailable(); ok {
 		_spec.SetField(product.FieldIsAvailable, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExcludeGlobalFlavors(); ok {
+		_spec.SetField(product.FieldExcludeGlobalFlavors, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ExcludeGlobalAddons(); ok {
+		_spec.SetField(product.FieldExcludeGlobalAddons, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)

@@ -27,6 +27,8 @@ var (
 	ErrFlavorRequired     = apperror.ErrValidation
 	ErrFlavorNotAllowed   = apperror.ErrValidation
 	ErrAddonNotAllowed    = apperror.ErrValidation
+	ErrToppingRequired    = apperror.ErrValidation
+	ErrJaleaRequired      = apperror.ErrValidation
 )
 
 // Addons without a recognised group name fall into "extras" and are always charged.
@@ -267,6 +269,7 @@ func activeAddonIndex(product *ent.Product) map[uuid.UUID]*ent.Addon {
 func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string]interface{}) (map[string]interface{}, float64, error) {
 	enriched := cloneCustomizations(raw)
 	addonExtra := 0.0
+	selectedAddonGroups := make(map[string]bool)
 
 	activeFlavors := activeFlavorIndex(product)
 	selectedFlavorID := extractCustomizationString(raw, "flavor_id")
@@ -330,6 +333,8 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 					continue
 				}
 
+				selectedAddonGroups[normalizeAddonGroupName(selectedAddon.GroupName)] = true
+
 				normalizedAddonIDs = append(normalizedAddonIDs, selectedAddon.ID.String())
 				addonNames = append(addonNames, selectedAddon.Name)
 				addonPrices = append(addonPrices, selectedAddon.Price)
@@ -367,6 +372,8 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 					continue
 				}
 
+				selectedAddonGroups[normalizeAddonGroupName(selectedAddon.GroupName)] = true
+
 				groupName := normalizeAddonGroupName(selectedAddon.GroupName)
 				allowance := freeAddonAllowanceByGroup[groupName]
 				if allowance > 0 && includedByGroupCount[groupName] < allowance {
@@ -395,6 +402,8 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 					continue
 				}
 
+				selectedAddonGroups[normalizeAddonGroupName(selectedAddon.GroupName)] = true
+
 				normalizedExtraIDs = append(normalizedExtraIDs, selectedAddon.ID.String())
 				extraNames = append(extraNames, selectedAddon.Name)
 				extraPrices = append(extraPrices, selectedAddon.Price)
@@ -416,6 +425,45 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 				enriched["extra_addon_prices"] = extraPrices
 				enriched["addon_prices"] = extraPrices
 			}
+		}
+	}
+
+	hasActiveToppingOptions := false
+	hasActiveJaleaOptions := false
+	for _, addon := range activeAddons {
+		groupName := normalizeAddonGroupName(addon.GroupName)
+		if groupName == "toppings" {
+			hasActiveToppingOptions = true
+		}
+		if groupName == "jalea" {
+			hasActiveJaleaOptions = true
+		}
+	}
+
+	toppingSelection := strings.ToLower(extractCustomizationString(raw, "topping_selection"))
+	jaleaSelection := strings.ToLower(extractCustomizationString(raw, "jalea_selection"))
+
+	if hasActiveToppingOptions {
+		if !selectedAddonGroups["toppings"] && toppingSelection != "none" {
+			return nil, 0, fmt.Errorf("%w: topping selection is required", ErrToppingRequired)
+		}
+		if toppingSelection == "none" {
+			if enriched == nil {
+				enriched = make(map[string]interface{})
+			}
+			enriched["topping_selection"] = "none"
+		}
+	}
+
+	if hasActiveJaleaOptions {
+		if !selectedAddonGroups["jalea"] && jaleaSelection != "none" {
+			return nil, 0, fmt.Errorf("%w: jalea selection is required", ErrJaleaRequired)
+		}
+		if jaleaSelection == "none" {
+			if enriched == nil {
+				enriched = make(map[string]interface{})
+			}
+			enriched["jalea_selection"] = "none"
 		}
 	}
 

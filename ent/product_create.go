@@ -71,6 +71,34 @@ func (_c *ProductCreate) SetNillableIsAvailable(v *bool) *ProductCreate {
 	return _c
 }
 
+// SetExcludeGlobalFlavors sets the "exclude_global_flavors" field.
+func (_c *ProductCreate) SetExcludeGlobalFlavors(v bool) *ProductCreate {
+	_c.mutation.SetExcludeGlobalFlavors(v)
+	return _c
+}
+
+// SetNillableExcludeGlobalFlavors sets the "exclude_global_flavors" field if the given value is not nil.
+func (_c *ProductCreate) SetNillableExcludeGlobalFlavors(v *bool) *ProductCreate {
+	if v != nil {
+		_c.SetExcludeGlobalFlavors(*v)
+	}
+	return _c
+}
+
+// SetExcludeGlobalAddons sets the "exclude_global_addons" field.
+func (_c *ProductCreate) SetExcludeGlobalAddons(v bool) *ProductCreate {
+	_c.mutation.SetExcludeGlobalAddons(v)
+	return _c
+}
+
+// SetNillableExcludeGlobalAddons sets the "exclude_global_addons" field if the given value is not nil.
+func (_c *ProductCreate) SetNillableExcludeGlobalAddons(v *bool) *ProductCreate {
+	if v != nil {
+		_c.SetExcludeGlobalAddons(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ProductCreate) SetCreatedAt(v time.Time) *ProductCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -208,6 +236,14 @@ func (_c *ProductCreate) defaults() {
 		v := product.DefaultIsAvailable
 		_c.mutation.SetIsAvailable(v)
 	}
+	if _, ok := _c.mutation.ExcludeGlobalFlavors(); !ok {
+		v := product.DefaultExcludeGlobalFlavors
+		_c.mutation.SetExcludeGlobalFlavors(v)
+	}
+	if _, ok := _c.mutation.ExcludeGlobalAddons(); !ok {
+		v := product.DefaultExcludeGlobalAddons
+		_c.mutation.SetExcludeGlobalAddons(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := product.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -245,6 +281,12 @@ func (_c *ProductCreate) check() error {
 	}
 	if _, ok := _c.mutation.IsAvailable(); !ok {
 		return &ValidationError{Name: "is_available", err: errors.New(`ent: missing required field "Product.is_available"`)}
+	}
+	if _, ok := _c.mutation.ExcludeGlobalFlavors(); !ok {
+		return &ValidationError{Name: "exclude_global_flavors", err: errors.New(`ent: missing required field "Product.exclude_global_flavors"`)}
+	}
+	if _, ok := _c.mutation.ExcludeGlobalAddons(); !ok {
+		return &ValidationError{Name: "exclude_global_addons", err: errors.New(`ent: missing required field "Product.exclude_global_addons"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Product.created_at"`)}
@@ -309,6 +351,14 @@ func (_c *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IsAvailable(); ok {
 		_spec.SetField(product.FieldIsAvailable, field.TypeBool, value)
 		_node.IsAvailable = value
+	}
+	if value, ok := _c.mutation.ExcludeGlobalFlavors(); ok {
+		_spec.SetField(product.FieldExcludeGlobalFlavors, field.TypeBool, value)
+		_node.ExcludeGlobalFlavors = value
+	}
+	if value, ok := _c.mutation.ExcludeGlobalAddons(); ok {
+		_spec.SetField(product.FieldExcludeGlobalAddons, field.TypeBool, value)
+		_node.ExcludeGlobalAddons = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(product.FieldCreatedAt, field.TypeTime, value)

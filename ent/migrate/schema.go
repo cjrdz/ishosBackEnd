@@ -220,6 +220,8 @@ var (
 		{Name: "price", Type: field.TypeFloat64},
 		{Name: "image_path", Type: field.TypeString, Nullable: true},
 		{Name: "is_available", Type: field.TypeBool, Default: true},
+		{Name: "exclude_global_flavors", Type: field.TypeBool, Default: false},
+		{Name: "exclude_global_addons", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "addon_products", Type: field.TypeUUID, Nullable: true},
@@ -234,19 +236,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "products_addons_products",
-				Columns:    []*schema.Column{ProductsColumns[8]},
+				Columns:    []*schema.Column{ProductsColumns[10]},
 				RefColumns: []*schema.Column{AddonsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "products_categories_products",
-				Columns:    []*schema.Column{ProductsColumns[9]},
+				Columns:    []*schema.Column{ProductsColumns[11]},
 				RefColumns: []*schema.Column{CategoriesColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "products_flavors_products",
-				Columns:    []*schema.Column{ProductsColumns[10]},
+				Columns:    []*schema.Column{ProductsColumns[12]},
 				RefColumns: []*schema.Column{FlavorsColumns[0]},
 				OnDelete:   schema.SetNull,
 			},

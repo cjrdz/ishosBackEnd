@@ -25,12 +25,7 @@ func NewProductRepository(db *ent.Client) *ProductRepository {
 func (r *ProductRepository) FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]*ent.Product, error) {
 	q := r.db.Product.Query().
 		WithCategory().
-		WithFlavors(func(flavorQuery *ent.FlavorQuery) {
-			flavorQuery.Order(ent.Asc(entflavor.FieldDisplayOrder))
-		}).
-		WithAddons(func(addonQuery *ent.AddonQuery) {
-			addonQuery.Order(ent.Asc(entaddon.FieldDisplayOrder))
-		})
+		Order(ent.Asc(product.FieldCreatedAt))
 
 	if categorySlug != "" {
 		q = q.Where(product.HasCategoryWith(category.SlugEQ(categorySlug)))
@@ -40,18 +35,32 @@ func (r *ProductRepository) FindAll(ctx context.Context, categorySlug string, on
 		q = q.Where(product.IsAvailableEQ(true))
 	}
 
-	q = q.Order(ent.Asc(product.FieldCreatedAt))
+	products, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	return q.All(ctx)
+	if err := r.attachEffectiveGlobalOptions(ctx, products); err != nil {
+		return nil, err
+	}
+
+	return products, nil
 }
 
 func (r *ProductRepository) FindByIDWithCategory(ctx context.Context, id uuid.UUID) (*ent.Product, error) {
-	return r.db.Product.Query().
+	p, err := r.db.Product.Query().
 		Where(product.IDEQ(id)).
 		WithCategory().
-		WithFlavors().
-		WithAddons().
 		Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.attachEffectiveGlobalOptions(ctx, []*ent.Product{p}); err != nil {
+		return nil, err
+	}
+
+	return p, nil
 }
 
 func (r *ProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Product, error) {
@@ -60,15 +69,28 @@ func (r *ProductRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Pr
 
 func (r *ProductRepository) Create(ctx context.Context, input CreateProductInput) (*ent.Product, error) {
 	now := time.Now()
-	return r.db.Product.Create().
+
+	created, err := r.db.Product.Create().
 		SetName(input.Name).
 		SetDescription(input.Description).
 		SetPrice(input.Price).
 		SetCategoryID(input.CategoryID).
-		SetNillableImagePath(input.ImagePath).
+		SetExcludeGlobalFlavors(input.ExcludeGlobalFlavors).
+		SetExcludeGlobalAddons(input.ExcludeGlobalAddons).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if input.ImagePath != nil {
+		if _, err := r.db.Product.UpdateOneID(created.ID).SetImagePath(*input.ImagePath).Save(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	return r.FindByIDWithCategory(ctx, created.ID)
 }
 
 func (r *ProductRepository) Update(ctx context.Context, id uuid.UUID, input UpdateProductInput) (*ent.Product, error) {
@@ -92,8 +114,19 @@ func (r *ProductRepository) Update(ctx context.Context, id uuid.UUID, input Upda
 	if input.IsAvailable != nil {
 		upd = upd.SetIsAvailable(*input.IsAvailable)
 	}
+	if input.ExcludeGlobalFlavors != nil {
+		upd = upd.SetExcludeGlobalFlavors(*input.ExcludeGlobalFlavors)
+	}
+	if input.ExcludeGlobalAddons != nil {
+		upd = upd.SetExcludeGlobalAddons(*input.ExcludeGlobalAddons)
+	}
 
-	return upd.Save(ctx)
+	updated, err := upd.Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.FindByIDWithCategory(ctx, updated.ID)
 }
 
 func (r *ProductRepository) Delete(ctx context.Context, id uuid.UUID) error {
@@ -156,19 +189,68 @@ func (r *ProductRepository) UnlinkAddonFromProduct(ctx context.Context, productI
 		Exec(ctx)
 }
 
+func (r *ProductRepository) attachEffectiveGlobalOptions(ctx context.Context, products []*ent.Product) error {
+	if len(products) == 0 {
+		return nil
+	}
+
+	globalFlavors, err := r.db.Flavor.Query().
+		Where(entflavor.IsActiveEQ(true)).
+		Order(ent.Asc(entflavor.FieldDisplayOrder)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+
+	globalAddons, err := r.db.Addon.Query().
+		Where(entaddon.IsActiveEQ(true)).
+		Order(ent.Asc(entaddon.FieldDisplayOrder)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, p := range products {
+		if p.Edges.Flavors == nil {
+			p.Edges.Flavors = []*ent.Flavor{}
+		}
+		if p.Edges.Addons == nil {
+			p.Edges.Addons = []*ent.Addon{}
+		}
+
+		if p.ExcludeGlobalFlavors {
+			p.Edges.Flavors = []*ent.Flavor{}
+		} else {
+			p.Edges.Flavors = globalFlavors
+		}
+
+		if p.ExcludeGlobalAddons {
+			p.Edges.Addons = []*ent.Addon{}
+		} else {
+			p.Edges.Addons = globalAddons
+		}
+	}
+
+	return nil
+}
+
 type CreateProductInput struct {
-	Name        string
-	Description string
-	Price       float64
-	CategoryID  uuid.UUID
-	ImagePath   *string
+	Name                 string
+	Description          string
+	Price                float64
+	CategoryID           uuid.UUID
+	ImagePath            *string
+	ExcludeGlobalFlavors bool
+	ExcludeGlobalAddons  bool
 }
 
 type UpdateProductInput struct {
-	Name        *string
-	Description *string
-	Price       *float64
-	CategoryID  *uuid.UUID
-	ImagePath   *string
-	IsAvailable *bool
+	Name                 *string
+	Description          *string
+	Price                *float64
+	CategoryID           *uuid.UUID
+	ImagePath            *string
+	IsAvailable          *bool
+	ExcludeGlobalFlavors *bool
+	ExcludeGlobalAddons  *bool
 }

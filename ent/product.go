@@ -29,6 +29,10 @@ type Product struct {
 	ImagePath *string `json:"image_path,omitempty"`
 	// IsAvailable holds the value of the "is_available" field.
 	IsAvailable bool `json:"is_available,omitempty"`
+	// ExcludeGlobalFlavors holds the value of the "exclude_global_flavors" field.
+	ExcludeGlobalFlavors bool `json:"exclude_global_flavors,omitempty"`
+	// ExcludeGlobalAddons holds the value of the "exclude_global_addons" field.
+	ExcludeGlobalAddons bool `json:"exclude_global_addons,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -100,7 +104,7 @@ func (*Product) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case product.FieldIsAvailable:
+		case product.FieldIsAvailable, product.FieldExcludeGlobalFlavors, product.FieldExcludeGlobalAddons:
 			values[i] = new(sql.NullBool)
 		case product.FieldPrice:
 			values[i] = new(sql.NullFloat64)
@@ -167,6 +171,18 @@ func (_m *Product) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field is_available", values[i])
 			} else if value.Valid {
 				_m.IsAvailable = value.Bool
+			}
+		case product.FieldExcludeGlobalFlavors:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field exclude_global_flavors", values[i])
+			} else if value.Valid {
+				_m.ExcludeGlobalFlavors = value.Bool
+			}
+		case product.FieldExcludeGlobalAddons:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field exclude_global_addons", values[i])
+			} else if value.Valid {
+				_m.ExcludeGlobalAddons = value.Bool
 			}
 		case product.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -273,6 +289,12 @@ func (_m *Product) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("is_available=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsAvailable))
+	builder.WriteString(", ")
+	builder.WriteString("exclude_global_flavors=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ExcludeGlobalFlavors))
+	builder.WriteString(", ")
+	builder.WriteString("exclude_global_addons=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ExcludeGlobalAddons))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

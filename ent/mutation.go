@@ -6144,32 +6144,34 @@ func (m *OrderItemMutation) ResetEdge(name string) error {
 // ProductMutation represents an operation that mutates the Product nodes in the graph.
 type ProductMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *uuid.UUID
-	name               *string
-	description        *string
-	price              *float64
-	addprice           *float64
-	image_path         *string
-	is_available       *bool
-	created_at         *time.Time
-	updated_at         *time.Time
-	clearedFields      map[string]struct{}
-	category           *uuid.UUID
-	clearedcategory    bool
-	order_items        map[uuid.UUID]struct{}
-	removedorder_items map[uuid.UUID]struct{}
-	clearedorder_items bool
-	flavors            map[uuid.UUID]struct{}
-	removedflavors     map[uuid.UUID]struct{}
-	clearedflavors     bool
-	addons             map[uuid.UUID]struct{}
-	removedaddons      map[uuid.UUID]struct{}
-	clearedaddons      bool
-	done               bool
-	oldValue           func(context.Context) (*Product, error)
-	predicates         []predicate.Product
+	op                     Op
+	typ                    string
+	id                     *uuid.UUID
+	name                   *string
+	description            *string
+	price                  *float64
+	addprice               *float64
+	image_path             *string
+	is_available           *bool
+	exclude_global_flavors *bool
+	exclude_global_addons  *bool
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	category               *uuid.UUID
+	clearedcategory        bool
+	order_items            map[uuid.UUID]struct{}
+	removedorder_items     map[uuid.UUID]struct{}
+	clearedorder_items     bool
+	flavors                map[uuid.UUID]struct{}
+	removedflavors         map[uuid.UUID]struct{}
+	clearedflavors         bool
+	addons                 map[uuid.UUID]struct{}
+	removedaddons          map[uuid.UUID]struct{}
+	clearedaddons          bool
+	done                   bool
+	oldValue               func(context.Context) (*Product, error)
+	predicates             []predicate.Product
 }
 
 var _ ent.Mutation = (*ProductMutation)(nil)
@@ -6489,6 +6491,78 @@ func (m *ProductMutation) ResetIsAvailable() {
 	m.is_available = nil
 }
 
+// SetExcludeGlobalFlavors sets the "exclude_global_flavors" field.
+func (m *ProductMutation) SetExcludeGlobalFlavors(b bool) {
+	m.exclude_global_flavors = &b
+}
+
+// ExcludeGlobalFlavors returns the value of the "exclude_global_flavors" field in the mutation.
+func (m *ProductMutation) ExcludeGlobalFlavors() (r bool, exists bool) {
+	v := m.exclude_global_flavors
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExcludeGlobalFlavors returns the old "exclude_global_flavors" field's value of the Product entity.
+// If the Product object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProductMutation) OldExcludeGlobalFlavors(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExcludeGlobalFlavors is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExcludeGlobalFlavors requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExcludeGlobalFlavors: %w", err)
+	}
+	return oldValue.ExcludeGlobalFlavors, nil
+}
+
+// ResetExcludeGlobalFlavors resets all changes to the "exclude_global_flavors" field.
+func (m *ProductMutation) ResetExcludeGlobalFlavors() {
+	m.exclude_global_flavors = nil
+}
+
+// SetExcludeGlobalAddons sets the "exclude_global_addons" field.
+func (m *ProductMutation) SetExcludeGlobalAddons(b bool) {
+	m.exclude_global_addons = &b
+}
+
+// ExcludeGlobalAddons returns the value of the "exclude_global_addons" field in the mutation.
+func (m *ProductMutation) ExcludeGlobalAddons() (r bool, exists bool) {
+	v := m.exclude_global_addons
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExcludeGlobalAddons returns the old "exclude_global_addons" field's value of the Product entity.
+// If the Product object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ProductMutation) OldExcludeGlobalAddons(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExcludeGlobalAddons is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExcludeGlobalAddons requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExcludeGlobalAddons: %w", err)
+	}
+	return oldValue.ExcludeGlobalAddons, nil
+}
+
+// ResetExcludeGlobalAddons resets all changes to the "exclude_global_addons" field.
+func (m *ProductMutation) ResetExcludeGlobalAddons() {
+	m.exclude_global_addons = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ProductMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -6796,7 +6870,7 @@ func (m *ProductMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ProductMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 9)
 	if m.name != nil {
 		fields = append(fields, product.FieldName)
 	}
@@ -6811,6 +6885,12 @@ func (m *ProductMutation) Fields() []string {
 	}
 	if m.is_available != nil {
 		fields = append(fields, product.FieldIsAvailable)
+	}
+	if m.exclude_global_flavors != nil {
+		fields = append(fields, product.FieldExcludeGlobalFlavors)
+	}
+	if m.exclude_global_addons != nil {
+		fields = append(fields, product.FieldExcludeGlobalAddons)
 	}
 	if m.created_at != nil {
 		fields = append(fields, product.FieldCreatedAt)
@@ -6836,6 +6916,10 @@ func (m *ProductMutation) Field(name string) (ent.Value, bool) {
 		return m.ImagePath()
 	case product.FieldIsAvailable:
 		return m.IsAvailable()
+	case product.FieldExcludeGlobalFlavors:
+		return m.ExcludeGlobalFlavors()
+	case product.FieldExcludeGlobalAddons:
+		return m.ExcludeGlobalAddons()
 	case product.FieldCreatedAt:
 		return m.CreatedAt()
 	case product.FieldUpdatedAt:
@@ -6859,6 +6943,10 @@ func (m *ProductMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldImagePath(ctx)
 	case product.FieldIsAvailable:
 		return m.OldIsAvailable(ctx)
+	case product.FieldExcludeGlobalFlavors:
+		return m.OldExcludeGlobalFlavors(ctx)
+	case product.FieldExcludeGlobalAddons:
+		return m.OldExcludeGlobalAddons(ctx)
 	case product.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case product.FieldUpdatedAt:
@@ -6906,6 +6994,20 @@ func (m *ProductMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIsAvailable(v)
+		return nil
+	case product.FieldExcludeGlobalFlavors:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExcludeGlobalFlavors(v)
+		return nil
+	case product.FieldExcludeGlobalAddons:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExcludeGlobalAddons(v)
 		return nil
 	case product.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -7008,6 +7110,12 @@ func (m *ProductMutation) ResetField(name string) error {
 		return nil
 	case product.FieldIsAvailable:
 		m.ResetIsAvailable()
+		return nil
+	case product.FieldExcludeGlobalFlavors:
+		m.ResetExcludeGlobalFlavors()
+		return nil
+	case product.FieldExcludeGlobalAddons:
+		m.ResetExcludeGlobalAddons()
 		return nil
 	case product.FieldCreatedAt:
 		m.ResetCreatedAt()

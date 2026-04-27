@@ -32,6 +32,10 @@ func (Product) Fields() []ent.Field {
 			Nillable(),
 		field.Bool("is_available").
 			Default(true),
+		field.Bool("exclude_global_flavors").
+			Default(false),
+		field.Bool("exclude_global_addons").
+			Default(false),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),

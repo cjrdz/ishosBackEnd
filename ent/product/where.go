@@ -81,6 +81,16 @@ func IsAvailable(v bool) predicate.Product {
 	return predicate.Product(sql.FieldEQ(FieldIsAvailable, v))
 }
 
+// ExcludeGlobalFlavors applies equality check predicate on the "exclude_global_flavors" field. It's identical to ExcludeGlobalFlavorsEQ.
+func ExcludeGlobalFlavors(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldExcludeGlobalFlavors, v))
+}
+
+// ExcludeGlobalAddons applies equality check predicate on the "exclude_global_addons" field. It's identical to ExcludeGlobalAddonsEQ.
+func ExcludeGlobalAddons(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldExcludeGlobalAddons, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Product {
 	return predicate.Product(sql.FieldEQ(FieldCreatedAt, v))
@@ -344,6 +354,26 @@ func IsAvailableEQ(v bool) predicate.Product {
 // IsAvailableNEQ applies the NEQ predicate on the "is_available" field.
 func IsAvailableNEQ(v bool) predicate.Product {
 	return predicate.Product(sql.FieldNEQ(FieldIsAvailable, v))
+}
+
+// ExcludeGlobalFlavorsEQ applies the EQ predicate on the "exclude_global_flavors" field.
+func ExcludeGlobalFlavorsEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldExcludeGlobalFlavors, v))
+}
+
+// ExcludeGlobalFlavorsNEQ applies the NEQ predicate on the "exclude_global_flavors" field.
+func ExcludeGlobalFlavorsNEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldNEQ(FieldExcludeGlobalFlavors, v))
+}
+
+// ExcludeGlobalAddonsEQ applies the EQ predicate on the "exclude_global_addons" field.
+func ExcludeGlobalAddonsEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldExcludeGlobalAddons, v))
+}
+
+// ExcludeGlobalAddonsNEQ applies the NEQ predicate on the "exclude_global_addons" field.
+func ExcludeGlobalAddonsNEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldNEQ(FieldExcludeGlobalAddons, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

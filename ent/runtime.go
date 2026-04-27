@@ -250,12 +250,20 @@ func init() {
 	productDescIsAvailable := productFields[5].Descriptor()
 	// product.DefaultIsAvailable holds the default value on creation for the is_available field.
 	product.DefaultIsAvailable = productDescIsAvailable.Default.(bool)
+	// productDescExcludeGlobalFlavors is the schema descriptor for exclude_global_flavors field.
+	productDescExcludeGlobalFlavors := productFields[6].Descriptor()
+	// product.DefaultExcludeGlobalFlavors holds the default value on creation for the exclude_global_flavors field.
+	product.DefaultExcludeGlobalFlavors = productDescExcludeGlobalFlavors.Default.(bool)
+	// productDescExcludeGlobalAddons is the schema descriptor for exclude_global_addons field.
+	productDescExcludeGlobalAddons := productFields[7].Descriptor()
+	// product.DefaultExcludeGlobalAddons holds the default value on creation for the exclude_global_addons field.
+	product.DefaultExcludeGlobalAddons = productDescExcludeGlobalAddons.Default.(bool)
 	// productDescCreatedAt is the schema descriptor for created_at field.
-	productDescCreatedAt := productFields[6].Descriptor()
+	productDescCreatedAt := productFields[8].Descriptor()
 	// product.DefaultCreatedAt holds the default value on creation for the created_at field.
 	product.DefaultCreatedAt = productDescCreatedAt.Default.(func() time.Time)
 	// productDescUpdatedAt is the schema descriptor for updated_at field.
-	productDescUpdatedAt := productFields[7].Descriptor()
+	productDescUpdatedAt := productFields[9].Descriptor()
 	// product.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	product.DefaultUpdatedAt = productDescUpdatedAt.Default.(func() time.Time)
 	// product.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
