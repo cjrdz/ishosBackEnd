@@ -233,6 +233,13 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.OrderType = "para_llevar"
 	}
 
+	isStaff := false
+	var staffID string
+	if record, ok := auth.GetRecord(r.Context()); ok {
+		isStaff = true
+		staffID = auth.RecordID(record)
+	}
+
 	if errs := validator.ValidateOrderCreate(
 		body.CustomerName,
 		body.CustomerPhone,
@@ -240,6 +247,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.OrderType,
 		body.TableNumber,
 		len(body.Items),
+		isStaff,
 	); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
@@ -249,11 +257,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.TableNumber = nil
 	}
 
-	isStaff := false
-	var staffID string
-	if record, ok := auth.GetRecord(r.Context()); ok {
-		isStaff = true
-		staffID = auth.RecordID(record)
+	if isStaff {
 		log.Info().
 			Str("staff_id", staffID).
 			Str("customer_phone", body.CustomerPhone).
@@ -618,6 +622,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		body.PaymentMethod,
 		body.OrderType,
 		body.TableNumber,
+		true,
 	); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return

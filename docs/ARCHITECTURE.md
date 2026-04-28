@@ -1,98 +1,84 @@
 # Architecture
 
-This backend follows a layered Go architecture:
+The backend is a Chi HTTP service with explicit transport, service, repository, and middleware layers.
 
-- `handlers`: HTTP transport layer (Chi handlers, request/response mapping)
-- `services`: business logic and orchestration (transactions, side effects)
-- `repository`: data access layer (Ent ORM queries/mutations)
-- `middleware`: cross-cutting concerns (auth, roles, logging, recovery, rate-limit, security headers)
-- `auth`: PocketBase integration for employee authentication
+## Package roles
 
-## Runtime Components
+- `internal/server`: router wiring, infrastructure bootstrapping, process lifecycle
+- `internal/handlers`: HTTP transport and request/response mapping
+- `internal/services`: domain logic and orchestration
+- `internal/repository`: Ent-backed persistence only
+- `internal/middleware`: auth, role checks, rate limit, logging, recovery, security headers
+- `internal/auth`: embedded PocketBase integration for employee auth
+- `internal/validator`: request validation rules
 
-- **Chi HTTP server** (`cmd/api/main.go`, `internal/server/server.go`)
-- **Ent ORM** with PostgreSQL for business data (via `database/sql` + `pgx` stdlib)
-  - Neon direct endpoint recommended — avoid `-pooler` hosts for stable query execution
-- **PocketBase embedded library** for employee auth and JWT token validation
-  - Optional PocketBase Admin UI server (separate port, disabled by default; enabled via `ENABLE_PB_ADMIN_UI`)
-- **Cloudflare R2** for product image storage (AWS SDK v2, S3-compatible)
-- **WhatsApp Business API** (Meta Graph API) for customer order notifications
-- **Redis** (optional) for distributed rate limiting; falls back to in-memory sliding-window counter when `REDIS_URL` is unset
-- **PostgreSQL `auth_revoked_tokens` table** for server-side JWT revocation (initialized at startup via `auth.InitTokenRevocationStore`)
-- **PostgreSQL `order_tracking_tokens` table** for high-entropy tracking token storage (HMAC-hashed, verified by `order_number + token`)
-- **Event dispatcher worker queue** (`internal/events/dispatcher.go`) for asynchronous order lifecycle notifications with bounded queue + worker pool
-- **Analytics cache tiers**: in-memory TTL cache plus optional Redis-backed cache sharing when `REDIS_URL` is configured
+## Runtime components
 
-## Request Flow
+| Component | Responsibility |
+| --- | --- |
+| Chi | HTTP routing and middleware composition |
+| PostgreSQL + Ent | Core business persistence |
+| PocketBase embedded | Employee auth, password hashing, JWT issuance and validation |
+| Cloudflare R2 | Media storage |
+| Redis optional | Shared rate limiting and cache support |
+| WhatsApp optional | Outbound customer notifications |
 
-1. Request enters Chi router.
-2. Global middleware runs: `RequestID`, `RealIP`, `SecurityHeaders`, `Logger`, `Recovery`, `CORS`, `Timeout`.
-3. Route-specific middleware runs: `RequireSession` / `OptionalSession`, rate-limit, role checks where applicable.
-4. Handler validates input with `internal/validator` and delegates to service layer.
-5. Service executes business logic and calls repository or external services (R2, WhatsApp).
-6. Repository performs Ent database operations.
-7. Handler returns JSON via `pkg/response`.
+## Request flow
 
-## Data Ownership
+1. A request enters [internal/server/server.go](../internal/server/server.go).
+2. Global middleware applies headers, logging, recovery, CORS, timeout, and request metadata.
+3. Route-level middleware applies `OptionalSession`, `RequireSession`, role gates, and rate limits.
+4. Handlers validate input and translate transport payloads.
+5. Services enforce business rules and orchestrate repositories or side effects.
+6. Repositories perform Ent reads and writes.
+7. Responses are returned with `pkg/response` helpers.
+
+## Route partitioning
+
+The router is grouped into three main surfaces:
+
+- Public routes: auth login/logout/session, public catalog, public order creation, public tracking, public store settings.
+- Protected staff routes: settings, orders, catalog management, uploads, customer directory.
+- Admin-only protected routes: analytics, export, employee management, lockout reset, destructive settings changes.
+
+The settings subtree is intentionally isolated under `/api/v1/settings` so public store settings and protected admin settings can coexist without ambiguous router prefixes.
+
+## Data ownership
 
 | Store | Data |
 | --- | --- |
-| PostgreSQL via Ent | Categories, Products (with Flavor/Addon edges), Orders, OrderItems, Flavors, Addons, RateLimits, AdminSettings, Users, `auth_revoked_tokens`, `order_tracking_tokens` |
-| PocketBase SQLite (`pb_data`) | Employees, password hashes, JWT token validation state |
-| Cloudflare R2 | Image binaries; object keys stored in PostgreSQL rows |
+| PostgreSQL via Ent | Categories, products, flavors, addons, orders, order items, customers, admin settings, rate limits, revoked tokens, tracking tokens |
+| PocketBase SQLite | Employees and auth state |
+| Cloudflare R2 | Image binaries |
 
-## Ent Schema Entities
+Important distinction:
 
-| Entity | Description |
-| --- | --- |
-| `Category` | Menu top-level grouping |
-| `Product` | Menu item; edges to Flavor (M2M) and Addon (M2M) |
-| `Flavor` | Available gelato flavors linkable to products |
-| `Addon` | Toppings/extras with `group_name`; linkable to products |
-| `Order` | Customer order (stores customer contact as fields, not FK) |
-| `OrderItem` | Per-order product snapshot (name, price, qty, customizations) |
-| `RateLimit` | Sliding-window rate limit record per IP or phone |
-| `AdminSetting` | Persisted panel configuration (tab order, token TTL overrides) |
+- `employees` are PocketBase auth records.
+- `/api/v1/users` is the customer-directory API backed by the Ent `Customer` entity.
+- orders still store customer contact snapshots needed for the actual transaction lifecycle.
 
-> **Note on Customers:** There is no persistent `Customer` entity. Customer contact data (name, phone, email, IP) is stored directly on the `Order` row. The `User` entity (available via `/api/v1/users`) represents a separately managed customer directory record.
+## Tracking token model
 
-## Order Tracking Token Design
+Public tracking access uses `order_number + tracking_token`.
 
-Public order tracking does not use phone-based or stateless HMAC payloads. Tokens are:
+- Tokens are random high-entropy values.
+- Only hashed token material is stored server-side.
+- Tokens are issued through the order service.
+- Tokens can be revoked per order.
 
-1. Random high-entropy values generated at order creation.
-2. Stored as HMAC-signed material only in the `order_tracking_tokens` table.
-3. Verified by presenting `order_number + token` together.
-4. Per-order revocable by admin.
-5. Issued through `OrderService.IssueTrackingAccess`; consumed via the WhatsApp notification link or the storefront tracking page.
+## Security baseline
 
-## Security Baseline
+- `SecurityHeaders` middleware is global.
+- JSON body parsing is capped at 1 MiB.
+- analytics and export endpoints are admin-only.
+- failed logins are rate-limited and lockout-aware.
+- logout revokes the presented token server-side.
+- request IP normalization does not trust raw forwarded headers in handlers.
 
-- Global `SecurityHeaders` middleware applies: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
-- JSON request bodies are capped at **1 MiB** by the shared `decodeJSON` helper.
-- Analytics and export routes are **admin-only** via the `RequireAdmin` role middleware.
-- Failed login attempts are IP-rate-limited and subject to temporary lockout.
-- Server-side token revocation is stored in PostgreSQL so revoked tokens are rejected before JWT expiry.
-- Order customer IP capture uses normalized `RemoteAddr` parsing, not raw `X-Forwarded-For`.
+## Design principles
 
-## Design Principles
-
-- Keep handlers thin and deterministic.
-- Keep transactional and side-effect logic in services.
-- Keep database specifics in repositories.
-- Fail fast on validation errors.
-- Prefer explicit middleware composition for route security.
-
-## Domain Packaging Roadmap
-
-Current structure keeps `handlers/services/repository` packages separated by concern. The next architectural step is to group by domain while preserving the same layering, for example:
-
-- `internal/domain/orders/{handler,service,repository,events}`
-- `internal/domain/products/{handler,service,repository}`
-- `internal/domain/customers/{handler,service,repository}`
-
-Suggested migration strategy:
-
-1. Move one domain at a time behind existing interfaces.
-2. Keep route registration stable in `internal/server/server.go` during migration.
-3. Add package-level tests before and after each move to prevent regressions.
+- Keep handlers thin.
+- Keep business rules in services.
+- Keep repositories side-effect free.
+- Prefer explicit route middleware over implicit behavior.
+- Treat the docs and route wiring as part of the production contract.

@@ -259,7 +259,7 @@ func ValidateProductUpdate(name *string, price *float64, stockStatus *string) Va
 	return errs
 }
 
-func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNumber *int) ValidationErrors {
+func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNumber *int, requireTableForEnLocal bool) ValidationErrors {
 	var errs ValidationErrors
 
 	if strings.TrimSpace(name) == "" {
@@ -283,16 +283,18 @@ func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNum
 	}
 
 	if orderType == "en_local" {
-		if tableNumber == nil || *tableNumber <= 0 {
+		if requireTableForEnLocal && (tableNumber == nil || *tableNumber <= 0) {
 			errs.Add("table_number", "required for en_local and must be greater than 0")
+		} else if tableNumber != nil && *tableNumber <= 0 {
+			errs.Add("table_number", "must be greater than 0")
 		}
 	}
 
 	return errs
 }
 
-func ValidateOrderCreate(name, phone, paymentMethod, orderType string, tableNumber *int, itemCount int) ValidationErrors {
-	errs := ValidateOrderDetails(name, phone, paymentMethod, orderType, tableNumber)
+func ValidateOrderCreate(name, phone, paymentMethod, orderType string, tableNumber *int, itemCount int, requireTableForEnLocal bool) ValidationErrors {
+	errs := ValidateOrderDetails(name, phone, paymentMethod, orderType, tableNumber, requireTableForEnLocal)
 
 	if itemCount == 0 {
 		errs.Add("items", "at least one item required")

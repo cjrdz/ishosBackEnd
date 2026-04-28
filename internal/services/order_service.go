@@ -299,8 +299,6 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 	extraAddonIDs := extractCustomizationStrings(raw, "extra_addon_ids")
 
 	if len(legacyAddonIDs) > 0 || len(includedAddonIDs) > 0 || len(extraAddonIDs) > 0 {
-		seenAll := make(map[uuid.UUID]struct{})
-
 		resolveAddon := func(addonID string) (*ent.Addon, error) {
 			parsedAddonID, parseErr := uuid.Parse(addonID)
 			if parseErr != nil {
@@ -311,15 +309,11 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 			if !ok {
 				return nil, fmt.Errorf("%w: %s", ErrAddonNotAllowed, addonID)
 			}
-
-			if _, duplicate := seenAll[selectedAddon.ID]; duplicate {
-				return nil, nil
-			}
-			seenAll[selectedAddon.ID] = struct{}{}
 			return selectedAddon, nil
 		}
 
 		if len(includedAddonIDs) == 0 && len(extraAddonIDs) == 0 && len(legacyAddonIDs) > 0 {
+			seenLegacy := make(map[uuid.UUID]struct{})
 			normalizedAddonIDs := make([]string, 0, len(legacyAddonIDs))
 			addonNames := make([]string, 0, len(legacyAddonIDs))
 			addonPrices := make([]float64, 0, len(legacyAddonIDs))
@@ -329,9 +323,10 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 				if resolveErr != nil {
 					return nil, 0, resolveErr
 				}
-				if selectedAddon == nil {
+				if _, duplicate := seenLegacy[selectedAddon.ID]; duplicate {
 					continue
 				}
+				seenLegacy[selectedAddon.ID] = struct{}{}
 
 				selectedAddonGroups[normalizeAddonGroupName(selectedAddon.GroupName)] = true
 
@@ -350,7 +345,8 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 				enriched["addon_prices"] = addonPrices
 			}
 		} else {
-			seenAll = make(map[uuid.UUID]struct{})
+			seenIncluded := make(map[uuid.UUID]struct{})
+			seenExtra := make(map[uuid.UUID]struct{})
 			includedByGroupCount := make(map[string]int)
 
 			normalizedIncludedIDs := make([]string, 0, len(includedAddonIDs))
@@ -368,9 +364,10 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 				if resolveErr != nil {
 					return nil, 0, resolveErr
 				}
-				if selectedAddon == nil {
+				if _, duplicate := seenIncluded[selectedAddon.ID]; duplicate {
 					continue
 				}
+				seenIncluded[selectedAddon.ID] = struct{}{}
 
 				selectedAddonGroups[normalizeAddonGroupName(selectedAddon.GroupName)] = true
 
@@ -398,9 +395,10 @@ func (s *OrderService) enrichCustomizations(product *ent.Product, raw map[string
 				if resolveErr != nil {
 					return nil, 0, resolveErr
 				}
-				if selectedAddon == nil {
+				if _, duplicate := seenExtra[selectedAddon.ID]; duplicate {
 					continue
 				}
+				seenExtra[selectedAddon.ID] = struct{}{}
 
 				selectedAddonGroups[normalizeAddonGroupName(selectedAddon.GroupName)] = true
 

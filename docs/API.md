@@ -1,264 +1,145 @@
-# ishosBackend — API Documentation
-
-Base URL: `http://localhost:8080` (default port, configurable via `PORT` env var)
-
-All business endpoints live under `/api/v1/...`.
-
----
-
-## A note on API versioning
-
-All routes use the `/api/v1/` prefix (e.g. `/api/v1/products`, `/api/v1/orders`).
-This follows best practice so that any future breaking changes can be introduced
-under a new version without disrupting existing clients.
-
-**When you need a v2:**
-
-- Ship `/api/v2/products` with the new schema without breaking existing clients.
-- Deprecate `/api/v1/...` gradually while clients migrate.
-- Run both versions side-by-side during a transition period.
-
-In Chi this is straightforward — add a second route group:
-
-```go
-r.Route("/api/v1", func(api chi.Router) { /* current v1 routes */ })
-r.Route("/api/v2", func(api chi.Router) { /* new v2 routes */ })
-```
-
-The docs below use the **current** paths (`/api/v1/...`).
-
----
-
-## Common headers
-
-| Header          | Value                    | When                                     |
-| --------------- | ------------------------ | ---------------------------------------- |
-| `Content-Type`  | `application/json`       | All POST / PATCH requests                |
-| `Authorization` | `Bearer <PB_AUTH_TOKEN>` | Authenticated endpoints (admin/employee) |
-
-Authentication uses **PocketBase JWT tokens** via the `Authorization` header.
-Public endpoints (list products, create order) require no auth.
-
-### Security response headers
-
-All API responses include these hardening headers:
-
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`
-
-### JSON request size policy
-
-JSON request bodies parsed by shared handlers are limited to **1 MiB**.
-Requests exceeding that limit are rejected with `400 Bad Request`.
-
-### Auth hardening notes
-
-- Failed login attempts are rate-limited and additionally subject to temporary IP lockout after repeated failures.
-- `POST /api/v1/auth/logout` revokes the presented token server-side and clears the auth cookie.
-- Browser `auth_token` cookie lifetime defaults to 24 hours (configurable by backend env var).
-
----
-
-## Error responses
-
-All errors return JSON:
-
-```json
-{
-  "error": "Description of the problem"
-}
-```
-
-Common status codes: `400` (bad request), `401` (unauthorized), `403` (forbidden), `404` (not found), `429` (rate limited), `500` (server error).
-
----
-
-## 1) Products
-
-| Operation                             | Method | Path                               |
-| ------------------------------------- | ------ | ---------------------------------- |
-| List all (public: available only)     | GET    | `/api/v1/products`                 |
-| List all (admin: include unavailable) | GET    | `/api/v1/products?all=true`        |
-| Filter by category slug              | GET    | `/api/v1/products?category=gelatos`|
-| Get one by ID                         | GET    | `/api/v1/products/{id}`            |
-| Create (admin)                        | POST   | `/api/v1/products`                 |
-| Update (admin, partial)               | PATCH  | `/api/v1/products/{id}`            |
-| Toggle availability (admin)           | PATCH  | `/api/v1/products/{id}/availability`|
-| Delete (admin)                        | DELETE | `/api/v1/products/{id}`            |
-
-### POST `/api/v1/products` — Create
-
-Body:
-
-```json
-{
-  "name": "Gelato de Chocolate",
-  "description": "Rich dark chocolate gelato",
-  "price": 3.50,
-  "category_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "image_path": "products/chocolate_20250215T143000.jpg",
-  "stock_status": "in_stock"
-}
-```
-
-Fields:
-
-| Field          | Type   | Required | Notes                                                           |
-| -------------- | ------ | -------- | --------------------------------------------------------------- |
-| `name`         | string | yes      | Max 200 chars                                                   |
-| `description`  | string | yes      | Product description                                             |
-| `price`        | float  | yes      | Must be positive (e.g. `3.50`)                                  |
-| `category_id`  | UUID   | yes      | Must reference an existing category                             |
-| `image_path`   | string | no       | Object path — get it from `POST /api/v1/upload/image`           |
-| `stock_status` | string | no       | `"in_stock"` (default) \| `"out_of_stock"` \| `"discontinued"` |
-
-Response `201 Created`:
-
-```json
-{
-  "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "name": "Gelato de Chocolate",
-  "description": "Rich dark chocolate gelato",
-  "price": 3.5,
-  "category_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "category_name": "Gelatos",
-  "image_url": "https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev/products/chocolate.jpg",
-  "is_available": true,
-  "stock_status": "in_stock",
-  "created_at": "2025-02-15T14:30:00Z"
-}
-```
-
-### PATCH `/api/v1/products/{id}` — Update (partial)
-
-Send **only** the fields you want to change:
-
-```json
-{
-  "price": 4.00,
-  "is_available": false,
-  "stock_status": "out_of_stock"
-}
-```
-
-Patchable fields: `name`, `description`, `price`, `image_path`, `is_available`, `stock_status`.
-
-Response `200 OK`: returns the updated product object.
-
-### PATCH `/api/v1/products/{id}/availability` — Toggle
-
-No body needed. Flips `is_available` from `true` → `false` or vice versa.
-
-Response `200 OK`: returns the updated product.
-
-### DELETE `/api/v1/products/{id}`
-
-Response `200 OK`:
-
-```json
-{
-  "message": "Product deleted"
-}
-```
-
----
-
-## 2) Categories
-
-| Operation                   | Method | Path                        |
-| --------------------------- | ------ | --------------------------- |
-| List all active (sorted)    | GET    | `/api/v1/categories`        |
-| Get by slug (with products) | GET    | `/api/v1/categories/{slug}` |
-| Create (admin)              | POST   | `/api/v1/categories`        |
-| Update (admin, partial)     | PATCH  | `/api/v1/categories/{slug}` |
-| Delete (admin)              | DELETE | `/api/v1/categories/{slug}` |
-
-> **Important:** category routes use `{slug}` (e.g. `gelatos`) for GET/PATCH/DELETE.
-
-### POST `/api/v1/categories` — Create
-
-Body:
-
-```json
-{
-  "name": "Gelatos",
-  "slug": "gelatos",
-  "description": "Italian-style ice cream",
-  "image_path": "categories/gelatos.jpg",
-  "display_order": 1
-}
-```
-
-Fields:
-
-| Field           | Type   | Required | Notes                                          |
-| --------------- | ------ | -------- | ---------------------------------------------- |
-| `name`          | string | yes      | Max 100, unique                                |
-| `slug`          | string | yes      | Max 100, unique, URL-friendly (e.g. `gelatos`) |
-| `description`   | string | no       | Defaults to empty string                       |
-| `image_path`    | string | no       | Object path returned by the upload endpoint    |
-| `display_order` | int    | no       | Controls sort order, defaults to `0`           |
-
-Response `201 Created`:
-
-```json
-{
-  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "name": "Gelatos",
-  "slug": "gelatos",
-  "description": "Italian-style ice cream",
-  "image_path": "categories/gelatos.jpg",
-  "display_order": 1,
-  "is_active": true,
-  "created_at": "2025-02-15T14:00:00Z"
-}
-```
-
-### PATCH `/api/v1/categories/{slug}` — Update (partial)
-
-```json
-{
-  "description": "Authentic Italian gelato",
-  "display_order": 2,
-  "is_active": false
-}
-```
-
-To remove an existing `image_path`, send one of these values:
-
-```json
-{
-  "image_path": ""
-}
-```
-
-or
-
-```json
-{
-  "image_path": "NULL"
-}
-```
-
-Both are normalized by the backend and stored as `NULL` in DB, so `image_path` is omitted in the response JSON.
-
-Patchable fields: `name`, `slug`, `description`, `image_path`, `display_order`, `is_active`.
-
-Response `200 OK`: returns the updated category.
-
-### DELETE `/api/v1/categories/{slug}`
-
-Products in this category are **not** deleted — they become uncategorised.
-
-Response `200 OK`:
-
-```json
-{
-  "message": "Category deleted"
-}
-```
+# API Documentation
+
+Base URL: `http://localhost:8080` by default.
+
+All application endpoints are mounted under `/api/v1`, except `/health`.
+
+## Common behavior
+
+- Authenticated routes expect `Authorization: Bearer <token>`.
+- Errors return JSON with at least an `error` field.
+- JSON request bodies are capped at 1 MiB.
+- Security headers are applied globally.
+
+Role legend:
+
+- Public: no auth required
+- Staff: employee or admin
+- Admin: admin only
+
+## Health
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/health` | Public | Liveness probe |
+
+## Authentication
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/api/v1/auth/login` | Public | Login and receive employee session token |
+| POST | `/api/v1/auth/logout` | Public | Logout and revoke current token |
+| GET | `/api/v1/auth/session` | Public | Return current session if token is valid |
+| POST | `/api/v1/auth/lockout/reset` | Admin | Reset login lockout for an employee identity |
+
+## Public catalog
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/products` | Public | List products |
+| GET | `/api/v1/products/{id}` | Public | Get product by ID |
+| GET | `/api/v1/categories` | Public | List categories |
+| GET | `/api/v1/categories/{slug}` | Public | Get category by slug |
+| GET | `/api/v1/flavors` | Public | List flavors |
+| GET | `/api/v1/flavors/{id}` | Public | Get flavor by ID |
+| GET | `/api/v1/addons` | Public | List addons |
+| GET | `/api/v1/addons/{id}` | Public | Get addon by ID |
+
+## Orders
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/api/v1/orders` | Public | Create order; optionally captures authenticated staff identity when present |
+| GET | `/api/v1/orders/track` | Public | Secure public tracking by `order_number` and `tracking_token` |
+| GET | `/api/v1/orders` | Staff | List orders |
+| GET | `/api/v1/orders/{id}` | Staff | Get order by ID |
+| PATCH | `/api/v1/orders/{id}` | Staff | Update order details and items |
+| POST | `/api/v1/orders/{id}/approve` | Staff | Approve order |
+| POST | `/api/v1/orders/{id}/reject` | Staff | Reject order |
+| PATCH | `/api/v1/orders/{id}/status` | Staff | Advance or set order status |
+| PATCH | `/api/v1/orders/{id}/notes` | Staff | Update internal notes |
+| DELETE | `/api/v1/orders/{id}` | Staff | Delete order |
+
+## Settings
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/settings/store/public` | Public | Public store state and active offers |
+| GET | `/api/v1/settings/tabs` | Staff | Current admin tab order |
+| PATCH | `/api/v1/settings/tabs` | Admin | Update admin tab order |
+| GET | `/api/v1/settings/panel-config` | Staff | Get panel config |
+| PATCH | `/api/v1/settings/panel-config` | Admin | Update panel config |
+| GET | `/api/v1/settings/store` | Staff | Get store settings |
+| PATCH | `/api/v1/settings/store` | Admin | Update store settings |
+
+## Employees
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/employees` | Admin | List employees |
+| POST | `/api/v1/employees` | Admin | Create employee |
+| PATCH | `/api/v1/employees/{id}` | Admin | Update employee |
+| PATCH | `/api/v1/employees/{id}/deactivate` | Admin | Deactivate employee |
+| DELETE | `/api/v1/employees/{id}` | Admin | Delete employee |
+
+## Customer directory
+
+These routes are exposed as `users`, but they are backed by the `Customer` Ent entity.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/users` | Staff | List customers |
+| GET | `/api/v1/users/{id}` | Staff | Get customer by ID |
+| GET | `/api/v1/users/{id}/orders` | Admin | Get orders associated with a customer |
+| POST | `/api/v1/users` | Admin | Create customer record |
+| PATCH | `/api/v1/users/{id}` | Admin | Update customer record |
+| DELETE | `/api/v1/users/{id}` | Admin | Delete customer record |
+
+## Catalog management
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/api/v1/categories` | Staff | Create category |
+| PATCH | `/api/v1/categories/{id}` | Staff | Update category by ID |
+| DELETE | `/api/v1/categories/{id}` | Staff | Delete category by ID |
+| POST | `/api/v1/products` | Staff | Create product |
+| PATCH | `/api/v1/products/{id}` | Staff | Update product |
+| PATCH | `/api/v1/products/{id}/availability` | Staff | Toggle product availability |
+| DELETE | `/api/v1/products/{id}` | Staff | Delete product |
+| POST | `/api/v1/products/{id}/flavors/{flavorId}` | Staff | Link flavor to product |
+| DELETE | `/api/v1/products/{id}/flavors/{flavorId}` | Staff | Unlink flavor from product |
+| POST | `/api/v1/products/{id}/addons/{addonId}` | Staff | Link addon to product |
+| DELETE | `/api/v1/products/{id}/addons/{addonId}` | Staff | Unlink addon from product |
+| POST | `/api/v1/flavors` | Staff | Create flavor |
+| PATCH | `/api/v1/flavors/{id}` | Staff | Update flavor |
+| DELETE | `/api/v1/flavors/{id}` | Staff | Delete flavor |
+| POST | `/api/v1/addons` | Staff | Create addon |
+| PATCH | `/api/v1/addons/{id}` | Staff | Update addon |
+| DELETE | `/api/v1/addons/{id}` | Staff | Delete addon |
+
+## Analytics and export
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/analytics/overview` | Admin | KPI summary |
+| GET | `/api/v1/analytics/orders-over-time` | Admin | Orders timeline |
+| GET | `/api/v1/analytics/top-products` | Admin | Top product breakdown |
+| GET | `/api/v1/export/orders` | Admin | Export orders |
+| DELETE | `/api/v1/export/orders` | Admin | Purge old orders |
+
+## Uploads
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| POST | `/api/v1/upload/image` | Staff | Upload image |
+| DELETE | `/api/v1/upload/image` | Admin | Delete image |
+| GET | `/api/v1/upload/images` | Staff | List images |
+
+## Notes for frontend consumers
+
+- Public tracking is `GET /api/v1/orders/track`, not `/orders/{id}`.
+- Public store settings are `GET /api/v1/settings/store/public`.
+- Category reads use slug, but category updates and deletes use ID.
 
 ---
 
