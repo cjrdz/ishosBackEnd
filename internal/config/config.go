@@ -46,6 +46,8 @@ type Config struct {
 	R2Region          string // typically "auto"
 	R2Endpoint        string // e.g. https://<account_id>.r2.cloudflarestorage.com
 	R2PublicBaseURL   string // e.g. https://pub-xxx.r2.dev
+	// Maximum uploaded image size in MB.
+	AdminImageUploadMaxMB int
 
 	// WhatsApp Business API
 	WhatsAppPhoneID string // Phone number ID from Meta
@@ -120,6 +122,7 @@ func Load() *Config {
 		R2Region:                    getEnv("R2_REGION", "auto"),
 		R2Endpoint:                  getR2Endpoint(),
 		R2PublicBaseURL:             mustEnv("R2_PUBLIC_BASE_URL"),
+		AdminImageUploadMaxMB:       getEnvInt("ADMIN_IMAGE_UPLOAD_MAX_MB", 15),
 		WhatsAppPhoneID:             getEnv("WHATSAPP_PHONE_ID", ""),
 		WhatsAppToken:               getEnv("WHATSAPP_TOKEN", ""),
 		WhatsAppNumber:              getEnv("WHATSAPP_NUMBER", ""),

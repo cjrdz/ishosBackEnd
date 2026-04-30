@@ -56,9 +56,10 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	settingsRepo := repository.NewAdminSettingRepository(client)
 	settingsSvc := services.NewAdminSettingService(settingsRepo)
 	defaultTokenTTLs := services.TokenTTLConfig{
-		AuthCookieTTLHours:    cfg.AuthCookieTTLHours,
-		AuthTokenTTLHours:     cfg.AuthTokenTTLHours,
-		TrackingTokenTTLHours: cfg.TrackingTokenTTLHours,
+		AuthCookieTTLHours:      cfg.AuthCookieTTLHours,
+		AuthTokenTTLHours:       cfg.AuthTokenTTLHours,
+		TrackingTokenTTLHours:   cfg.TrackingTokenTTLHours,
+		InactivityLogoutSeconds: cfg.InactivityLogoutSeconds,
 	}
 
 	authHandler := handlers.NewAuthHandler(pb, cfg, settingsSvc)
@@ -71,7 +72,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	analyticsHandler := handlers.NewAnalyticsHandler(client, cfg)
 	exportHandler := handlers.NewExportHandler(client)
 	userHandler := handlers.NewUserHandler(client)
-	adminSettingsHandler := handlers.NewAdminSettingsHandler(client, cfg)
+	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc)
 
 	// Order handler requires rate limiter
 	orderRateLimiter := appmiddleware.NewOrderRateLimiter(
@@ -167,10 +168,6 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			// Protected settings (admin/employee)
 			settings.Group(func(protectedSettings chi.Router) {
 				protectedSettings.Use(pbAuthMiddleware.RequireSession)
-				protectedSettings.Get("/tabs", adminSettingsHandler.GetTabs)
-				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/tabs", adminSettingsHandler.UpdateTabs)
-				protectedSettings.Get("/panel-config", adminSettingsHandler.GetPanelConfig)
-				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/panel-config", adminSettingsHandler.UpdatePanelConfig)
 				protectedSettings.Get("/store", adminSettingsHandler.GetStoreSettings)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/store", adminSettingsHandler.UpdateStoreSettings)
 			})

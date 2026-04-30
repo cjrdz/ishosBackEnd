@@ -1,4 +1,4 @@
-// admin_setting_service.go — Manages persisted admin configuration such as tab order and token TTL settings.
+// admin_setting_service.go — Manages persisted operational settings (token TTL and store settings).
 package services
 
 import (
@@ -12,11 +12,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
-const AdminTabOrderSettingKey = "admin.tabs.order"
 const AdminTokenTTLSettingKey = "admin.tokens.ttl" // #nosec G101 -- Settings lookup key, not a credential.
-
-//nolint:misspell // Spanish UI tab names, not English typos.
-var defaultAdminTabOrder = []string{"ordenes", "categorias", "productos", "personas", "ofertas", "herramientas", "configuracion"}
 
 type TokenTTLConfig struct {
 	AuthCookieTTLHours      int `json:"auth_cookie_ttl_hours"`
@@ -31,6 +27,9 @@ type AdminSettingService struct {
 
 // Helper to validate and upsert a setting with audit
 func (s *AdminSettingService) upsertSetting(ctx context.Context, key string, value map[string]any, changedBy uuid.UUID) error {
+	if s.repo == nil {
+		return nil
+	}
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("failed to marshal value: %w", err)
@@ -46,51 +45,10 @@ func NewAdminSettingService(repo *repository.AdminSettingRepository) *AdminSetti
 	return &AdminSettingService{repo: repo}
 }
 
-func (s *AdminSettingService) GetTabOrder(ctx context.Context) ([]string, error) {
-	record, err := s.repo.GetByKey(ctx, AdminTabOrderSettingKey)
-	if err != nil {
-		return append([]string(nil), defaultAdminTabOrder...), nil
-	}
-
-	rawOrder, ok := record.Value["tab_order"]
-	if !ok {
-		return append([]string(nil), defaultAdminTabOrder...), nil
-	}
-
-	// JSONB round-trips arrays as []any when decoded by the Postgres driver, not []string.
-	list, ok := rawOrder.([]any)
-	if !ok {
-		if typed, castOK := rawOrder.([]string); castOK {
-			return sanitizeTabOrder(typed), nil
-		}
-		return append([]string(nil), defaultAdminTabOrder...), nil
-	}
-
-	order := make([]string, 0, len(list))
-	for _, item := range list {
-		text, ok := item.(string)
-		if !ok {
-			continue
-		}
-		order = append(order, text)
-	}
-
-	return sanitizeTabOrder(order), nil
-}
-
-func (s *AdminSettingService) UpdateTabOrder(ctx context.Context, tabOrder []string, changedBy uuid.UUID) ([]string, error) {
-	sanitized := sanitizeTabOrder(tabOrder)
-	if len(sanitized) == 0 {
-		return nil, fmt.Errorf("tab_order cannot be empty")
-	}
-	value := map[string]any{"tab_order": sanitized}
-	if err := s.upsertSetting(ctx, AdminTabOrderSettingKey, value, changedBy); err != nil {
-		return nil, err
-	}
-	return sanitized, nil
-}
-
 func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+	if s.repo == nil {
+		return sanitizeTokenTTLConfig(TokenTTLConfig{}, defaults), nil
+	}
 	record, err := s.repo.GetByKey(ctx, AdminTokenTTLSettingKey)
 	if err != nil {
 		return sanitizeTokenTTLConfig(TokenTTLConfig{}, defaults), nil
@@ -117,62 +75,6 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 	}
 
 	return sanitizeTokenTTLConfig(resolved, defaults), nil
-}
-
-func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, defaults TokenTTLConfig, changedBy uuid.UUID) (TokenTTLConfig, error) {
-	sanitized := sanitizeTokenTTLConfig(input, defaults)
-	if !isValidTokenTTLConfig(sanitized) {
-		return TokenTTLConfig{}, fmt.Errorf("invalid token TTL configuration")
-	}
-	value := map[string]any{
-		"auth_cookie_ttl_hours":     sanitized.AuthCookieTTLHours,
-		"auth_token_ttl_hours":      sanitized.AuthTokenTTLHours,
-		"tracking_token_ttl_hours":  sanitized.TrackingTokenTTLHours,
-		"inactivity_logout_seconds": sanitized.InactivityLogoutSeconds,
-	}
-	if err := s.upsertSetting(ctx, AdminTokenTTLSettingKey, value, changedBy); err != nil {
-		return TokenTTLConfig{}, err
-	}
-	return sanitized, nil
-}
-
-func DefaultAdminTabOrder() []string {
-	return append([]string(nil), defaultAdminTabOrder...)
-}
-
-func sanitizeTabOrder(order []string) []string {
-	//nolint:misspell // Spanish UI tab names, not English typos.
-	allowed := map[string]bool{
-		"ordenes":       true,
-		"categorias":    true,
-		"productos":     true,
-		"personas":      true,
-		"ofertas":       true,
-		"herramientas":  true,
-		"configuracion": true,
-	}
-
-	seen := make(map[string]bool, len(order))
-	sanitized := make([]string, 0, len(defaultAdminTabOrder))
-
-	for _, item := range order {
-		if item == "empleados" || item == "usuarios" {
-			item = "personas"
-		}
-		if !allowed[item] || seen[item] {
-			continue
-		}
-		seen[item] = true
-		sanitized = append(sanitized, item)
-	}
-
-	for _, fallback := range defaultAdminTabOrder {
-		if !seen[fallback] {
-			sanitized = append(sanitized, fallback)
-		}
-	}
-
-	return sanitized
 }
 
 func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
@@ -210,15 +112,6 @@ func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) Token
 	}
 
 	return resolved
-}
-
-func isValidTokenTTLConfig(cfg TokenTTLConfig) bool {
-	const maxHours = 24 * 365 * 3
-	const maxSeconds = 24 * 60 * 60
-	return cfg.AuthCookieTTLHours > 0 && cfg.AuthCookieTTLHours <= maxHours &&
-		cfg.AuthTokenTTLHours > 0 && cfg.AuthTokenTTLHours <= maxHours &&
-		cfg.TrackingTokenTTLHours > 0 && cfg.TrackingTokenTTLHours <= maxHours &&
-		cfg.InactivityLogoutSeconds > 0 && cfg.InactivityLogoutSeconds <= maxSeconds
 }
 
 func parsePositiveInt(value any) int {
@@ -262,6 +155,9 @@ type StoreSettings struct {
 
 func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
 	result := StoreSettings{OrdersEnabled: true, Offers: []OfferItem{}}
+	if s.repo == nil {
+		return result, nil
+	}
 
 	// Orders enabled
 	rec, err := s.repo.GetByKey(ctx, StoreOrdersEnabledKey)
@@ -311,6 +207,9 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 }
 
 func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings, changedBy uuid.UUID) (StoreSettings, error) {
+	if s.repo == nil {
+		return input, nil
+	}
 	// Persist orders enabled
 	ordersValue := map[string]any{"enabled": input.OrdersEnabled}
 	if err := s.upsertSetting(ctx, StoreOrdersEnabledKey, ordersValue, changedBy); err != nil {
@@ -337,6 +236,9 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 // AreOrdersEnabled is a convenience helper for the kill-switch check.
 // It returns true on error (fail-open) so a DB hiccup does not block orders.
 func (s *AdminSettingService) AreOrdersEnabled(ctx context.Context) bool {
+	if s.repo == nil {
+		return true
+	}
 	rec, err := s.repo.GetByKey(ctx, StoreOrdersEnabledKey)
 	if err != nil {
 		return true // fail-open

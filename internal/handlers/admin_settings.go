@@ -1,5 +1,5 @@
-// admin_settings.go — Admin panel configuration handlers (tab order, token TTL settings, store settings).
-// Settings are persisted in the database and fall back to env-var defaults when not set.
+// admin_settings.go — Store settings handlers (orders kill-switch + offers).
+// Storage is optional: when persistence is disabled, endpoints return defaults and accept no-op updates.
 package handlers
 
 import (
@@ -8,110 +8,18 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
-	"github.com/cjrdz/ishosBackEnd/internal/config"
-	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type AdminSettingsHandler struct {
 	settingsSvc *services.AdminSettingService
-	defaults    services.TokenTTLConfig
 }
 
-func NewAdminSettingsHandler(db *ent.Client, cfg *config.Config) *AdminSettingsHandler {
-	repo := repository.NewAdminSettingRepository(db)
+func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService) *AdminSettingsHandler {
 	return &AdminSettingsHandler{
-		settingsSvc: services.NewAdminSettingService(repo),
-		defaults: services.TokenTTLConfig{
-			AuthCookieTTLHours:      cfg.AuthCookieTTLHours,
-			AuthTokenTTLHours:       cfg.AuthTokenTTLHours,
-			TrackingTokenTTLHours:   cfg.TrackingTokenTTLHours,
-			InactivityLogoutSeconds: cfg.InactivityLogoutSeconds,
-		},
+		settingsSvc: settingsSvc,
 	}
-}
-
-// GetTabs returns the current admin panel tab display order.
-//
-// GET /api/v1/admin/settings/tabs
-func (h *AdminSettingsHandler) GetTabs(w http.ResponseWriter, r *http.Request) {
-	order, err := h.settingsSvc.GetTabOrder(r.Context())
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "No se pudo cargar configuración")
-		return
-	}
-
-	response.JSON(w, http.StatusOK, map[string]any{
-		"tab_order": order,
-	})
-}
-
-// UpdateTabs persists a new tab display order for the admin panel.
-//
-// PATCH /api/v1/admin/settings/tabs
-// Body: { "tab_order": ["orders", "products", ...] }
-func (h *AdminSettingsHandler) UpdateTabs(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		TabOrder []string `json:"tab_order"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
-		return
-	}
-	adminID := getAdminID(r)
-	order, err := h.settingsSvc.UpdateTabOrder(r.Context(), body.TabOrder, adminID)
-	if err != nil {
-		response.Error(w, http.StatusBadRequest, "No se pudo guardar configuración")
-		return
-	}
-	response.JSON(w, http.StatusOK, map[string]any{
-		"tab_order": order,
-	})
-}
-
-// GetPanelConfig returns the active token/session TTL configuration.
-// Values reflect DB overrides when present; otherwise env-var defaults are returned.
-//
-// GET /api/v1/admin/settings/panel
-func (h *AdminSettingsHandler) GetPanelConfig(w http.ResponseWriter, r *http.Request) {
-	configValues, err := h.settingsSvc.GetTokenTTLConfig(r.Context(), h.defaults)
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "No se pudo cargar configuración")
-		return
-	}
-
-	response.JSON(w, http.StatusOK, map[string]any{
-		"auth_cookie_ttl_hours":     configValues.AuthCookieTTLHours,
-		"auth_token_ttl_hours":      configValues.AuthTokenTTLHours,
-		"tracking_token_ttl_hours":  configValues.TrackingTokenTTLHours,
-		"inactivity_logout_seconds": configValues.InactivityLogoutSeconds,
-	})
-}
-
-// UpdatePanelConfig overwrites token/session TTL settings in the database.
-// A server restart is not required — the service re-reads these values per request.
-//
-// PATCH /api/v1/admin/settings/panel
-func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.Request) {
-	var body services.TokenTTLConfig
-	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
-		return
-	}
-	adminID := getAdminID(r)
-	configValues, err := h.settingsSvc.UpdateTokenTTLConfig(r.Context(), body, h.defaults, adminID)
-	if err != nil {
-		response.Error(w, http.StatusBadRequest, "No se pudo guardar configuración")
-		return
-	}
-	response.JSON(w, http.StatusOK, map[string]any{
-		"auth_cookie_ttl_hours":     configValues.AuthCookieTTLHours,
-		"auth_token_ttl_hours":      configValues.AuthTokenTTLHours,
-		"tracking_token_ttl_hours":  configValues.TrackingTokenTTLHours,
-		"inactivity_logout_seconds": configValues.InactivityLogoutSeconds,
-	})
 }
 
 // SettingsService returns the underlying service so other handlers can reference it.

@@ -496,13 +496,14 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"order_number": order.OrderNumber,
-		"status":       order.Status,
-		"updated_at":   order.UpdatedAt,
-		"created_at":   order.CreatedAt,
-		"total_amount": order.TotalAmount,
-		"order_type":   order.OrderType,
-		"items":        publicItems,
+		"order_number":  order.OrderNumber,
+		"customer_name": order.CustomerName,
+		"status":        order.Status,
+		"updated_at":    order.UpdatedAt,
+		"created_at":    order.CreatedAt,
+		"total_amount":  order.TotalAmount,
+		"order_type":    order.OrderType,
+		"items":         publicItems,
 	})
 }
 

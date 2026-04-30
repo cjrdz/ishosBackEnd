@@ -1,10 +1,9 @@
 // upload.go — Image upload/delete/list handlers backed by Cloudflare R2.
-// UploadImage enforces a 6 MiB hard limit at the HTTP layer and a 5 MiB multipart limit;
-// the 1 MiB gap ensures oversized requests are rejected before multipart parsing begins.
 package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
@@ -15,21 +14,36 @@ import (
 )
 
 type UploadHandler struct {
-	uploadSvc *services.UploadService
+	uploadSvc          *services.UploadService
+	maxUploadMB        int
+	maxMultipartBytes  int64
+	maxRequestBodySize int64
 }
 
 func NewUploadHandler(cfg *config.Config) *UploadHandler {
+	maxUploadMB := cfg.AdminImageUploadMaxMB
+	if maxUploadMB <= 0 {
+		maxUploadMB = 15
+	}
+
+	maxMultipartBytes := int64(maxUploadMB) << 20
+	maxRequestBodySize := maxMultipartBytes + (1 << 20)
+
 	return &UploadHandler{
-		uploadSvc: services.NewUploadService(cfg),
+		uploadSvc:          services.NewUploadService(cfg),
+		maxUploadMB:        maxUploadMB,
+		maxMultipartBytes:  maxMultipartBytes,
+		maxRequestBodySize: maxRequestBodySize,
 	}
 }
 
 func (h *UploadHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 6<<20)
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxRequestBodySize)
 
 	// #nosec G120 -- request body is hard-capped via MaxBytesReader above.
-	if err := r.ParseMultipartForm(5 << 20); err != nil {
-		response.Error(w, http.StatusBadRequest, "File too large (max 5MB)")
+	if err := r.ParseMultipartForm(h.maxMultipartBytes); err != nil {
+		response.Error(w, http.StatusBadRequest,
+			fmt.Sprintf("File too large (max %dMB)", h.maxUploadMB))
 		return
 	}
 
