@@ -15,7 +15,7 @@ import (
 const maxJSONBodyBytes = 1 << 20 // 1 MiB
 
 // decodeJSON reads the request body as JSON into the provided destination.
-func decodeJSON(r *http.Request, dst interface{}) error {
+func decodeJSON(r *http.Request, dst any) error {
 	if r.Body == nil {
 		return fmt.Errorf("request body is empty")
 	}
@@ -56,4 +56,12 @@ func writeAppError(w http.ResponseWriter, err error, fallbackMsg string) {
 		return
 	}
 	response.Error(w, status, err.Error())
+}
+
+// nilIfEmpty returns a pointer to s, or nil if s is empty.
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

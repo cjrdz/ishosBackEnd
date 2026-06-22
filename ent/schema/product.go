@@ -36,6 +36,12 @@ func (Product) Fields() []ent.Field {
 			Default(false),
 		field.Bool("exclude_global_addons").
 			Default(false),
+		field.Bool("ball_based").
+			Default(false),
+		field.Int("ball_quantity").
+			Default(0),
+		field.Bool("allows_mixed_flavors").
+			Default(false),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -54,10 +60,8 @@ func (Product) Edges() []ent.Edge {
 			Required(),
 		// Product can appear in many order items
 		edge.To("order_items", OrderItem.Type),
-		// Product can have many flavors
-		edge.To("flavors", Flavor.Type),
-		// Product can have many addons
-		edge.To("addons", Addon.Type),
+		// Optional: link to inventory item for unit-based stock tracking
+		edge.To("inventory_item", InventoryItem.Type),
 	}
 }
 

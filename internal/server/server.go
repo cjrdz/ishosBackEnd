@@ -15,20 +15,25 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/database"
+	"github.com/cjrdz/ishosBackEnd/internal/events"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers"
 	appmiddleware "github.com/cjrdz/ishosBackEnd/internal/middleware"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 // Server wraps the Chi router, Ent database client, and all handlers.
 type Server struct {
-	db     *ent.Client
-	router chi.Router
-	cfg    *config.Config
+	db                 *ent.Client
+	router             chi.Router
+	cfg                *config.Config
+	trackingTokenStore *repository.TrackingTokenStore
+	cleanupCancel      context.CancelFunc
 }
 
 // New creates a new Server instance with all dependencies initialized.
@@ -42,19 +47,44 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to migrate database schema: %w", err)
 	}
-	if err := services.EnsureTrackingTokenSchema(context.Background(), rawDB); err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("failed to initialize tracking token schema: %w", err)
-	}
-	if err := auth.InitTokenRevocationStore(rawDB); err != nil {
+	if err := auth.InitEntTokenRevocationStore(client); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("failed to initialize token revocation store: %w", err)
 	}
+	if err := repository.InitTrackingTokenStore(client); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("failed to initialize tracking token store: %w", err)
+	}
 	log.Info().Msg("Connected to PostgreSQL database and verified schema")
 
-	// ── Initialize handlers ──────────────────────────────────────────────
+	// ── Repositories ─────────────────────────────────────────────────────
+	categoryRepo := repository.NewCategoryRepository(client)
+	flavorRepo := repository.NewFlavorRepository(client)
+	addonRepo := repository.NewAddonRepository(client)
+	productRepo := repository.NewProductRepository(client)
+	orderRepo := repository.NewOrderRepository(client)
 	settingsRepo := repository.NewAdminSettingRepository(client)
+	customerRepo := repository.NewCustomerRepository(client)
+	containerTypeRepo := repository.NewContainerTypeRepository(client)
+	inventoryRepo := repository.NewInventoryRepository(client)
+
+	// ── Services ─────────────────────────────────────────────────────────
+	categorySvc := services.NewCategoryService(categoryRepo)
+	customerSvc := services.NewCustomerService(customerRepo)
+	flavorSvc := services.NewFlavorService(flavorRepo)
+	addonSvc := services.NewAddonService(addonRepo)
+	productSvc := services.NewProductService(productRepo)
 	settingsSvc := services.NewAdminSettingService(settingsRepo)
+	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
+	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo)
+	auditSvc := audit.NewService(client)
+	authService := auth.NewService(
+		pb,
+		cfg.LoginAttemptsPerMinute,
+		cfg.LoginLockoutMaxFailures,
+		cfg.LoginLockoutWindowMinutes,
+		cfg.LoginLockoutDurationMinutes,
+	)
 	defaultTokenTTLs := services.TokenTTLConfig{
 		AuthCookieTTLHours:      cfg.AuthCookieTTLHours,
 		AuthTokenTTLHours:       cfg.AuthTokenTTLHours,
@@ -62,27 +92,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		InactivityLogoutSeconds: cfg.InactivityLogoutSeconds,
 	}
 
-	authHandler := handlers.NewAuthHandler(pb, cfg, settingsSvc)
-	employeeHandler := handlers.NewEmployeeHandler(pb)
-	categoryHandler := handlers.NewCategoryHandler(client)
-	productHandler := handlers.NewProductHandler(client, cfg)
-	flavorHandler := handlers.NewFlavorHandler(client)
-	addonHandler := handlers.NewAddonHandler(client)
-	uploadHandler := handlers.NewUploadHandler(cfg)
-	analyticsHandler := handlers.NewAnalyticsHandler(client, cfg)
-	exportHandler := handlers.NewExportHandler(client)
-	userHandler := handlers.NewUserHandler(client)
-	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc)
-
-	// Order handler requires rate limiter
-	orderRateLimiter := appmiddleware.NewOrderRateLimiter(
-		cfg.OrdersPerHour,
-		cfg.OrdersPerDay,
-		cfg.TrackingRequestsPerHour,
-		cfg.RedisURL,
-		cfg.RedisPrefix,
-	)
-	trackingTokenStore := services.NewSQLTrackingTokenStore(rawDB)
+	// ── Tracking token service (needed by order service) ─────────────────
+	trackingTokenStore := repository.NewTrackingTokenStore(client)
 	trackingTokenService := services.NewTrackingTokenService(
 		cfg.TrackingTokenSecret,
 		time.Duration(cfg.TrackingTokenTTLHours)*time.Hour,
@@ -95,18 +106,73 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		}
 		return time.Duration(resolved.TrackingTokenTTLHours) * time.Hour
 	})
-	orderHandler := handlers.NewOrderHandler(client, trackingTokenService, pb, cfg, orderRateLimiter, settingsSvc)
+
+	// ── Order composition (moved from handler constructor) ─────────────────
+	whatsapp := services.NewWhatsAppService(cfg)
+	orderDispatcher := events.NewDispatcher()
+	orderDispatcher.SubscribeOrderStatusChanged(func(evt events.OrderStatusChanged) {
+		switch evt.Status {
+		case events.OrderStatusCreated:
+			whatsapp.SendOrderCreated(evt.Phone, evt.OrderNumber, evt.Total, evt.TrackingURL)
+		case events.OrderStatusApproved:
+			whatsapp.SendOrderApproved(evt.Phone, evt.OrderNumber, evt.TrackingURL)
+		case events.OrderStatusRejected:
+			whatsapp.SendOrderRejected(evt.Phone, evt.OrderNumber, evt.Reason, evt.TrackingURL)
+		case events.OrderStatusReady:
+			whatsapp.SendOrderReady(evt.Phone, evt.OrderNumber, evt.TrackingURL)
+		}
+	})
+	orderStore := repository.NewOrderStore(client, services.NewOrderEnrichmentService())
+	orderSvc := services.NewOrderService(
+		orderRepo,
+		orderStore,
+		inventoryService,
+		trackingTokenService,
+		orderDispatcher,
+		cfg.PublicStoreURL,
+		auditSvc,
+	)
+	orderResponseMapper := services.NewOrderResponseMapper(pb)
+	publicStoreURL := strings.TrimRight(strings.TrimSpace(cfg.PublicStoreURL), "/")
+
+	// ── Handlers ─────────────────────────────────────────────────────────
+	authHandler := handlers.NewAuthHandler(pb, authService, cfg, settingsSvc)
+	employeeHandler := handlers.NewEmployeeHandler(pb, auditSvc)
+	categoryHandler := handlers.NewCategoryHandler(categorySvc)
+	productHandler := handlers.NewProductHandler(productSvc, cfg, inventoryService)
+	flavorHandler := handlers.NewFlavorHandler(flavorSvc)
+	addonHandler := handlers.NewAddonHandler(addonSvc)
+	uploadHandler := handlers.NewUploadHandler(cfg)
+	analyticsHandler := handlers.NewAnalyticsHandler(orderRepo, cfg)
+	exportHandler := handlers.NewExportHandler(orderRepo, auditSvc)
+	userHandler := handlers.NewUserHandler(customerSvc)
+	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc, auditSvc)
+
+	// Inventory handler
+	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
+	containerTypeHandler := handlers.NewContainerTypeHandler(containerTypeSvc)
+
+	// Order handler requires rate limiter
+	orderRateLimiter := appmiddleware.NewOrderRateLimiter(
+		cfg.OrdersPerHour,
+		cfg.OrdersPerDay,
+		cfg.TrackingRequestsPerHour,
+		cfg.RedisURL,
+		cfg.RedisPrefix,
+	)
+	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, publicStoreURL, orderRateLimiter)
 
 	// ── Middleware ───────────────────────────────────────────────────────
-	loginRateLimiter := appmiddleware.NewLoginRateLimiter(cfg.LoginAttemptsPerMinute)
-	pbAuthMiddleware := appmiddleware.NewPBAuth(pb)
+	loginRateLimiter := appmiddleware.NewLoginRateLimit(authService)
+	authMiddleware := appmiddleware.NewAuth(authService)
 
 	// ── Router setup ─────────────────────────────────────────────────────
 	r := chi.NewRouter()
 
 	// Global middleware
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(appmiddleware.RequestIDMiddleware())
+	r.Use(middleware.ClientIPFromXFFTrustedProxies(1))
 	r.Use(appmiddleware.SecurityHeaders)
 	r.Use(appmiddleware.Logger)
 	r.Use(appmiddleware.Recovery)
@@ -127,8 +193,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
+		response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	// API routes
@@ -138,7 +203,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		// Auth
 		api.Post("/auth/login", loginRateLimiter.Middleware(http.HandlerFunc(authHandler.Login)).ServeHTTP)
 		api.Post("/auth/logout", authHandler.Logout)
-		api.With(pbAuthMiddleware.OptionalSession).Get("/auth/session", authHandler.GetSession)
+		api.With(authMiddleware.OptionalSession).Get("/auth/session", authHandler.GetSession)
 
 		// Products (public list, admin manage)
 		api.Get("/products", productHandler.List)
@@ -157,7 +222,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Get("/addons/{id}", addonHandler.Get)
 
 		// Orders (public create; optionally capture authenticated staff identity)
-		api.With(pbAuthMiddleware.OptionalSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
+		api.With(authMiddleware.OptionalSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
 		api.Get("/orders/track", orderHandler.TrackPublic)
 
 		// ── Settings routes (mixed public + protected) ──────────────
@@ -167,7 +232,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 
 			// Protected settings (admin/employee)
 			settings.Group(func(protectedSettings chi.Router) {
-				protectedSettings.Use(pbAuthMiddleware.RequireSession)
+				protectedSettings.Use(authMiddleware.RequireSession)
 				protectedSettings.Get("/store", adminSettingsHandler.GetStoreSettings)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/store", adminSettingsHandler.UpdateStoreSettings)
 			})
@@ -175,7 +240,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 
 		// ── Authenticated routes (admin/employee only) ───────────────
 		api.Group(func(protected chi.Router) {
-			protected.Use(pbAuthMiddleware.RequireSession)
+			protected.Use(authMiddleware.RequireSession)
 			protected.With(appmiddleware.RequireAdmin).Post("/auth/lockout/reset", authHandler.ResetLoginLockout)
 
 			// Employees management
@@ -237,6 +302,33 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/orders-over-time", analyticsHandler.OrdersOverTime)
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/top-products", analyticsHandler.TopProducts)
 
+			// Inventory (admin only)
+			protected.With(appmiddleware.RequireAdmin).Route("/inventory", func(inv chi.Router) {
+				inv.Get("/", inventoryHandler.List)
+				inv.Get("/flavors", inventoryHandler.ListFlavorInventory)
+				inv.Get("/unit-products", inventoryHandler.ListUnitInventory)
+				inv.Post("/unit-products", inventoryHandler.CreateUnitInventoryItem)
+				inv.Get("/stats", inventoryHandler.GetStats)
+				inv.Get("/low-stock", inventoryHandler.GetLowStock)
+				inv.Get("/{id}", inventoryHandler.Get)
+				inv.Get("/{id}/movements", inventoryHandler.GetMovementHistory)
+				inv.Post("/{id}/entries", inventoryHandler.RecordEntry)
+				inv.Post("/{id}/unit-entries", inventoryHandler.RecordUnitEntry)
+				inv.Post("/{id}/adjustments", inventoryHandler.RecordAdjustment)
+				inv.Post("/{id}/products/{productId}", inventoryHandler.LinkInventoryItemToProduct)
+				inv.Delete("/{id}/products/{productId}", inventoryHandler.UnlinkInventoryItemFromProduct)
+				inv.Get("/flavors/{id}/stock", inventoryHandler.GetStockForFlavor)
+			})
+
+			// Container types (admin only)
+			protected.With(appmiddleware.RequireAdmin).Route("/container-types", func(ct chi.Router) {
+				ct.Get("/", containerTypeHandler.List)
+				ct.Post("/", containerTypeHandler.Create)
+				ct.Get("/{id}", containerTypeHandler.Get)
+				ct.Patch("/{id}", containerTypeHandler.Update)
+				ct.Delete("/{id}", containerTypeHandler.Delete)
+			})
+
 			// Export and purge (admin only)
 			protected.With(appmiddleware.RequireAdmin).Get("/export/orders", exportHandler.ExportOrders)
 			protected.With(appmiddleware.RequireAdmin).Delete("/export/orders", exportHandler.PurgeOrders)
@@ -251,9 +343,10 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	log.Info().Msg("Chi router configured with all routes")
 
 	return &Server{
-		db:     client,
-		router: r,
-		cfg:    cfg,
+		db:                 client,
+		router:             r,
+		cfg:                cfg,
+		trackingTokenStore: trackingTokenStore,
 	}, nil
 }
 
@@ -379,8 +472,43 @@ func (s *Server) Router() http.Handler {
 	return s.router
 }
 
+// StartBackgroundJobs starts non-blocking maintenance goroutines (e.g. periodic
+// cleanup of expired tracking tokens). Call this after the server is running.
+func (s *Server) StartBackgroundJobs(ctx context.Context) {
+	if s.trackingTokenStore == nil {
+		return
+	}
+
+	jobCtx, cancel := context.WithCancel(ctx)
+	s.cleanupCancel = cancel
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+
+		// Run once shortly after startup to clean any backlog.
+		if err := s.trackingTokenStore.CleanupExpired(jobCtx); err != nil {
+			log.Warn().Err(err).Msg("Initial tracking-token cleanup failed")
+		}
+
+		for {
+			select {
+			case <-jobCtx.Done():
+				return
+			case <-ticker.C:
+				if err := s.trackingTokenStore.CleanupExpired(jobCtx); err != nil {
+					log.Warn().Err(err).Msg("Periodic tracking-token cleanup failed")
+				}
+			}
+		}
+	}()
+}
+
 // Close gracefully shuts down the database connection.
 func (s *Server) Close() {
+	if s.cleanupCancel != nil {
+		s.cleanupCancel()
+	}
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
 			log.Error().Err(err).Msg("Error closing database connection")

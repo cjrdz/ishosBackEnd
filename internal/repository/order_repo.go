@@ -171,6 +171,17 @@ func (r *OrderRepository) FindRecentByPhone(ctx context.Context, customerPhone s
 
 func (r *OrderRepository) Approve(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error) {
 	now := time.Now()
+	existing, err := r.db.Order.Get(ctx, id)
+	if err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+
+	timestamps := existing.StatusTimestamps
+	if timestamps == nil {
+		timestamps = make(map[string]time.Time)
+	}
+	timestamps[string(entOrder.StatusRecibida)] = now
+
 	order, err := r.db.Order.UpdateOneID(id).
 		SetStatus(entOrder.StatusRecibida).
 		SetPaymentStatus(entOrder.PaymentStatusConfirmado).
@@ -178,6 +189,7 @@ func (r *OrderRepository) Approve(ctx context.Context, id uuid.UUID, reviewerID 
 		SetNillableReviewedByUserID(reviewerID).
 		SetNillableReviewedAt(&now).
 		SetUpdatedAt(now).
+		SetStatusTimestamps(timestamps).
 		Save(ctx)
 	if err != nil {
 		return dto.Order{}, translateOrderError(err)
@@ -188,12 +200,24 @@ func (r *OrderRepository) Approve(ctx context.Context, id uuid.UUID, reviewerID 
 
 func (r *OrderRepository) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error) {
 	now := time.Now()
+	existing, err := r.db.Order.Get(ctx, id)
+	if err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+
+	timestamps := existing.StatusTimestamps
+	if timestamps == nil {
+		timestamps = make(map[string]time.Time)
+	}
+	timestamps[string(entOrder.StatusCancelada)] = now
+
 	order, err := r.db.Order.UpdateOneID(id).
 		SetStatus(entOrder.StatusCancelada).
 		SetRejectionReason(reason).
 		SetNillableReviewedByUserID(reviewerID).
 		SetNillableReviewedAt(&now).
 		SetUpdatedAt(now).
+		SetStatusTimestamps(timestamps).
 		Save(ctx)
 	if err != nil {
 		return dto.Order{}, translateOrderError(err)
@@ -203,9 +227,22 @@ func (r *OrderRepository) Reject(ctx context.Context, id uuid.UUID, reason strin
 }
 
 func (r *OrderRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
+	now := time.Now()
+	existing, err := r.db.Order.Get(ctx, id)
+	if err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+
+	timestamps := existing.StatusTimestamps
+	if timestamps == nil {
+		timestamps = make(map[string]time.Time)
+	}
+	timestamps[status] = now
+
 	order, err := r.db.Order.UpdateOneID(id).
 		SetStatus(entOrder.Status(status)).
-		SetUpdatedAt(time.Now()).
+		SetUpdatedAt(now).
+		SetStatusTimestamps(timestamps).
 		Save(ctx)
 	if err != nil {
 		return dto.Order{}, translateOrderError(err)
@@ -440,6 +477,7 @@ func toDTOOrder(order *ent.Order) dto.Order {
 		IsArchived:       order.IsArchived,
 		CreatedAt:        order.CreatedAt,
 		UpdatedAt:        order.UpdatedAt,
+		StatusTimestamps: order.StatusTimestamps,
 		Items:            items,
 	}
 }

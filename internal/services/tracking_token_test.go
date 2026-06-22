@@ -4,27 +4,29 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
 type memoryTrackingTokenStore struct {
-	records map[string]trackingTokenRecord
+	records map[string]dto.TrackingTokenRecord
 	orders  map[string][]string
 }
 
 func newMemoryTrackingTokenStore() *memoryTrackingTokenStore {
 	return &memoryTrackingTokenStore{
-		records: make(map[string]trackingTokenRecord),
+		records: make(map[string]dto.TrackingTokenRecord),
 		orders:  make(map[string][]string),
 	}
 }
 
 func (s *memoryTrackingTokenStore) Store(_ context.Context, orderNumber, tokenHash string, expiresAt time.Time) error {
-	s.records[tokenHash] = trackingTokenRecord{ExpiresAt: expiresAt}
+	s.records[tokenHash] = dto.TrackingTokenRecord{ExpiresAt: expiresAt}
 	s.orders[orderNumber] = append(s.orders[orderNumber], tokenHash)
 	return nil
 }
 
-func (s *memoryTrackingTokenStore) Lookup(_ context.Context, orderNumber, tokenHash string) (*trackingTokenRecord, error) {
+func (s *memoryTrackingTokenStore) Lookup(_ context.Context, orderNumber, tokenHash string) (*dto.TrackingTokenRecord, error) {
 	for _, known := range s.orders[orderNumber] {
 		if known == tokenHash {
 			record := s.records[tokenHash]

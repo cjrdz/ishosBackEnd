@@ -122,7 +122,7 @@ func (s *UploadService) DeleteImage(ctx context.Context, path string) error {
 	return err
 }
 
-func (s *UploadService) ListImages(ctx context.Context) ([]map[string]interface{}, error) {
+func (s *UploadService) ListImages(ctx context.Context) ([]map[string]any, error) {
 	resp, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket:  &s.bucket,
 		MaxKeys: int32Ptr(1000),
@@ -131,7 +131,7 @@ func (s *UploadService) ListImages(ctx context.Context) ([]map[string]interface{
 		return nil, err
 	}
 
-	images := make([]map[string]interface{}, 0, len(resp.Contents))
+	images := make([]map[string]any, 0, len(resp.Contents))
 	for _, object := range resp.Contents {
 		if object.Key == nil || strings.TrimSpace(*object.Key) == "" {
 			continue
@@ -149,7 +149,7 @@ func (s *UploadService) ListImages(ctx context.Context) ([]map[string]interface{
 			size = *object.Size
 		}
 
-		images = append(images, map[string]interface{}{
+		images = append(images, map[string]any{
 			"name":       *object.Key,
 			"size":       size,
 			"mime_type":  mimeType,

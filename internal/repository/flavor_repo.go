@@ -9,6 +9,8 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/ent"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
 type FlavorRepository struct {
@@ -19,23 +21,39 @@ func NewFlavorRepository(db *ent.Client) *FlavorRepository {
 	return &FlavorRepository{db: db}
 }
 
-func (r *FlavorRepository) FindAll(ctx context.Context, onlyActive bool) ([]*ent.Flavor, error) {
+func (r *FlavorRepository) FindAll(ctx context.Context, onlyActive bool) ([]dto.Flavor, error) {
 	q := r.db.Flavor.Query()
 
 	if onlyActive {
 		q = q.Where(flavor.IsActiveEQ(true))
 	}
 
-	return q.Order(ent.Asc(flavor.FieldDisplayOrder)).All(ctx)
+	rows, err := q.Order(ent.Asc(flavor.FieldDisplayOrder)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]dto.Flavor, len(rows))
+	for i, row := range rows {
+		result[i] = toFlavorDTO(row)
+	}
+	return result, nil
 }
 
-func (r *FlavorRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Flavor, error) {
-	return r.db.Flavor.Get(ctx, id)
+func (r *FlavorRepository) FindByID(ctx context.Context, id uuid.UUID) (dto.Flavor, error) {
+	row, err := r.db.Flavor.Get(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return dto.Flavor{}, &apperror.NotFoundError{Resource: "flavor", Cause: err}
+		}
+		return dto.Flavor{}, err
+	}
+	return toFlavorDTO(row), nil
 }
 
-func (r *FlavorRepository) Create(ctx context.Context, input CreateFlavorInput) (*ent.Flavor, error) {
+func (r *FlavorRepository) Create(ctx context.Context, input CreateFlavorInput) (dto.Flavor, error) {
 	now := time.Now()
-	return r.db.Flavor.Create().
+	row, err := r.db.Flavor.Create().
 		SetName(input.Name).
 		SetDisplayOrder(input.DisplayOrder).
 		SetIsSeasonal(input.IsSeasonal).
@@ -43,9 +61,13 @@ func (r *FlavorRepository) Create(ctx context.Context, input CreateFlavorInput) 
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
+	if err != nil {
+		return dto.Flavor{}, err
+	}
+	return toFlavorDTO(row), nil
 }
 
-func (r *FlavorRepository) Update(ctx context.Context, id uuid.UUID, input UpdateFlavorInput) (*ent.Flavor, error) {
+func (r *FlavorRepository) Update(ctx context.Context, id uuid.UUID, input UpdateFlavorInput) (dto.Flavor, error) {
 	upd := r.db.Flavor.UpdateOneID(id).SetUpdatedAt(time.Now())
 
 	if input.Name != nil {
@@ -61,25 +83,34 @@ func (r *FlavorRepository) Update(ctx context.Context, id uuid.UUID, input Updat
 		upd = upd.SetIsActive(*input.IsActive)
 	}
 
-	return upd.Save(ctx)
+	row, err := upd.Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return dto.Flavor{}, &apperror.NotFoundError{Resource: "flavor", Cause: err}
+		}
+		return dto.Flavor{}, err
+	}
+	return toFlavorDTO(row), nil
 }
 
 func (r *FlavorRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.db.Flavor.DeleteOneID(id).Exec(ctx)
+	err := r.db.Flavor.DeleteOneID(id).Exec(ctx)
+	if err != nil && ent.IsNotFound(err) {
+		return &apperror.NotFoundError{Resource: "flavor", Cause: err}
+	}
+	return err
 }
 
-// LinkToProduct adds a flavor to a product (creates many-to-many relation)
-func (r *FlavorRepository) LinkToProduct(ctx context.Context, flavorID, productID uuid.UUID) error {
-	return r.db.Product.UpdateOneID(productID).
-		AddFlavorIDs(flavorID).
-		Exec(ctx)
-}
-
-// UnlinkFromProduct removes a flavor from a product
-func (r *FlavorRepository) UnlinkFromProduct(ctx context.Context, flavorID, productID uuid.UUID) error {
-	return r.db.Product.UpdateOneID(productID).
-		RemoveFlavorIDs(flavorID).
-		Exec(ctx)
+func toFlavorDTO(e *ent.Flavor) dto.Flavor {
+	return dto.Flavor{
+		ID:           e.ID,
+		Name:         e.Name,
+		DisplayOrder: e.DisplayOrder,
+		IsSeasonal:   e.IsSeasonal,
+		IsActive:     e.IsActive,
+		CreatedAt:    e.CreatedAt,
+		UpdatedAt:    e.UpdatedAt,
+	}
 }
 
 type CreateFlavorInput struct {

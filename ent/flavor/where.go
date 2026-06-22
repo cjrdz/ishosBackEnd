@@ -291,21 +291,44 @@ func UpdatedAtLTE(v time.Time) predicate.Flavor {
 	return predicate.Flavor(sql.FieldLTE(FieldUpdatedAt, v))
 }
 
-// HasProducts applies the HasEdge predicate on the "products" edge.
-func HasProducts() predicate.Flavor {
+// HasInventoryItem applies the HasEdge predicate on the "inventory_item" edge.
+func HasInventoryItem() predicate.Flavor {
 	return predicate.Flavor(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, ProductsTable, ProductsColumn),
+			sqlgraph.Edge(sqlgraph.O2M, false, InventoryItemTable, InventoryItemColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})
 }
 
-// HasProductsWith applies the HasEdge predicate on the "products" edge with a given conditions (other predicates).
-func HasProductsWith(preds ...predicate.Product) predicate.Flavor {
+// HasInventoryItemWith applies the HasEdge predicate on the "inventory_item" edge with a given conditions (other predicates).
+func HasInventoryItemWith(preds ...predicate.InventoryItem) predicate.Flavor {
 	return predicate.Flavor(func(s *sql.Selector) {
-		step := newProductsStep()
+		step := newInventoryItemStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasFlavorStockMovements applies the HasEdge predicate on the "flavor_stock_movements" edge.
+func HasFlavorStockMovements() predicate.Flavor {
+	return predicate.Flavor(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, FlavorStockMovementsTable, FlavorStockMovementsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasFlavorStockMovementsWith applies the HasEdge predicate on the "flavor_stock_movements" edge with a given conditions (other predicates).
+func HasFlavorStockMovementsWith(preds ...predicate.StockMovement) predicate.Flavor {
+	return predicate.Flavor(func(s *sql.Selector) {
+		step := newFlavorStockMovementsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

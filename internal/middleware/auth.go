@@ -7,59 +7,51 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
-// PBAuth is the Chi middleware that validates sessions with PocketBase.
+// Auth is the Chi middleware that validates sessions with the auth service.
 //
 // Flow:
 //
-//	Request → PBAuth → reads Authorization: Bearer <token>
-//	          → calls PocketBase ValidateToken (no HTTP — direct Go API)
-//	          → if invalid: returns 401
-//	          → if valid: extracts role, stores record+role in context
-//	          → calls next handler
+//	Request → Auth → reads Bearer token (from cookie or Authorization header)
+//	        → calls authService.Validate(token)
+//	        → if invalid: returns 401
+//	        → if valid: extracts role, stores record+role in context
+//	        → calls next handler
 //
 // Public routes (e.g. GET /api/v1/products, POST /api/v1/orders)
 // should NOT use this middleware — anyone can access them.
 //
 // Protected routes (admin/employee panels) must be wrapped with this.
-type PBAuth struct {
-	pb *auth.PBAuth
+type Auth struct {
+	authService auth.Service
 }
 
-func NewPBAuth(pb *auth.PBAuth) *PBAuth {
-	return &PBAuth{pb: pb}
+func NewAuth(authService auth.Service) *Auth {
+	return &Auth{authService: authService}
 }
 
-// RequireSession middleware: validates PocketBase Bearer token, 401 if missing/invalid.
+// RequireSession middleware: validates Bearer token, 401 if missing/invalid.
 // Use this for API routes consumed by the Astro frontend via fetch().
-func (a *PBAuth) RequireSession(next http.Handler) http.Handler {
+func (a *Auth) RequireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractBearerToken(r)
+		requestID := RequestID(r.Context())
+
 		if token == "" {
-			log.Warn().Msg("PocketBase auth: missing or malformed Authorization header")
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			log.Warn().Str("request_id", requestID).Msg("auth: missing or malformed Authorization header")
+			response.Error(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 
-		if auth.IsTokenRevoked(token) {
-			log.Warn().Msg("PocketBase auth: revoked token")
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-
-		record, err := a.pb.ValidateToken(token)
-		if err != nil || record == nil {
-			log.Warn().Err(err).Msg("PocketBase auth: invalid or expired token")
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-
-		// Check if the account has been disabled
-		if auth.IsDisabled(record) {
-			log.Warn().Str("id", auth.RecordID(record)).Msg("PocketBase auth: account disabled")
-			http.Error(w, `{"error":"account disabled"}`, http.StatusForbidden)
+		record, err := a.authService.Validate(r.Context(), token)
+		if err != nil {
+			status := apperror.StatusCode(err)
+			response.Error(w, status, err.Error())
+			log.Warn().Str("request_id", requestID).Err(err).Msg("auth: validation failed")
 			return
 		}
 
@@ -72,7 +64,7 @@ func (a *PBAuth) RequireSession(next http.Handler) http.Handler {
 	})
 }
 
-// OptionalSession middleware: validates PocketBase Bearer token if present,
+// OptionalSession middleware: validates Bearer token if present,
 // but allows the request to continue even if no token is provided.
 // Use this for endpoints that can be accessed by both public users and authenticated staff.
 //
@@ -83,7 +75,7 @@ func (a *PBAuth) RequireSession(next http.Handler) http.Handler {
 // If token is missing or invalid:
 //   - Request continues without authentication context
 //   - Handler treats request as public/anonymous
-func (a *PBAuth) OptionalSession(next http.Handler) http.Handler {
+func (a *Auth) OptionalSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractBearerToken(r)
 
@@ -94,23 +86,10 @@ func (a *PBAuth) OptionalSession(next http.Handler) http.Handler {
 		}
 
 		// Token provided - try to validate it
-		if auth.IsTokenRevoked(token) {
-			log.Debug().Msg("PocketBase auth: revoked token in optional auth")
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		record, err := a.pb.ValidateToken(token)
-		if err != nil || record == nil {
+		record, err := a.authService.Validate(r.Context(), token)
+		if err != nil {
 			// Invalid token - log but continue as public request
-			log.Debug().Err(err).Msg("PocketBase auth: invalid token in optional auth, continuing as public")
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Check if the account has been disabled
-		if auth.IsDisabled(record) {
-			log.Debug().Str("id", auth.RecordID(record)).Msg("PocketBase auth: disabled account in optional auth, continuing as public")
+			log.Debug().Err(err).Msg("auth: invalid token in optional auth, continuing as public")
 			next.ServeHTTP(w, r)
 			return
 		}

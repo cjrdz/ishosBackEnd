@@ -643,7 +643,7 @@ func (_g *OrderItemGroupBy) sqlScan(ctx context.Context, root *OrderItemQuery, v
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -685,6 +685,6 @@ func (_s *OrderItemSelect) sqlScan(ctx context.Context, root *OrderItemQuery, v 
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

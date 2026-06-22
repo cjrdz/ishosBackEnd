@@ -15,16 +15,14 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
-	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
-	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type AnalyticsHandler struct {
-	db          *ent.Client
+	orderRepo   services.OrderRepository
 	cache       *cachepkg.TTLCache
 	redis       *redis.Client
 	redisPrefix string
@@ -50,8 +48,8 @@ type analyticsTopProductResponse struct {
 	TotalValue float64 `json:"total_value"`
 }
 
-func NewAnalyticsHandler(db *ent.Client, cfg *config.Config) *AnalyticsHandler {
-	h := &AnalyticsHandler{db: db, cache: cachepkg.New(5 * time.Minute)}
+func NewAnalyticsHandler(orderRepo services.OrderRepository, cfg *config.Config) *AnalyticsHandler {
+	h := &AnalyticsHandler{orderRepo: orderRepo, cache: cachepkg.New(5 * time.Minute)}
 
 	if cfg == nil || strings.TrimSpace(cfg.RedisURL) == "" {
 		return h
@@ -100,12 +98,7 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, err := h.db.Order.Query().
-		Where(
-			entOrder.CreatedAtGTE(start),
-			entOrder.CreatedAtLTE(time.Now()),
-		).
-		All(r.Context())
+	orders, err := h.orderRepo.FindByDateRange(r.Context(), start, time.Now(), nil)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
 		return
@@ -116,10 +109,10 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	nonCancelledCount := 0
 
 	for _, order := range orders {
-		status := string(order.Status)
+		status := order.Status
 		statusBreakdown[status]++
 
-		if order.Status != entOrder.StatusCancelada {
+		if order.Status != "cancelada" {
 			totalRevenue += order.TotalAmount
 			nonCancelledCount++
 		}
@@ -164,12 +157,7 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	orders, err := h.db.Order.Query().
-		Where(
-			entOrder.CreatedAtGTE(start),
-			entOrder.CreatedAtLTE(end),
-		).
-		All(r.Context())
+	orders, err := h.orderRepo.FindByDateRange(r.Context(), start, end, nil)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
 		return
@@ -185,7 +173,7 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		key := bucketKey(order.CreatedAt, groupBy)
 		current := buckets[key]
 		current.count++
-		if order.Status != entOrder.StatusCancelada {
+		if order.Status != "cancelada" {
 			current.revenue += order.TotalAmount
 		}
 		buckets[key] = current
@@ -234,15 +222,7 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 		limit = parsedLimit
 	}
 
-	items, err := h.db.OrderItem.Query().
-		Where(
-			entOrderItem.HasOrderWith(
-				entOrder.CreatedAtGTE(start),
-				entOrder.CreatedAtLTE(end),
-				entOrder.StatusNEQ(entOrder.StatusCancelada),
-			),
-		).
-		All(r.Context())
+	items, err := h.orderRepo.FindOrderItemsByOrderDateRange(r.Context(), start, end, []string{"cancelada"})
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
 		return
@@ -285,7 +265,7 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, result)
 }
 
-func (h *AnalyticsHandler) cacheGet(ctx context.Context, key string, target interface{}) bool {
+func (h *AnalyticsHandler) cacheGet(ctx context.Context, key string, target any) bool {
 	if h.redis != nil {
 		redisKey := h.redisPrefix + ":" + key
 		redisCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -310,7 +290,7 @@ func (h *AnalyticsHandler) cacheGet(ctx context.Context, key string, target inte
 	return json.Unmarshal(payload, target) == nil
 }
 
-func (h *AnalyticsHandler) cacheSet(ctx context.Context, key string, value interface{}) {
+func (h *AnalyticsHandler) cacheSet(ctx context.Context, key string, value any) {
 	h.cache.Set(key, value)
 	if h.redis == nil {
 		return

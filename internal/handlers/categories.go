@@ -7,6 +7,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -14,23 +15,20 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
-	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type CategoryHandler struct {
-	categoryRepo *repository.CategoryRepository
-	cache        *cachepkg.TTLCache
+	categorySvc services.CategoryServiceInterface
 }
 
-func NewCategoryHandler(db *ent.Client) *CategoryHandler {
-	return &CategoryHandler{
-		categoryRepo: repository.NewCategoryRepository(db),
-		cache:        cachepkg.New(45 * time.Second),
-	}
+func NewCategoryHandler(svc services.CategoryServiceInterface) *CategoryHandler {
+	return &CategoryHandler{categorySvc: svc}
 }
 
 // categoryResponse is the JSON shape returned to the Astro frontend.
@@ -45,7 +43,24 @@ type categoryResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-func toCategoryResponse(c *ent.Category) categoryResponse {
+// productSummaryResponse is a lightweight product shape embedded in category detail responses.
+type productSummaryResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Price       float64   `json:"price"`
+	ImagePath   *string   `json:"image_path,omitempty"`
+	IsAvailable bool      `json:"is_available"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// categoryDetailResponse extends categoryResponse with products for the slug lookup endpoint.
+type categoryDetailResponse struct {
+	categoryResponse
+	Products []productSummaryResponse `json:"products"`
+}
+
+func toCategoryResponse(c dto.Category) categoryResponse {
 	return categoryResponse{
 		ID:           c.ID,
 		Name:         c.Name,
@@ -58,36 +73,35 @@ func toCategoryResponse(c *ent.Category) categoryResponse {
 	}
 }
 
+func toCategoryDetailResponse(c dto.Category) categoryDetailResponse {
+	detail := categoryDetailResponse{
+		categoryResponse: toCategoryResponse(c),
+		Products:         make([]productSummaryResponse, len(c.Products)),
+	}
+	for i, p := range c.Products {
+		detail.Products[i] = productSummaryResponse{
+			ID:          p.ID,
+			Name:        p.Name,
+			Description: p.Description,
+			Price:       p.Price,
+			ImagePath:   p.ImagePath,
+			IsAvailable: p.IsAvailable,
+			CreatedAt:   p.CreatedAt,
+		}
+	}
+	return detail
+}
+
 // List returns active categories by default, ordered by display_order.
 // If ?all=true is sent, it returns all categories (including inactive).
 //
 // GET /api/v1/categories
 func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	showAll := r.URL.Query().Get("all") == "true"
-	cacheKey := "categories:list:active"
-	if showAll {
-		cacheKey = "categories:list:all"
-	}
 
-	if v, ok := h.cache.Get(cacheKey); ok {
-		response.JSON(w, http.StatusOK, v.([]categoryResponse))
-		return
-	}
-
-	var (
-		cats []*ent.Category
-		err  error
-	)
-
-	if showAll {
-		cats, err = h.categoryRepo.FindAll(r.Context())
-	} else {
-		cats, err = h.categoryRepo.FindActive(r.Context())
-	}
-
+	cats, err := h.categorySvc.List(r.Context(), showAll)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to list categories")
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch categories")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
@@ -95,8 +109,7 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, c := range cats {
 		result[i] = toCategoryResponse(c)
 	}
-	h.cache.Set(cacheKey, result)
-	response.JSON(w, http.StatusOK, result)
+	response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
 }
 
 // GetBySlug returns a single category by its URL slug, with its products.
@@ -105,9 +118,9 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *CategoryHandler) GetBySlug(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 
-	c, err := h.categoryRepo.FindBySlugWithProducts(r.Context(), slug)
+	c, err := h.categorySvc.GetBySlug(r.Context(), slug)
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Category not found")
 			return
 		}
@@ -116,7 +129,7 @@ func (h *CategoryHandler) GetBySlug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, c)
+	response.JSON(w, http.StatusOK, toCategoryDetailResponse(c))
 }
 
 // Create adds a new category. Admin only (enforced by router middleware).
@@ -141,7 +154,7 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.categoryRepo.Create(r.Context(), repository.CreateCategoryInput{
+	c, err := h.categorySvc.Create(r.Context(), repository.CreateCategoryInput{
 		Name:         body.Name,
 		Slug:         body.Slug,
 		Description:  body.Description,
@@ -153,7 +166,6 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to create category")
 		return
 	}
-	h.cache.InvalidateAll()
 
 	response.JSON(w, http.StatusCreated, toCategoryResponse(c))
 }
@@ -162,9 +174,9 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 //
 // PATCH /api/v1/categories/{id}
 func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid category ID")
+		response.Error(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
@@ -186,7 +198,7 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.categoryRepo.Update(r.Context(), id, repository.UpdateCategoryInput{
+	c, err := h.categorySvc.Update(r.Context(), id, repository.UpdateCategoryInput{
 		Name:         body.Name,
 		Slug:         body.Slug,
 		Description:  body.Description,
@@ -195,7 +207,7 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsActive:     body.IsActive,
 	})
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Category not found")
 			return
 		}
@@ -203,7 +215,6 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to update category")
 		return
 	}
-	h.cache.InvalidateAll()
 
 	response.JSON(w, http.StatusOK, toCategoryResponse(c))
 }
@@ -213,14 +224,14 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 //
 // DELETE /api/v1/categories/{id}
 func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid category ID")
+		response.Error(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
-	if err := h.categoryRepo.Delete(r.Context(), id); err != nil {
-		if ent.IsNotFound(err) {
+	if err := h.categorySvc.Delete(r.Context(), id); err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Category not found")
 			return
 		}
@@ -228,7 +239,6 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete category")
 		return
 	}
-	h.cache.InvalidateAll()
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Category deleted"})
 }

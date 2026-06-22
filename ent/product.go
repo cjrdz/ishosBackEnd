@@ -33,6 +33,12 @@ type Product struct {
 	ExcludeGlobalFlavors bool `json:"exclude_global_flavors,omitempty"`
 	// ExcludeGlobalAddons holds the value of the "exclude_global_addons" field.
 	ExcludeGlobalAddons bool `json:"exclude_global_addons,omitempty"`
+	// BallBased holds the value of the "ball_based" field.
+	BallBased bool `json:"ball_based,omitempty"`
+	// BallQuantity holds the value of the "ball_quantity" field.
+	BallQuantity int `json:"ball_quantity,omitempty"`
+	// AllowsMixedFlavors holds the value of the "allows_mixed_flavors" field.
+	AllowsMixedFlavors bool `json:"allows_mixed_flavors,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -40,9 +46,7 @@ type Product struct {
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ProductQuery when eager-loading is set.
 	Edges             ProductEdges `json:"edges"`
-	addon_products    *uuid.UUID
 	category_products *uuid.UUID
-	flavor_products   *uuid.UUID
 	selectValues      sql.SelectValues
 }
 
@@ -52,13 +56,11 @@ type ProductEdges struct {
 	Category *Category `json:"category,omitempty"`
 	// OrderItems holds the value of the order_items edge.
 	OrderItems []*OrderItem `json:"order_items,omitempty"`
-	// Flavors holds the value of the flavors edge.
-	Flavors []*Flavor `json:"flavors,omitempty"`
-	// Addons holds the value of the addons edge.
-	Addons []*Addon `json:"addons,omitempty"`
+	// InventoryItem holds the value of the inventory_item edge.
+	InventoryItem []*InventoryItem `json:"inventory_item,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [3]bool
 }
 
 // CategoryOrErr returns the Category value or an error if the edge
@@ -81,22 +83,13 @@ func (e ProductEdges) OrderItemsOrErr() ([]*OrderItem, error) {
 	return nil, &NotLoadedError{edge: "order_items"}
 }
 
-// FlavorsOrErr returns the Flavors value or an error if the edge
+// InventoryItemOrErr returns the InventoryItem value or an error if the edge
 // was not loaded in eager-loading.
-func (e ProductEdges) FlavorsOrErr() ([]*Flavor, error) {
+func (e ProductEdges) InventoryItemOrErr() ([]*InventoryItem, error) {
 	if e.loadedTypes[2] {
-		return e.Flavors, nil
+		return e.InventoryItem, nil
 	}
-	return nil, &NotLoadedError{edge: "flavors"}
-}
-
-// AddonsOrErr returns the Addons value or an error if the edge
-// was not loaded in eager-loading.
-func (e ProductEdges) AddonsOrErr() ([]*Addon, error) {
-	if e.loadedTypes[3] {
-		return e.Addons, nil
-	}
-	return nil, &NotLoadedError{edge: "addons"}
+	return nil, &NotLoadedError{edge: "inventory_item"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -104,21 +97,19 @@ func (*Product) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case product.FieldIsAvailable, product.FieldExcludeGlobalFlavors, product.FieldExcludeGlobalAddons:
+		case product.FieldIsAvailable, product.FieldExcludeGlobalFlavors, product.FieldExcludeGlobalAddons, product.FieldBallBased, product.FieldAllowsMixedFlavors:
 			values[i] = new(sql.NullBool)
 		case product.FieldPrice:
 			values[i] = new(sql.NullFloat64)
+		case product.FieldBallQuantity:
+			values[i] = new(sql.NullInt64)
 		case product.FieldName, product.FieldDescription, product.FieldImagePath:
 			values[i] = new(sql.NullString)
 		case product.FieldCreatedAt, product.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		case product.FieldID:
 			values[i] = new(uuid.UUID)
-		case product.ForeignKeys[0]: // addon_products
-			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case product.ForeignKeys[1]: // category_products
-			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case product.ForeignKeys[2]: // flavor_products
+		case product.ForeignKeys[0]: // category_products
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
@@ -184,6 +175,24 @@ func (_m *Product) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ExcludeGlobalAddons = value.Bool
 			}
+		case product.FieldBallBased:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field ball_based", values[i])
+			} else if value.Valid {
+				_m.BallBased = value.Bool
+			}
+		case product.FieldBallQuantity:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field ball_quantity", values[i])
+			} else if value.Valid {
+				_m.BallQuantity = int(value.Int64)
+			}
+		case product.FieldAllowsMixedFlavors:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allows_mixed_flavors", values[i])
+			} else if value.Valid {
+				_m.AllowsMixedFlavors = value.Bool
+			}
 		case product.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -198,24 +207,10 @@ func (_m *Product) assignValues(columns []string, values []any) error {
 			}
 		case product.ForeignKeys[0]:
 			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field addon_products", values[i])
-			} else if value.Valid {
-				_m.addon_products = new(uuid.UUID)
-				*_m.addon_products = *value.S.(*uuid.UUID)
-			}
-		case product.ForeignKeys[1]:
-			if value, ok := values[i].(*sql.NullScanner); !ok {
 				return fmt.Errorf("unexpected type %T for field category_products", values[i])
 			} else if value.Valid {
 				_m.category_products = new(uuid.UUID)
 				*_m.category_products = *value.S.(*uuid.UUID)
-			}
-		case product.ForeignKeys[2]:
-			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field flavor_products", values[i])
-			} else if value.Valid {
-				_m.flavor_products = new(uuid.UUID)
-				*_m.flavor_products = *value.S.(*uuid.UUID)
 			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
@@ -240,14 +235,9 @@ func (_m *Product) QueryOrderItems() *OrderItemQuery {
 	return NewProductClient(_m.config).QueryOrderItems(_m)
 }
 
-// QueryFlavors queries the "flavors" edge of the Product entity.
-func (_m *Product) QueryFlavors() *FlavorQuery {
-	return NewProductClient(_m.config).QueryFlavors(_m)
-}
-
-// QueryAddons queries the "addons" edge of the Product entity.
-func (_m *Product) QueryAddons() *AddonQuery {
-	return NewProductClient(_m.config).QueryAddons(_m)
+// QueryInventoryItem queries the "inventory_item" edge of the Product entity.
+func (_m *Product) QueryInventoryItem() *InventoryItemQuery {
+	return NewProductClient(_m.config).QueryInventoryItem(_m)
 }
 
 // Update returns a builder for updating this Product.
@@ -295,6 +285,15 @@ func (_m *Product) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("exclude_global_addons=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ExcludeGlobalAddons))
+	builder.WriteString(", ")
+	builder.WriteString("ball_based=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BallBased))
+	builder.WriteString(", ")
+	builder.WriteString("ball_quantity=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BallQuantity))
+	builder.WriteString(", ")
+	builder.WriteString("allows_mixed_flavors=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowsMixedFlavors))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

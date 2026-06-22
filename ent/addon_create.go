@@ -11,7 +11,6 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/google/uuid"
 )
 
@@ -124,21 +123,6 @@ func (_c *AddonCreate) SetNillableID(v *uuid.UUID) *AddonCreate {
 		_c.SetID(*v)
 	}
 	return _c
-}
-
-// AddProductIDs adds the "products" edge to the Product entity by IDs.
-func (_c *AddonCreate) AddProductIDs(ids ...uuid.UUID) *AddonCreate {
-	_c.mutation.AddProductIDs(ids...)
-	return _c
-}
-
-// AddProducts adds the "products" edges to the Product entity.
-func (_c *AddonCreate) AddProducts(v ...*Product) *AddonCreate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddProductIDs(ids...)
 }
 
 // Mutation returns the AddonMutation object of the builder.
@@ -301,22 +285,6 @@ func (_c *AddonCreate) createSpec() (*Addon, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(addon.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
-	}
-	if nodes := _c.mutation.ProductsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
 }

@@ -10,9 +10,8 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
-	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/google/uuid"
@@ -99,6 +98,48 @@ func (_c *ProductCreate) SetNillableExcludeGlobalAddons(v *bool) *ProductCreate 
 	return _c
 }
 
+// SetBallBased sets the "ball_based" field.
+func (_c *ProductCreate) SetBallBased(v bool) *ProductCreate {
+	_c.mutation.SetBallBased(v)
+	return _c
+}
+
+// SetNillableBallBased sets the "ball_based" field if the given value is not nil.
+func (_c *ProductCreate) SetNillableBallBased(v *bool) *ProductCreate {
+	if v != nil {
+		_c.SetBallBased(*v)
+	}
+	return _c
+}
+
+// SetBallQuantity sets the "ball_quantity" field.
+func (_c *ProductCreate) SetBallQuantity(v int) *ProductCreate {
+	_c.mutation.SetBallQuantity(v)
+	return _c
+}
+
+// SetNillableBallQuantity sets the "ball_quantity" field if the given value is not nil.
+func (_c *ProductCreate) SetNillableBallQuantity(v *int) *ProductCreate {
+	if v != nil {
+		_c.SetBallQuantity(*v)
+	}
+	return _c
+}
+
+// SetAllowsMixedFlavors sets the "allows_mixed_flavors" field.
+func (_c *ProductCreate) SetAllowsMixedFlavors(v bool) *ProductCreate {
+	_c.mutation.SetAllowsMixedFlavors(v)
+	return _c
+}
+
+// SetNillableAllowsMixedFlavors sets the "allows_mixed_flavors" field if the given value is not nil.
+func (_c *ProductCreate) SetNillableAllowsMixedFlavors(v *bool) *ProductCreate {
+	if v != nil {
+		_c.SetAllowsMixedFlavors(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ProductCreate) SetCreatedAt(v time.Time) *ProductCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -167,34 +208,19 @@ func (_c *ProductCreate) AddOrderItems(v ...*OrderItem) *ProductCreate {
 	return _c.AddOrderItemIDs(ids...)
 }
 
-// AddFlavorIDs adds the "flavors" edge to the Flavor entity by IDs.
-func (_c *ProductCreate) AddFlavorIDs(ids ...uuid.UUID) *ProductCreate {
-	_c.mutation.AddFlavorIDs(ids...)
+// AddInventoryItemIDs adds the "inventory_item" edge to the InventoryItem entity by IDs.
+func (_c *ProductCreate) AddInventoryItemIDs(ids ...uuid.UUID) *ProductCreate {
+	_c.mutation.AddInventoryItemIDs(ids...)
 	return _c
 }
 
-// AddFlavors adds the "flavors" edges to the Flavor entity.
-func (_c *ProductCreate) AddFlavors(v ...*Flavor) *ProductCreate {
+// AddInventoryItem adds the "inventory_item" edges to the InventoryItem entity.
+func (_c *ProductCreate) AddInventoryItem(v ...*InventoryItem) *ProductCreate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _c.AddFlavorIDs(ids...)
-}
-
-// AddAddonIDs adds the "addons" edge to the Addon entity by IDs.
-func (_c *ProductCreate) AddAddonIDs(ids ...uuid.UUID) *ProductCreate {
-	_c.mutation.AddAddonIDs(ids...)
-	return _c
-}
-
-// AddAddons adds the "addons" edges to the Addon entity.
-func (_c *ProductCreate) AddAddons(v ...*Addon) *ProductCreate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddAddonIDs(ids...)
+	return _c.AddInventoryItemIDs(ids...)
 }
 
 // Mutation returns the ProductMutation object of the builder.
@@ -244,6 +270,18 @@ func (_c *ProductCreate) defaults() {
 		v := product.DefaultExcludeGlobalAddons
 		_c.mutation.SetExcludeGlobalAddons(v)
 	}
+	if _, ok := _c.mutation.BallBased(); !ok {
+		v := product.DefaultBallBased
+		_c.mutation.SetBallBased(v)
+	}
+	if _, ok := _c.mutation.BallQuantity(); !ok {
+		v := product.DefaultBallQuantity
+		_c.mutation.SetBallQuantity(v)
+	}
+	if _, ok := _c.mutation.AllowsMixedFlavors(); !ok {
+		v := product.DefaultAllowsMixedFlavors
+		_c.mutation.SetAllowsMixedFlavors(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := product.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -287,6 +325,15 @@ func (_c *ProductCreate) check() error {
 	}
 	if _, ok := _c.mutation.ExcludeGlobalAddons(); !ok {
 		return &ValidationError{Name: "exclude_global_addons", err: errors.New(`ent: missing required field "Product.exclude_global_addons"`)}
+	}
+	if _, ok := _c.mutation.BallBased(); !ok {
+		return &ValidationError{Name: "ball_based", err: errors.New(`ent: missing required field "Product.ball_based"`)}
+	}
+	if _, ok := _c.mutation.BallQuantity(); !ok {
+		return &ValidationError{Name: "ball_quantity", err: errors.New(`ent: missing required field "Product.ball_quantity"`)}
+	}
+	if _, ok := _c.mutation.AllowsMixedFlavors(); !ok {
+		return &ValidationError{Name: "allows_mixed_flavors", err: errors.New(`ent: missing required field "Product.allows_mixed_flavors"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Product.created_at"`)}
@@ -360,6 +407,18 @@ func (_c *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
 		_spec.SetField(product.FieldExcludeGlobalAddons, field.TypeBool, value)
 		_node.ExcludeGlobalAddons = value
 	}
+	if value, ok := _c.mutation.BallBased(); ok {
+		_spec.SetField(product.FieldBallBased, field.TypeBool, value)
+		_node.BallBased = value
+	}
+	if value, ok := _c.mutation.BallQuantity(); ok {
+		_spec.SetField(product.FieldBallQuantity, field.TypeInt, value)
+		_node.BallQuantity = value
+	}
+	if value, ok := _c.mutation.AllowsMixedFlavors(); ok {
+		_spec.SetField(product.FieldAllowsMixedFlavors, field.TypeBool, value)
+		_node.AllowsMixedFlavors = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(product.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -401,31 +460,15 @@ func (_c *ProductCreate) createSpec() (*Product, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
-	if nodes := _c.mutation.FlavorsIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.InventoryItemIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := _c.mutation.AddonsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

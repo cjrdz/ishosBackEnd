@@ -11,18 +11,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
-	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
-	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type ExportHandler struct {
-	db *ent.Client
+	orderRepo services.OrderRepository
+	auditSvc  audit.Service
 }
 
-func NewExportHandler(db *ent.Client) *ExportHandler {
-	return &ExportHandler{db: db}
+func NewExportHandler(orderRepo services.OrderRepository, auditSvc audit.Service) *ExportHandler {
+	return &ExportHandler{orderRepo: orderRepo, auditSvc: auditSvc}
 }
 
 func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
@@ -47,18 +49,7 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := h.db.Order.Query().
-		Where(
-			entOrder.CreatedAtGTE(start),
-			entOrder.CreatedAtLTE(end),
-		).
-		WithItems()
-
-	if len(statuses) > 0 {
-		query = query.Where(entOrder.StatusIn(statuses...))
-	}
-
-	orders, err := query.All(r.Context())
+	orders, err := h.orderRepo.FindByDateRangeWithItems(r.Context(), start, end, statuses)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to export orders")
 		return
@@ -71,17 +62,30 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 	if format == "json" {
 		w.Header().Set("Content-Type", "application/json")
 
-		rows := make([]orderResponse, 0, len(orders))
+		mapper := services.NewOrderResponseMapper(nil)
+		rows := make([]services.OrderResponse, 0, len(orders))
 		for _, order := range orders {
-			rows = append(rows, mapOrderResponse(order))
+			rows = append(rows, mapper.Map(order))
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"start":  start.Format("2006-01-02"),
 			"end":    end.Format("2006-01-02"),
 			"count":  len(rows),
 			"orders": rows,
 		})
+
+		actorID := ""
+		if rec, ok := auth.GetRecord(r.Context()); ok {
+			actorID = auth.RecordID(rec)
+		}
+		ip := auth.ClientIP(r)
+		_ = h.auditSvc.Log(r.Context(), audit.ActionExportTriggered, actorID, "export:orders", map[string]any{
+			"format":    format,
+			"count":     len(rows),
+			"date_from": start.Format("2006-01-02"),
+			"date_to":   end.Format("2006-01-02"),
+		}, ip)
 		return
 	}
 
@@ -122,14 +126,14 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 			order.OrderNumber,
 			order.CustomerName,
 			order.CustomerPhone,
-			string(order.Status),
-			string(order.PaymentMethod),
-			string(order.PaymentStatus),
-			string(order.OrderType),
+			order.Status,
+			order.PaymentMethod,
+			order.PaymentStatus,
+			order.OrderType,
 			tableNumber,
 			fmt.Sprintf("%.2f", order.TotalAmount),
-			fmt.Sprintf("%d", len(order.Edges.Items)),
-			orderItemsSummary(order.Edges.Items),
+			fmt.Sprintf("%d", len(order.Items)),
+			orderItemsSummary(order.Items),
 			notes,
 			order.CreatedAt.Format(time.RFC3339),
 			order.UpdatedAt.Format(time.RFC3339),
@@ -141,6 +145,18 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to encode CSV export")
 		return
 	}
+
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionExportTriggered, actorID, "export:orders", map[string]any{
+		"format":    format,
+		"count":     len(orders),
+		"date_from": start.Format("2006-01-02"),
+		"date_to":   end.Format("2006-01-02"),
+	}, ip)
 }
 
 func (h *ExportHandler) PurgeOrders(w http.ResponseWriter, r *http.Request) {
@@ -150,111 +166,64 @@ func (h *ExportHandler) PurgeOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statuses, err := parseOrderStatuses(r.URL.Query().Get("statuses"), []entOrder.Status{
-		entOrder.StatusEntregada,
-		entOrder.StatusCancelada,
-	})
+	statuses, err := parseOrderStatuses(r.URL.Query().Get("statuses"), []string{"entregada", "cancelada"})
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	tx, err := h.db.Tx(r.Context())
+	deletedOrdersCount, deletedItemsCount, err := h.orderRepo.Purge(r.Context(), start, end, statuses)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to start purge transaction")
+		response.Error(w, http.StatusInternalServerError, "Failed to purge orders")
 		return
 	}
 
-	defer func() {
-		// err is the named loop variable; rollback only if it was set by one of the
-		// query/delete calls below, not by the commit itself.
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionOrderDeleted, actorID, "orders:purge", map[string]any{
+		"deleted_orders": deletedOrdersCount,
+		"deleted_items":  deletedItemsCount,
+		"date_from":      start.Format("2006-01-02"),
+		"date_to":        end.Format("2006-01-02"),
+		"statuses":       statuses,
+	}, ip)
 
-	ids, queryErr := tx.Order.Query().
-		Where(
-			entOrder.CreatedAtGTE(start),
-			entOrder.CreatedAtLTE(end),
-			entOrder.StatusIn(statuses...),
-		).
-		IDs(r.Context())
-	if queryErr != nil {
-		err = queryErr
-		response.Error(w, http.StatusInternalServerError, "Failed to find orders to purge")
-		return
+	message := "Orders purged successfully"
+	if deletedOrdersCount == 0 {
+		message = "No orders matched the selected filters"
 	}
 
-	if len(ids) == 0 {
-		if commitErr := tx.Commit(); commitErr != nil {
-			response.Error(w, http.StatusInternalServerError, "Failed to finish purge")
-			return
-		}
-
-		response.JSON(w, http.StatusOK, map[string]interface{}{
-			"message":             "No orders matched the selected filters",
-			"deleted_count":       0,
-			"deleted_items_count": 0,
-			"statuses":            stringifyStatuses(statuses),
-		})
-		return
-	}
-
-	deletedItemsCount, deleteItemsErr := tx.OrderItem.Delete().
-		Where(entOrderItem.HasOrderWith(entOrder.IDIn(ids...))).
-		Exec(r.Context())
-	if deleteItemsErr != nil {
-		err = deleteItemsErr
-		response.Error(w, http.StatusInternalServerError, "Failed to delete order items")
-		return
-	}
-
-	deletedOrdersCount, deleteOrdersErr := tx.Order.Delete().
-		Where(entOrder.IDIn(ids...)).
-		Exec(r.Context())
-	if deleteOrdersErr != nil {
-		err = deleteOrdersErr
-		response.Error(w, http.StatusInternalServerError, "Failed to delete orders")
-		return
-	}
-
-	if commitErr := tx.Commit(); commitErr != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to finalize purge")
-		return
-	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"message":             "Orders purged successfully",
+	response.JSON(w, http.StatusOK, map[string]any{
+		"message":             message,
 		"deleted_count":       deletedOrdersCount,
 		"deleted_items_count": deletedItemsCount,
-		"statuses":            stringifyStatuses(statuses),
+		"statuses":            statuses,
 	})
 }
 
-func parseOrderStatuses(raw string, defaults []entOrder.Status) ([]entOrder.Status, error) {
+func parseOrderStatuses(raw string, defaults []string) ([]string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		if len(defaults) == 0 {
 			return nil, nil
 		}
 
-		copied := make([]entOrder.Status, len(defaults))
+		copied := make([]string, len(defaults))
 		copy(copied, defaults)
 		return copied, nil
 	}
 
 	parts := strings.Split(trimmed, ",")
-	parsed := make([]entOrder.Status, 0, len(parts))
-	seen := map[entOrder.Status]struct{}{}
+	parsed := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
 
 	for _, part := range parts {
-		status := entOrder.Status(strings.TrimSpace(part))
+		status := strings.TrimSpace(part)
 		if status == "" {
 			continue
-		}
-		if err := entOrder.StatusValidator(status); err != nil {
-			return nil, fmt.Errorf("invalid status %q", status)
 		}
 		if _, exists := seen[status]; exists {
 			continue
@@ -270,24 +239,13 @@ func parseOrderStatuses(raw string, defaults []entOrder.Status) ([]entOrder.Stat
 	return parsed, nil
 }
 
-func stringifyStatuses(statuses []entOrder.Status) []string {
-	out := make([]string, 0, len(statuses))
-	for _, status := range statuses {
-		out = append(out, string(status))
-	}
-	return out
-}
-
-func orderItemsSummary(items []*ent.OrderItem) string {
+func orderItemsSummary(items []dto.OrderItem) string {
 	if len(items) == 0 {
 		return ""
 	}
 
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
-		if item == nil {
-			continue
-		}
 		parts = append(parts, fmt.Sprintf("%dx %s", item.Quantity, item.ProductName))
 	}
 

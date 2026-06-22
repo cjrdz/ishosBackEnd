@@ -481,7 +481,7 @@ func (_g *RateLimitGroupBy) sqlScan(ctx context.Context, root *RateLimitQuery, v
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -523,6 +523,6 @@ func (_s *RateLimitSelect) sqlScan(ctx context.Context, root *RateLimitQuery, v 
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

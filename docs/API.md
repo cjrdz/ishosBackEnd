@@ -65,10 +65,6 @@ Role legend:
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | GET | `/api/v1/settings/store/public` | Public | Public store state and active offers |
-| GET | `/api/v1/settings/tabs` | Staff | Current admin tab order |
-| PATCH | `/api/v1/settings/tabs` | Admin | Update admin tab order |
-| GET | `/api/v1/settings/panel-config` | Staff | Get panel config |
-| PATCH | `/api/v1/settings/panel-config` | Admin | Update panel config |
 | GET | `/api/v1/settings/store` | Staff | Get store settings |
 | PATCH | `/api/v1/settings/store` | Admin | Update store settings |
 
@@ -124,7 +120,7 @@ These routes are exposed as `users`, but they are backed by the `Customer` Ent e
 | GET | `/api/v1/analytics/overview` | Admin | KPI summary |
 | GET | `/api/v1/analytics/orders-over-time` | Admin | Orders timeline |
 | GET | `/api/v1/analytics/top-products` | Admin | Top product breakdown |
-| GET | `/api/v1/export/orders` | Admin | Export orders |
+| GET | `/api/v1/export/orders` | Admin | Export orders (CSV or JSON) |
 | DELETE | `/api/v1/export/orders` | Admin | Purge old orders |
 
 ## Uploads
@@ -435,13 +431,12 @@ Body:
 }
 ```
 
-The Chi handler validates credentials via PocketBase's Go API (password hashing, record lookup) and returns a PocketBase-compatible JWT token.
+The Chi handler validates credentials via PocketBase's Go API (password hashing, record lookup) and sets an HttpOnly `auth_token` cookie. The JWT is never returned in the response body.
 
 Response `200 OK`:
 
 ```json
 {
-  "token": "<your-jwt-token>",
   "employee": {
     "id": "pb-record-id",
     "email": "admin@ishos.com",
@@ -891,11 +886,39 @@ Body:
 {
   "name": "María García",
   "email": "maria@example.com",
-  "phone": "+50688887777"
+  "phone": "+50688887777",
+  "user_type": "user",
+  "status": "active"
 }
 ```
 
+Fields:
+
+| Field      | Type   | Required | Notes                      |
+| ---------- | ------ | -------- | -------------------------- |
+| `name`     | string | yes      | Max 200 characters         |
+| `email`    | string | no       | Must be valid if provided  |
+| `phone`    | string | yes      |                            |
+| `user_type`| string | yes      | `"user"` \| `"company"`    |
+| `status`   | string | yes      | `"active"` \| `"inactive"` |
+
 Response `201 Created`: returns the created user.
+
+### PATCH `/api/v1/users/{id}` — Update
+
+All fields are optional. Send only the fields to change:
+
+```json
+{
+  "name": "María García",
+  "email": "maria@example.com",
+  "phone": "+50688887777",
+  "user_type": "user",
+  "status": "inactive"
+}
+```
+
+Response `200 OK`: returns the updated user.
 
 ### GET `/api/v1/users/{id}/orders`
 
@@ -905,78 +928,55 @@ Response `200 OK`: returns an array of order objects.
 
 ---
 
-## 14) Admin Settings
-
-Settings are persisted in PostgreSQL via the `AdminSetting` Ent entity. They control dashboard tab order and token TTL overrides.
-
-| Operation                         | Method | Path                            |
-| --------------------------------- | ------ | ------------------------------- |
-| Get tab order (staff)             | GET    | `/api/v1/settings/tabs`         |
-| Update tab order (admin)          | PATCH  | `/api/v1/settings/tabs`         |
-| Get panel config (staff)          | GET    | `/api/v1/settings/panel-config` |
-| Update panel config (admin)       | PATCH  | `/api/v1/settings/panel-config` |
-
-### GET & PATCH `/api/v1/settings/tabs`
-
-Stores the admin dashboard tab display order.
-
-PATCH body:
-
-```json
-{
-  "tabs": ["orders", "products", "categories", "flavors", "addons", "employees", "users", "tools", "settings"]
-}
-```
-
-Response `200 OK`: returns the persisted tab order.
-
-### GET & PATCH `/api/v1/settings/panel-config`
-
-Stores configurable TTL overrides for auth and tracking tokens.
-
-PATCH body (all fields optional):
-
-```json
-{
-  "auth_cookie_ttl_hours": 24,
-  "auth_token_ttl_hours": 168,
-  "tracking_token_ttl_hours": 720
-}
-```
-
-Response `200 OK`: returns the current panel configuration.
-
----
-
-## 15) Export / Purge
+## 14) Export / Purge
 
 Admin-only endpoints for order data management.
 
 | Operation              | Method | Path                    |
 | ---------------------- | ------ | ----------------------- |
-| Export orders (CSV)    | GET    | `/api/v1/export/orders` |
-| Purge old orders       | DELETE | `/api/v1/export/orders` |
+| Export orders (CSV/JSON) | GET    | `/api/v1/export/orders` |
+| Purge old orders        | DELETE | `/api/v1/export/orders` |
 
 ### GET `/api/v1/export/orders`
 
-Returns a CSV file download containing all orders. Used for backups and reporting.
+Downloads orders for a date range. Supports CSV and JSON format.
 
-Response: `text/csv` attachment with orders data.
+Query parameters:
+
+| Param      | Type   | Required | Default   | Description |
+| ---------- | ------ | -------- | --------- | ----------- |
+| `start`    | date   | yes      | —         | Start date (`YYYY-MM-DD`) |
+| `end`      | date   | yes      | —         | End date (`YYYY-MM-DD`) |
+| `format`   | string | no       | `csv`     | Output format: `csv` or `json` |
+| `statuses` | string | no       | all       | Comma-separated order statuses to include |
+
+Response (`format=csv`): `text/csv` attachment with order data.
+Response (`format=json`): `application/json` object with `start`, `end`, `count`, and `orders` array.
 
 ### DELETE `/api/v1/export/orders`
 
-Permanently deletes orders that meet the purge criteria (e.g., delivered/cancelled orders older than a configured threshold).
+Permanently deletes orders matching the filter criteria. Default statuses: `entregada, cancelada`.
+
+Query parameters:
+
+| Param      | Type   | Required | Default              | Description |
+| ---------- | ------ | -------- | -------------------- | ----------- |
+| `start`    | date   | yes      | —                    | Start date (`YYYY-MM-DD`) |
+| `end`      | date   | yes      | —                    | End date (`YYYY-MM-DD`) |
+| `statuses` | string | no       | `entregada,cancelada` | Comma-separated order statuses to purge |
 
 Response `200 OK`:
 
 ```json
 {
   "message": "Orders purged successfully",
-  "count": 14
+  "deleted_count": 14,
+  "deleted_items_count": 28,
+  "statuses": ["entregada", "cancelada"]
 }
 ```
 
-> **Warning:** This operation is irreversible. Export first with `GET /export/orders` before purging.
+> **Warning:** This operation is irreversible. Export first before purging.
 
 ---
 

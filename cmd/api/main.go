@@ -90,6 +90,15 @@ func main() {
 				Msg("PocketBase admin UI requested but blocked in production; set ALLOW_PB_ADMIN_UI_IN_PRODUCTION=true to override")
 		} else {
 			go func() {
+				// Recover from any panic in PocketBase to prevent entire API crash
+				defer func() {
+					if r := recover(); r != nil {
+						log.Error().
+							Interface("panic", r).
+							Msg("PocketBase admin UI panicked; recovered to keep API running")
+					}
+				}()
+
 				addr := fmt.Sprintf("%s:%s", cfg.PBAdminUIHost, cfg.PBAdminUIPort)
 				allowedOrigins := splitCSV(cfg.PBAdminUIAllowedOrigins)
 				log.Info().
@@ -109,6 +118,7 @@ func main() {
 		_ = pb.Close()
 		log.Fatal().Err(err).Msg("Failed to initialise server")
 	}
+	srv.StartBackgroundJobs(context.Background())
 
 	// ── HTTP server with graceful shutdown ────────────────────────────────
 	addr := ":" + cfg.Port

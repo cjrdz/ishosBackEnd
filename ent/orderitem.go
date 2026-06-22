@@ -22,6 +22,8 @@ type OrderItem struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// ProductName holds the value of the "product_name" field.
 	ProductName string `json:"product_name,omitempty"`
+	// SnapshotProductID holds the value of the "snapshot_product_id" field.
+	SnapshotProductID *uuid.UUID `json:"snapshot_product_id,omitempty"`
 	// Quantity holds the value of the "quantity" field.
 	Quantity int `json:"quantity,omitempty"`
 	// UnitPrice holds the value of the "unit_price" field.
@@ -76,6 +78,8 @@ func (*OrderItem) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case orderitem.FieldSnapshotProductID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case orderitem.FieldCustomizations:
 			values[i] = new([]byte)
 		case orderitem.FieldUnitPrice, orderitem.FieldSubtotal:
@@ -116,6 +120,13 @@ func (_m *OrderItem) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field product_name", values[i])
 			} else if value.Valid {
 				_m.ProductName = value.String
+			}
+		case orderitem.FieldSnapshotProductID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field snapshot_product_id", values[i])
+			} else if value.Valid {
+				_m.SnapshotProductID = new(uuid.UUID)
+				*_m.SnapshotProductID = *value.S.(*uuid.UUID)
 			}
 		case orderitem.FieldQuantity:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -205,6 +216,11 @@ func (_m *OrderItem) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("product_name=")
 	builder.WriteString(_m.ProductName)
+	builder.WriteString(", ")
+	if v := _m.SnapshotProductID; v != nil {
+		builder.WriteString("snapshot_product_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("quantity=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Quantity))

@@ -4,6 +4,8 @@ package response
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 )
 
 type errorBody struct {
@@ -20,4 +22,15 @@ func JSON(w http.ResponseWriter, status int, v interface{}) {
 // Error writes a standard error JSON response.
 func Error(w http.ResponseWriter, status int, msg string) {
 	JSON(w, status, errorBody{Error: msg})
+}
+
+// WriteOrError writes a successful JSON response or maps an error to HTTP response.
+// This is the primary handler exit point: WriteOrError(w, result, err).
+func WriteOrError(w http.ResponseWriter, result interface{}, err error) {
+	if err != nil {
+		status := apperror.StatusCode(err)
+		Error(w, status, err.Error())
+		return
+	}
+	JSON(w, http.StatusOK, result)
 }

@@ -59,6 +59,11 @@ func ProductName(v string) predicate.OrderItem {
 	return predicate.OrderItem(sql.FieldEQ(FieldProductName, v))
 }
 
+// SnapshotProductID applies equality check predicate on the "snapshot_product_id" field. It's identical to SnapshotProductIDEQ.
+func SnapshotProductID(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldEQ(FieldSnapshotProductID, v))
+}
+
 // Quantity applies equality check predicate on the "quantity" field. It's identical to QuantityEQ.
 func Quantity(v int) predicate.OrderItem {
 	return predicate.OrderItem(sql.FieldEQ(FieldQuantity, v))
@@ -137,6 +142,56 @@ func ProductNameEqualFold(v string) predicate.OrderItem {
 // ProductNameContainsFold applies the ContainsFold predicate on the "product_name" field.
 func ProductNameContainsFold(v string) predicate.OrderItem {
 	return predicate.OrderItem(sql.FieldContainsFold(FieldProductName, v))
+}
+
+// SnapshotProductIDEQ applies the EQ predicate on the "snapshot_product_id" field.
+func SnapshotProductIDEQ(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldEQ(FieldSnapshotProductID, v))
+}
+
+// SnapshotProductIDNEQ applies the NEQ predicate on the "snapshot_product_id" field.
+func SnapshotProductIDNEQ(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldNEQ(FieldSnapshotProductID, v))
+}
+
+// SnapshotProductIDIn applies the In predicate on the "snapshot_product_id" field.
+func SnapshotProductIDIn(vs ...uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldIn(FieldSnapshotProductID, vs...))
+}
+
+// SnapshotProductIDNotIn applies the NotIn predicate on the "snapshot_product_id" field.
+func SnapshotProductIDNotIn(vs ...uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldNotIn(FieldSnapshotProductID, vs...))
+}
+
+// SnapshotProductIDGT applies the GT predicate on the "snapshot_product_id" field.
+func SnapshotProductIDGT(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldGT(FieldSnapshotProductID, v))
+}
+
+// SnapshotProductIDGTE applies the GTE predicate on the "snapshot_product_id" field.
+func SnapshotProductIDGTE(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldGTE(FieldSnapshotProductID, v))
+}
+
+// SnapshotProductIDLT applies the LT predicate on the "snapshot_product_id" field.
+func SnapshotProductIDLT(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldLT(FieldSnapshotProductID, v))
+}
+
+// SnapshotProductIDLTE applies the LTE predicate on the "snapshot_product_id" field.
+func SnapshotProductIDLTE(v uuid.UUID) predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldLTE(FieldSnapshotProductID, v))
+}
+
+// SnapshotProductIDIsNil applies the IsNil predicate on the "snapshot_product_id" field.
+func SnapshotProductIDIsNil() predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldIsNull(FieldSnapshotProductID))
+}
+
+// SnapshotProductIDNotNil applies the NotNil predicate on the "snapshot_product_id" field.
+func SnapshotProductIDNotNil() predicate.OrderItem {
+	return predicate.OrderItem(sql.FieldNotNull(FieldSnapshotProductID))
 }
 
 // QuantityEQ applies the EQ predicate on the "quantity" field.

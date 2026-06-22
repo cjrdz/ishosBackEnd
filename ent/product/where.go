@@ -91,6 +91,21 @@ func ExcludeGlobalAddons(v bool) predicate.Product {
 	return predicate.Product(sql.FieldEQ(FieldExcludeGlobalAddons, v))
 }
 
+// BallBased applies equality check predicate on the "ball_based" field. It's identical to BallBasedEQ.
+func BallBased(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldBallBased, v))
+}
+
+// BallQuantity applies equality check predicate on the "ball_quantity" field. It's identical to BallQuantityEQ.
+func BallQuantity(v int) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldBallQuantity, v))
+}
+
+// AllowsMixedFlavors applies equality check predicate on the "allows_mixed_flavors" field. It's identical to AllowsMixedFlavorsEQ.
+func AllowsMixedFlavors(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldAllowsMixedFlavors, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Product {
 	return predicate.Product(sql.FieldEQ(FieldCreatedAt, v))
@@ -376,6 +391,66 @@ func ExcludeGlobalAddonsNEQ(v bool) predicate.Product {
 	return predicate.Product(sql.FieldNEQ(FieldExcludeGlobalAddons, v))
 }
 
+// BallBasedEQ applies the EQ predicate on the "ball_based" field.
+func BallBasedEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldBallBased, v))
+}
+
+// BallBasedNEQ applies the NEQ predicate on the "ball_based" field.
+func BallBasedNEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldNEQ(FieldBallBased, v))
+}
+
+// BallQuantityEQ applies the EQ predicate on the "ball_quantity" field.
+func BallQuantityEQ(v int) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldBallQuantity, v))
+}
+
+// BallQuantityNEQ applies the NEQ predicate on the "ball_quantity" field.
+func BallQuantityNEQ(v int) predicate.Product {
+	return predicate.Product(sql.FieldNEQ(FieldBallQuantity, v))
+}
+
+// BallQuantityIn applies the In predicate on the "ball_quantity" field.
+func BallQuantityIn(vs ...int) predicate.Product {
+	return predicate.Product(sql.FieldIn(FieldBallQuantity, vs...))
+}
+
+// BallQuantityNotIn applies the NotIn predicate on the "ball_quantity" field.
+func BallQuantityNotIn(vs ...int) predicate.Product {
+	return predicate.Product(sql.FieldNotIn(FieldBallQuantity, vs...))
+}
+
+// BallQuantityGT applies the GT predicate on the "ball_quantity" field.
+func BallQuantityGT(v int) predicate.Product {
+	return predicate.Product(sql.FieldGT(FieldBallQuantity, v))
+}
+
+// BallQuantityGTE applies the GTE predicate on the "ball_quantity" field.
+func BallQuantityGTE(v int) predicate.Product {
+	return predicate.Product(sql.FieldGTE(FieldBallQuantity, v))
+}
+
+// BallQuantityLT applies the LT predicate on the "ball_quantity" field.
+func BallQuantityLT(v int) predicate.Product {
+	return predicate.Product(sql.FieldLT(FieldBallQuantity, v))
+}
+
+// BallQuantityLTE applies the LTE predicate on the "ball_quantity" field.
+func BallQuantityLTE(v int) predicate.Product {
+	return predicate.Product(sql.FieldLTE(FieldBallQuantity, v))
+}
+
+// AllowsMixedFlavorsEQ applies the EQ predicate on the "allows_mixed_flavors" field.
+func AllowsMixedFlavorsEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldEQ(FieldAllowsMixedFlavors, v))
+}
+
+// AllowsMixedFlavorsNEQ applies the NEQ predicate on the "allows_mixed_flavors" field.
+func AllowsMixedFlavorsNEQ(v bool) predicate.Product {
+	return predicate.Product(sql.FieldNEQ(FieldAllowsMixedFlavors, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Product {
 	return predicate.Product(sql.FieldEQ(FieldCreatedAt, v))
@@ -502,44 +577,21 @@ func HasOrderItemsWith(preds ...predicate.OrderItem) predicate.Product {
 	})
 }
 
-// HasFlavors applies the HasEdge predicate on the "flavors" edge.
-func HasFlavors() predicate.Product {
+// HasInventoryItem applies the HasEdge predicate on the "inventory_item" edge.
+func HasInventoryItem() predicate.Product {
 	return predicate.Product(func(s *sql.Selector) {
 		step := sqlgraph.NewStep(
 			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, FlavorsTable, FlavorsColumn),
+			sqlgraph.Edge(sqlgraph.O2M, false, InventoryItemTable, InventoryItemColumn),
 		)
 		sqlgraph.HasNeighbors(s, step)
 	})
 }
 
-// HasFlavorsWith applies the HasEdge predicate on the "flavors" edge with a given conditions (other predicates).
-func HasFlavorsWith(preds ...predicate.Flavor) predicate.Product {
+// HasInventoryItemWith applies the HasEdge predicate on the "inventory_item" edge with a given conditions (other predicates).
+func HasInventoryItemWith(preds ...predicate.InventoryItem) predicate.Product {
 	return predicate.Product(func(s *sql.Selector) {
-		step := newFlavorsStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasAddons applies the HasEdge predicate on the "addons" edge.
-func HasAddons() predicate.Product {
-	return predicate.Product(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, AddonsTable, AddonsColumn),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasAddonsWith applies the HasEdge predicate on the "addons" edge with a given conditions (other predicates).
-func HasAddonsWith(preds ...predicate.Addon) predicate.Product {
-	return predicate.Product(func(s *sql.Selector) {
-		step := newAddonsStep()
+		step := newInventoryItemStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

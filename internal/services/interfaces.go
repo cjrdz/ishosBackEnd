@@ -6,64 +6,75 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
 // Service interfaces let handlers depend on behavior contracts instead of concrete structs.
 type OrderServiceInterface interface {
 	IssueTrackingAccess(ctx context.Context, orderNumber string) (*TrackingAccess, error)
-	ListPaginated(ctx context.Context, status string, page, limit int) ([]*ent.Order, int, error)
-	GetByIDWithItems(ctx context.Context, id uuid.UUID) (*ent.Order, error)
-	GetByOrderNumber(ctx context.Context, orderNumber string) (*ent.Order, error)
-	GetByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (*ent.Order, error)
-	ListRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]*ent.Order, error)
-	Create(ctx context.Context, input CreateOrderInput) (*ent.Order, error)
-	Approve(ctx context.Context, id uuid.UUID, reviewerID string, allowOverride bool) (*ent.Order, error)
-	Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string) (*ent.Order, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*ent.Order, error)
-	Update(ctx context.Context, id uuid.UUID, input UpdateOrderInput) (*ent.Order, error)
-	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (*ent.Order, error)
+	ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error)
+	GetByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error)
+	GetByOrderNumber(ctx context.Context, orderNumber string) (dto.Order, error)
+	GetByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
+	ListRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
+	Create(ctx context.Context, input CreateOrderInput) (dto.Order, error)
+	Approve(ctx context.Context, id uuid.UUID, reviewerID string, allowOverride bool) (dto.Order, error)
+	Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string) (dto.Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	Update(ctx context.Context, id uuid.UUID, input UpdateOrderInput) (dto.Order, error)
+	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	IsOrderEditable(status string) bool
 }
 
 type ProductServiceInterface interface {
-	List(ctx context.Context, categorySlug string, includeAll bool) ([]*ent.Product, error)
-	GetByIDWithCategory(ctx context.Context, id uuid.UUID) (*ent.Product, error)
-	Create(ctx context.Context, input repository.CreateProductInput) (*ent.Product, error)
-	Update(ctx context.Context, id uuid.UUID, input repository.UpdateProductInput) (*ent.Product, error)
+	List(ctx context.Context, categorySlug string, includeAll bool) ([]dto.Product, error)
+	GetByIDWithCategory(ctx context.Context, id uuid.UUID) (dto.Product, error)
+	Create(ctx context.Context, input repository.CreateProductInput) (dto.Product, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateProductInput) (dto.Product, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	ToggleAvailability(ctx context.Context, id uuid.UUID) (*ent.Product, error)
-	LinkFlavor(ctx context.Context, productID, flavorID uuid.UUID) error
-	UnlinkFlavor(ctx context.Context, productID, flavorID uuid.UUID) error
-	LinkAddon(ctx context.Context, productID, addonID uuid.UUID) error
-	UnlinkAddon(ctx context.Context, productID, addonID uuid.UUID) error
+	ToggleAvailability(ctx context.Context, id uuid.UUID) (dto.Product, error)
 }
 
 type FlavorServiceInterface interface {
-	List(ctx context.Context, onlyActive bool) ([]*ent.Flavor, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*ent.Flavor, error)
-	Create(ctx context.Context, input repository.CreateFlavorInput) (*ent.Flavor, error)
-	Update(ctx context.Context, id uuid.UUID, input repository.UpdateFlavorInput) (*ent.Flavor, error)
+	List(ctx context.Context, onlyActive bool) ([]dto.Flavor, error)
+	GetByID(ctx context.Context, id uuid.UUID) (dto.Flavor, error)
+	Create(ctx context.Context, input repository.CreateFlavorInput) (dto.Flavor, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateFlavorInput) (dto.Flavor, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	LinkToProduct(ctx context.Context, flavorID, productID uuid.UUID) error
-	UnlinkFromProduct(ctx context.Context, flavorID, productID uuid.UUID) error
 }
 
 type AddonServiceInterface interface {
-	List(ctx context.Context, onlyActive bool) ([]*ent.Addon, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*ent.Addon, error)
-	Create(ctx context.Context, input repository.CreateAddonInput) (*ent.Addon, error)
-	Update(ctx context.Context, id uuid.UUID, input repository.UpdateAddonInput) (*ent.Addon, error)
+	List(ctx context.Context, onlyActive bool) ([]dto.Addon, error)
+	GetByID(ctx context.Context, id uuid.UUID) (dto.Addon, error)
+	Create(ctx context.Context, input repository.CreateAddonInput) (dto.Addon, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateAddonInput) (dto.Addon, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+type CategoryServiceInterface interface {
+	List(ctx context.Context, showAll bool) ([]dto.Category, error)
+	GetBySlug(ctx context.Context, slug string) (dto.Category, error)
+	Create(ctx context.Context, input repository.CreateCategoryInput) (dto.Category, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateCategoryInput) (dto.Category, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 type CustomerServiceInterface interface {
-	List(ctx context.Context, status, search string) ([]*ent.Customer, error)
-	ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]*ent.Customer, int, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*ent.Customer, error)
-	Create(ctx context.Context, input repository.CreateCustomerInput) (*ent.Customer, error)
-	Update(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (*ent.Customer, error)
+	List(ctx context.Context, status, search string) ([]dto.Customer, error)
+	ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
+	GetByID(ctx context.Context, id uuid.UUID) (dto.Customer, error)
+	Create(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
+	Update(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	OrdersByCustomer(ctx context.Context, customerID uuid.UUID, limit int) ([]*ent.Order, error)
+	OrdersByCustomer(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error)
+}
+
+type ContainerTypeServiceInterface interface {
+	List(ctx context.Context) ([]dto.ContainerType, error)
+	GetByID(ctx context.Context, id uuid.UUID) (dto.ContainerType, error)
+	Create(ctx context.Context, name string, ballsPerContainer int, isCustom bool) (dto.ContainerType, error)
+	Update(ctx context.Context, id uuid.UUID, name *string, ballsPerContainer *int, isCustom *bool, isActive *bool) (dto.ContainerType, error)
+	Delete(ctx context.Context, id uuid.UUID) error
 }

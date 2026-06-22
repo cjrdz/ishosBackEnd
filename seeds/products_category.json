@@ -1,25 +1,65 @@
 [
   {
     "id": 1,
-    "name": "Especiales",
-    "slug": "especiales",
-    "description": "Productos especiales de la casa",
+    "name": "Extras",
+    "slug": "extras",
+    "description": "Varidad de productos extras",
     "image": "",
     "is_active": true
   },
   {
     "id": 2,
-    "name": "Gelatos",
-    "slug": "gelatos",
-    "description": "Gelato cremoso artesanal",
+    "name": "Conos y Barquillos",
+    "slug": "conos-y-barquillos",
+    "description": "Conos y barquillos de diferentes tamaños",
     "image": "",
     "is_active": true
   },
   {
     "id": 3,
-    "name": "Sorbetes",
-    "slug": "sorbetes",
-    "description": "Sorbetes refrescantes sin lactosa",
+    "name": "Vasos y Tarrinas",
+    "slug": "vasos-y-tarrinas",
+    "description": "Vasos y tarrinas de diferentes tamaños",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 4,
+    "name": "Bowls",
+    "slug": "bowls",
+    "description": "Bowls de diferentes tamaños",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 5,
+    "name": "Para llevar",
+    "slug": "para-llevar",
+    "description": "Productos para llevar ",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 6,
+    "name": "Para Compartir",
+    "slug": "para-compartir",
+    "description": "Productos para compartir",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 7,
+    "name": "Chocobananos",
+    "slug": "chocobananos",
+    "description": "Chocobananos de con toppings al gusto",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 8,
+    "name": "Bebidas",
+    "slug": "bebidas",
+    "description": "Bebidas de diferentes tipos",
     "image": "",
     "is_active": true
   }

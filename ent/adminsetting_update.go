@@ -13,7 +13,6 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/adminsetting"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
-	"github.com/google/uuid"
 )
 
 // AdminSettingUpdate is the builder for updating AdminSetting entities.
@@ -50,13 +49,13 @@ func (_u *AdminSettingUpdate) SetValue(v map[string]interface{}) *AdminSettingUp
 }
 
 // SetChangedBy sets the "changed_by" field.
-func (_u *AdminSettingUpdate) SetChangedBy(v uuid.UUID) *AdminSettingUpdate {
+func (_u *AdminSettingUpdate) SetChangedBy(v string) *AdminSettingUpdate {
 	_u.mutation.SetChangedBy(v)
 	return _u
 }
 
 // SetNillableChangedBy sets the "changed_by" field if the given value is not nil.
-func (_u *AdminSettingUpdate) SetNillableChangedBy(v *uuid.UUID) *AdminSettingUpdate {
+func (_u *AdminSettingUpdate) SetNillableChangedBy(v *string) *AdminSettingUpdate {
 	if v != nil {
 		_u.SetChangedBy(*v)
 	}
@@ -145,10 +144,10 @@ func (_u *AdminSettingUpdate) sqlSave(ctx context.Context) (_node int, err error
 		_spec.SetField(adminsetting.FieldValue, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ChangedBy(); ok {
-		_spec.SetField(adminsetting.FieldChangedBy, field.TypeUUID, value)
+		_spec.SetField(adminsetting.FieldChangedBy, field.TypeString, value)
 	}
 	if _u.mutation.ChangedByCleared() {
-		_spec.ClearField(adminsetting.FieldChangedBy, field.TypeUUID)
+		_spec.ClearField(adminsetting.FieldChangedBy, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(adminsetting.FieldUpdatedAt, field.TypeTime, value)
@@ -194,13 +193,13 @@ func (_u *AdminSettingUpdateOne) SetValue(v map[string]interface{}) *AdminSettin
 }
 
 // SetChangedBy sets the "changed_by" field.
-func (_u *AdminSettingUpdateOne) SetChangedBy(v uuid.UUID) *AdminSettingUpdateOne {
+func (_u *AdminSettingUpdateOne) SetChangedBy(v string) *AdminSettingUpdateOne {
 	_u.mutation.SetChangedBy(v)
 	return _u
 }
 
 // SetNillableChangedBy sets the "changed_by" field if the given value is not nil.
-func (_u *AdminSettingUpdateOne) SetNillableChangedBy(v *uuid.UUID) *AdminSettingUpdateOne {
+func (_u *AdminSettingUpdateOne) SetNillableChangedBy(v *string) *AdminSettingUpdateOne {
 	if v != nil {
 		_u.SetChangedBy(*v)
 	}
@@ -319,10 +318,10 @@ func (_u *AdminSettingUpdateOne) sqlSave(ctx context.Context) (_node *AdminSetti
 		_spec.SetField(adminsetting.FieldValue, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ChangedBy(); ok {
-		_spec.SetField(adminsetting.FieldChangedBy, field.TypeUUID, value)
+		_spec.SetField(adminsetting.FieldChangedBy, field.TypeString, value)
 	}
 	if _u.mutation.ChangedByCleared() {
-		_spec.ClearField(adminsetting.FieldChangedBy, field.TypeUUID)
+		_spec.ClearField(adminsetting.FieldChangedBy, field.TypeString)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(adminsetting.FieldUpdatedAt, field.TypeTime, value)

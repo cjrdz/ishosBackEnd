@@ -6,19 +6,21 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
-
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type AdminSettingsHandler struct {
 	settingsSvc *services.AdminSettingService
+	auditSvc    audit.Service
 }
 
-func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService) *AdminSettingsHandler {
+func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService, auditSvc audit.Service) *AdminSettingsHandler {
 	return &AdminSettingsHandler{
 		settingsSvc: settingsSvc,
+		auditSvc:    auditSvc,
 	}
 }
 
@@ -56,15 +58,27 @@ func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *htt
 		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración de tienda")
 		return
 	}
+
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionSettingsUpdated, actorID, "settings:store", map[string]any{
+		"orders_enabled": body.OrdersEnabled,
+		"offers_count":   len(body.Offers),
+	}, ip)
+
 	response.JSON(w, http.StatusOK, saved)
 }
 
-// getAdminID extracts the authenticated admin's UUID from the request/session.
-// You must implement this based on your authentication/session logic.
-func getAdminID(r *http.Request) uuid.UUID {
-	// TODO: Replace with real session extraction logic
-	// Example: return r.Context().Value("admin_id").(uuid.UUID)
-	return uuid.Nil // placeholder
+// getAdminID extracts the authenticated employee's ID from the request context.
+// Returns an empty string when the request is not authenticated.
+func getAdminID(r *http.Request) string {
+	if record, ok := auth.GetRecord(r.Context()); ok && record != nil {
+		return auth.RecordID(record)
+	}
+	return ""
 }
 
 // GetPublicStoreStatus returns public-facing store status.

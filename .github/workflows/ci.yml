@@ -35,6 +35,16 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Enforce Ent isolation
+        run: |
+          set -euo pipefail
+          go list -f '{{$pkg := .ImportPath}}{{range .Imports}}{{$pkg}} {{.}}
+          {{end}}{{range .TestImports}}{{$pkg}} {{.}}
+          {{end}}' ./internal/services/... ./internal/handlers/... ./internal/domain/... | grep 'github.com/cjrdz/ishosBackEnd/ent' && {
+            echo "ERROR: Forbidden ent import detected in application layer." >&2
+            exit 1
+          } || true
+
       - name: Unit tests with coverage
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./internal/apperror ./internal/events ./internal/services ./internal/validator
 

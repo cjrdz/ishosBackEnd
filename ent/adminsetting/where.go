@@ -61,7 +61,7 @@ func Key(v string) predicate.AdminSetting {
 }
 
 // ChangedBy applies equality check predicate on the "changed_by" field. It's identical to ChangedByEQ.
-func ChangedBy(v uuid.UUID) predicate.AdminSetting {
+func ChangedBy(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldEQ(FieldChangedBy, v))
 }
 
@@ -141,43 +141,58 @@ func KeyContainsFold(v string) predicate.AdminSetting {
 }
 
 // ChangedByEQ applies the EQ predicate on the "changed_by" field.
-func ChangedByEQ(v uuid.UUID) predicate.AdminSetting {
+func ChangedByEQ(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldEQ(FieldChangedBy, v))
 }
 
 // ChangedByNEQ applies the NEQ predicate on the "changed_by" field.
-func ChangedByNEQ(v uuid.UUID) predicate.AdminSetting {
+func ChangedByNEQ(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldNEQ(FieldChangedBy, v))
 }
 
 // ChangedByIn applies the In predicate on the "changed_by" field.
-func ChangedByIn(vs ...uuid.UUID) predicate.AdminSetting {
+func ChangedByIn(vs ...string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldIn(FieldChangedBy, vs...))
 }
 
 // ChangedByNotIn applies the NotIn predicate on the "changed_by" field.
-func ChangedByNotIn(vs ...uuid.UUID) predicate.AdminSetting {
+func ChangedByNotIn(vs ...string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldNotIn(FieldChangedBy, vs...))
 }
 
 // ChangedByGT applies the GT predicate on the "changed_by" field.
-func ChangedByGT(v uuid.UUID) predicate.AdminSetting {
+func ChangedByGT(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldGT(FieldChangedBy, v))
 }
 
 // ChangedByGTE applies the GTE predicate on the "changed_by" field.
-func ChangedByGTE(v uuid.UUID) predicate.AdminSetting {
+func ChangedByGTE(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldGTE(FieldChangedBy, v))
 }
 
 // ChangedByLT applies the LT predicate on the "changed_by" field.
-func ChangedByLT(v uuid.UUID) predicate.AdminSetting {
+func ChangedByLT(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldLT(FieldChangedBy, v))
 }
 
 // ChangedByLTE applies the LTE predicate on the "changed_by" field.
-func ChangedByLTE(v uuid.UUID) predicate.AdminSetting {
+func ChangedByLTE(v string) predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldLTE(FieldChangedBy, v))
+}
+
+// ChangedByContains applies the Contains predicate on the "changed_by" field.
+func ChangedByContains(v string) predicate.AdminSetting {
+	return predicate.AdminSetting(sql.FieldContains(FieldChangedBy, v))
+}
+
+// ChangedByHasPrefix applies the HasPrefix predicate on the "changed_by" field.
+func ChangedByHasPrefix(v string) predicate.AdminSetting {
+	return predicate.AdminSetting(sql.FieldHasPrefix(FieldChangedBy, v))
+}
+
+// ChangedByHasSuffix applies the HasSuffix predicate on the "changed_by" field.
+func ChangedByHasSuffix(v string) predicate.AdminSetting {
+	return predicate.AdminSetting(sql.FieldHasSuffix(FieldChangedBy, v))
 }
 
 // ChangedByIsNil applies the IsNil predicate on the "changed_by" field.
@@ -188,6 +203,16 @@ func ChangedByIsNil() predicate.AdminSetting {
 // ChangedByNotNil applies the NotNil predicate on the "changed_by" field.
 func ChangedByNotNil() predicate.AdminSetting {
 	return predicate.AdminSetting(sql.FieldNotNull(FieldChangedBy))
+}
+
+// ChangedByEqualFold applies the EqualFold predicate on the "changed_by" field.
+func ChangedByEqualFold(v string) predicate.AdminSetting {
+	return predicate.AdminSetting(sql.FieldEqualFold(FieldChangedBy, v))
+}
+
+// ChangedByContainsFold applies the ContainsFold predicate on the "changed_by" field.
+func ChangedByContainsFold(v string) predicate.AdminSetting {
+	return predicate.AdminSetting(sql.FieldContainsFold(FieldChangedBy, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

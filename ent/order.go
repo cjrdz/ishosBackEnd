@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -52,6 +53,8 @@ type Order struct {
 	CreatedByUserID *string `json:"created_by_user_id,omitempty"`
 	// IsArchived holds the value of the "is_archived" field.
 	IsArchived bool `json:"is_archived,omitempty"`
+	// StatusTimestamps holds the value of the "status_timestamps" field.
+	StatusTimestamps map[string]time.Time `json:"status_timestamps,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -85,6 +88,8 @@ func (*Order) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case order.FieldStatusTimestamps:
+			values[i] = new([]byte)
 		case order.FieldIsArchived:
 			values[i] = new(sql.NullBool)
 		case order.FieldTotalAmount:
@@ -228,6 +233,14 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.IsArchived = value.Bool
 			}
+		case order.FieldStatusTimestamps:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field status_timestamps", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.StatusTimestamps); err != nil {
+					return fmt.Errorf("unmarshal field status_timestamps: %w", err)
+				}
+			}
 		case order.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -347,6 +360,9 @@ func (_m *Order) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("is_archived=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsArchived))
+	builder.WriteString(", ")
+	builder.WriteString("status_timestamps=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StatusTimestamps))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

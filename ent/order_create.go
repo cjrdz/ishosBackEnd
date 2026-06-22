@@ -228,6 +228,12 @@ func (_c *OrderCreate) SetNillableIsArchived(v *bool) *OrderCreate {
 	return _c
 }
 
+// SetStatusTimestamps sets the "status_timestamps" field.
+func (_c *OrderCreate) SetStatusTimestamps(v map[string]time.Time) *OrderCreate {
+	_c.mutation.SetStatusTimestamps(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *OrderCreate) SetCreatedAt(v time.Time) *OrderCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -526,6 +532,10 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IsArchived(); ok {
 		_spec.SetField(order.FieldIsArchived, field.TypeBool, value)
 		_node.IsArchived = value
+	}
+	if value, ok := _c.mutation.StatusTimestamps(); ok {
+		_spec.SetField(order.FieldStatusTimestamps, field.TypeJSON, value)
+		_node.StatusTimestamps = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(order.FieldCreatedAt, field.TypeTime, value)

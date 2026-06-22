@@ -34,13 +34,13 @@ func (_c *AdminSettingCreate) SetValue(v map[string]interface{}) *AdminSettingCr
 }
 
 // SetChangedBy sets the "changed_by" field.
-func (_c *AdminSettingCreate) SetChangedBy(v uuid.UUID) *AdminSettingCreate {
+func (_c *AdminSettingCreate) SetChangedBy(v string) *AdminSettingCreate {
 	_c.mutation.SetChangedBy(v)
 	return _c
 }
 
 // SetNillableChangedBy sets the "changed_by" field if the given value is not nil.
-func (_c *AdminSettingCreate) SetNillableChangedBy(v *uuid.UUID) *AdminSettingCreate {
+func (_c *AdminSettingCreate) SetNillableChangedBy(v *string) *AdminSettingCreate {
 	if v != nil {
 		_c.SetChangedBy(*v)
 	}
@@ -205,7 +205,7 @@ func (_c *AdminSettingCreate) createSpec() (*AdminSetting, *sqlgraph.CreateSpec)
 		_node.Value = value
 	}
 	if value, ok := _c.mutation.ChangedBy(); ok {
-		_spec.SetField(adminsetting.FieldChangedBy, field.TypeUUID, value)
+		_spec.SetField(adminsetting.FieldChangedBy, field.TypeString, value)
 		_node.ChangedBy = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {

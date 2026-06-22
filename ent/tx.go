@@ -16,20 +16,32 @@ type Tx struct {
 	Addon *AddonClient
 	// AdminSetting is the client for interacting with the AdminSetting builders.
 	AdminSetting *AdminSettingClient
+	// AuditLog is the client for interacting with the AuditLog builders.
+	AuditLog *AuditLogClient
 	// Category is the client for interacting with the Category builders.
 	Category *CategoryClient
+	// ContainerType is the client for interacting with the ContainerType builders.
+	ContainerType *ContainerTypeClient
 	// Customer is the client for interacting with the Customer builders.
 	Customer *CustomerClient
 	// Flavor is the client for interacting with the Flavor builders.
 	Flavor *FlavorClient
+	// InventoryItem is the client for interacting with the InventoryItem builders.
+	InventoryItem *InventoryItemClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
 	// OrderItem is the client for interacting with the OrderItem builders.
 	OrderItem *OrderItemClient
+	// OrderTrackingToken is the client for interacting with the OrderTrackingToken builders.
+	OrderTrackingToken *OrderTrackingTokenClient
 	// Product is the client for interacting with the Product builders.
 	Product *ProductClient
 	// RateLimit is the client for interacting with the RateLimit builders.
 	RateLimit *RateLimitClient
+	// RevokedToken is the client for interacting with the RevokedToken builders.
+	RevokedToken *RevokedTokenClient
+	// StockMovement is the client for interacting with the StockMovement builders.
+	StockMovement *StockMovementClient
 
 	// lazily loaded.
 	client     *Client
@@ -163,13 +175,19 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Addon = NewAddonClient(tx.config)
 	tx.AdminSetting = NewAdminSettingClient(tx.config)
+	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.Category = NewCategoryClient(tx.config)
+	tx.ContainerType = NewContainerTypeClient(tx.config)
 	tx.Customer = NewCustomerClient(tx.config)
 	tx.Flavor = NewFlavorClient(tx.config)
+	tx.InventoryItem = NewInventoryItemClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)
 	tx.OrderItem = NewOrderItemClient(tx.config)
+	tx.OrderTrackingToken = NewOrderTrackingTokenClient(tx.config)
 	tx.Product = NewProductClient(tx.config)
 	tx.RateLimit = NewRateLimitClient(tx.config)
+	tx.RevokedToken = NewRevokedTokenClient(tx.config)
+	tx.StockMovement = NewStockMovementClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

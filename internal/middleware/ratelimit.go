@@ -5,7 +5,6 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -207,7 +206,7 @@ func (rl *OrderRateLimiter) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ip := realIP(r)
+		ip := auth.ClientIP(r)
 		if !rl.CheckOrderIP(ip) {
 			http.Error(w, `{"error":"too many orders from your IP, try later"}`,
 				http.StatusTooManyRequests)
@@ -221,29 +220,4 @@ func (rl *OrderRateLimiter) Middleware(next http.Handler) http.Handler {
 // This should be called from the order handler after parsing the request body.
 func (rl *OrderRateLimiter) CheckAndRecordPhone(phone string) bool {
 	return rl.CheckPhone(phone)
-}
-
-func realIP(r *http.Request) string {
-	if cfIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cfIP != "" {
-		return cfIP
-	}
-
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			if ip := strings.TrimSpace(parts[0]); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-		return realIP
-	}
-
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil && host != "" {
-		return host
-	}
-	return strings.TrimSpace(r.RemoteAddr)
 }

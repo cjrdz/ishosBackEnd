@@ -1006,6 +1006,16 @@ func IsArchivedNEQ(v bool) predicate.Order {
 	return predicate.Order(sql.FieldNEQ(FieldIsArchived, v))
 }
 
+// StatusTimestampsIsNil applies the IsNil predicate on the "status_timestamps" field.
+func StatusTimestampsIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldStatusTimestamps))
+}
+
+// StatusTimestampsNotNil applies the NotNil predicate on the "status_timestamps" field.
+func StatusTimestampsNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldStatusTimestamps))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldCreatedAt, v))

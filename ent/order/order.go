@@ -50,6 +50,8 @@ const (
 	FieldCreatedByUserID = "created_by_ory_id"
 	// FieldIsArchived holds the string denoting the is_archived field in the database.
 	FieldIsArchived = "is_archived"
+	// FieldStatusTimestamps holds the string denoting the status_timestamps field in the database.
+	FieldStatusTimestamps = "status_timestamps"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -87,6 +89,7 @@ var Columns = []string{
 	FieldReviewedAt,
 	FieldCreatedByUserID,
 	FieldIsArchived,
+	FieldStatusTimestamps,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }

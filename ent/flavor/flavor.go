@@ -27,17 +27,26 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
-	// EdgeProducts holds the string denoting the products edge name in mutations.
-	EdgeProducts = "products"
+	// EdgeInventoryItem holds the string denoting the inventory_item edge name in mutations.
+	EdgeInventoryItem = "inventory_item"
+	// EdgeFlavorStockMovements holds the string denoting the flavor_stock_movements edge name in mutations.
+	EdgeFlavorStockMovements = "flavor_stock_movements"
 	// Table holds the table name of the flavor in the database.
 	Table = "flavors"
-	// ProductsTable is the table that holds the products relation/edge.
-	ProductsTable = "products"
-	// ProductsInverseTable is the table name for the Product entity.
-	// It exists in this package in order to avoid circular dependency with the "product" package.
-	ProductsInverseTable = "products"
-	// ProductsColumn is the table column denoting the products relation/edge.
-	ProductsColumn = "flavor_products"
+	// InventoryItemTable is the table that holds the inventory_item relation/edge.
+	InventoryItemTable = "inventory_items"
+	// InventoryItemInverseTable is the table name for the InventoryItem entity.
+	// It exists in this package in order to avoid circular dependency with the "inventoryitem" package.
+	InventoryItemInverseTable = "inventory_items"
+	// InventoryItemColumn is the table column denoting the inventory_item relation/edge.
+	InventoryItemColumn = "flavor_id"
+	// FlavorStockMovementsTable is the table that holds the flavor_stock_movements relation/edge.
+	FlavorStockMovementsTable = "stock_movements"
+	// FlavorStockMovementsInverseTable is the table name for the StockMovement entity.
+	// It exists in this package in order to avoid circular dependency with the "stockmovement" package.
+	FlavorStockMovementsInverseTable = "stock_movements"
+	// FlavorStockMovementsColumn is the table column denoting the flavor_stock_movements relation/edge.
+	FlavorStockMovementsColumn = "flavor_id"
 )
 
 // Columns holds all SQL columns for flavor fields.
@@ -51,21 +60,10 @@ var Columns = []string{
 	FieldUpdatedAt,
 }
 
-// ForeignKeys holds the SQL foreign-keys that are owned by the "flavors"
-// table and are not defined as standalone fields in the schema.
-var ForeignKeys = []string{
-	"product_flavors",
-}
-
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
-			return true
-		}
-	}
-	for i := range ForeignKeys {
-		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -129,23 +127,44 @@ func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
 }
 
-// ByProductsCount orders the results by products count.
-func ByProductsCount(opts ...sql.OrderTermOption) OrderOption {
+// ByInventoryItemCount orders the results by inventory_item count.
+func ByInventoryItemCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newProductsStep(), opts...)
+		sqlgraph.OrderByNeighborsCount(s, newInventoryItemStep(), opts...)
 	}
 }
 
-// ByProducts orders the results by products terms.
-func ByProducts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+// ByInventoryItem orders the results by inventory_item terms.
+func ByInventoryItem(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newProductsStep(), append([]sql.OrderTerm{term}, terms...)...)
+		sqlgraph.OrderByNeighborTerms(s, newInventoryItemStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
-func newProductsStep() *sqlgraph.Step {
+
+// ByFlavorStockMovementsCount orders the results by flavor_stock_movements count.
+func ByFlavorStockMovementsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newFlavorStockMovementsStep(), opts...)
+	}
+}
+
+// ByFlavorStockMovements orders the results by flavor_stock_movements terms.
+func ByFlavorStockMovements(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newFlavorStockMovementsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+func newInventoryItemStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(ProductsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, ProductsTable, ProductsColumn),
+		sqlgraph.To(InventoryItemInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, InventoryItemTable, InventoryItemColumn),
+	)
+}
+func newFlavorStockMovementsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(FlavorStockMovementsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, FlavorStockMovementsTable, FlavorStockMovementsColumn),
 	)
 }

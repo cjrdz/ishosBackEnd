@@ -3,7 +3,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -13,11 +12,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
@@ -25,20 +25,20 @@ import (
 )
 
 type ProductHandler struct {
-	cfg            *config.Config
-	productService *services.ProductService
+	cfg              *config.Config
+	productService   services.ProductServiceInterface
+	inventoryService *services.InventoryService
 }
 
-func NewProductHandler(db *ent.Client, cfg *config.Config) *ProductHandler {
-	productRepo := repository.NewProductRepository(db)
+func NewProductHandler(svc services.ProductServiceInterface, cfg *config.Config, inventoryService *services.InventoryService) *ProductHandler {
 	return &ProductHandler{
-		cfg:            cfg,
-		productService: services.NewProductService(productRepo),
+		cfg:              cfg,
+		productService:   svc,
+		inventoryService: inventoryService,
 	}
 }
 
 // productResponse is what the API returns to the Astro frontend.
-// image_url is built from the stored image_path + configured public object URL.
 type productResponse struct {
 	ID                   uuid.UUID        `json:"id"`
 	Name                 string           `json:"name"`
@@ -47,17 +47,19 @@ type productResponse struct {
 	CategoryID           uuid.UUID        `json:"category_id"`
 	CategoryName         string           `json:"category_name"`
 	ImagePath            *string          `json:"image_path,omitempty"`
-	ImageURL             *string          `json:"image_url"` // full public object URL
+	ImageURL             *string          `json:"image_url"`
 	IsAvailable          bool             `json:"is_available"`
 	ExcludeGlobalFlavors bool             `json:"exclude_global_flavors"`
 	ExcludeGlobalAddons  bool             `json:"exclude_global_addons"`
+	BallBased            bool             `json:"ball_based"`
+	BallQuantity         int              `json:"ball_quantity"`
+	AllowsMixedFlavors   bool             `json:"allows_mixed_flavors"`
+	StockStatus          string           `json:"stock_status"`
 	Flavors              []flavorResponse `json:"flavors"`
 	Addons               []addonResponse  `json:"addons"`
 	CreatedAt            time.Time        `json:"created_at"`
 }
 
-// buildImageURL converts a stored path like "products/chocolate.jpg"
-// into the full public object URL.
 func (h *ProductHandler) buildImageURL(path *string) *string {
 	if path == nil {
 		return nil
@@ -66,104 +68,52 @@ func (h *ProductHandler) buildImageURL(path *string) *string {
 	return &url
 }
 
-// List returns all products.
-// Public users see only available, in-stock products.
-// Admin/employees see everything (checked via query param ?all=true + auth).
-//
-// GET /api/v1/products
-// GET /api/v1/products?category=gelatos
-// GET /api/v1/products?available=true
-func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	products, err := h.productService.List(ctx, r.URL.Query().Get("category"), r.URL.Query().Get("all") == "true")
-	if err != nil {
-		log.Error().Err(err).Bool("ctx_canceled", errors.Is(err, context.Canceled)).Bool("ctx_deadline", errors.Is(err, context.DeadlineExceeded)).Msg("Failed to list products")
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch products")
-		return
-	}
-
-	sort.Slice(products, func(i, j int) bool {
-		return products[i].CreatedAt.Before(products[j].CreatedAt)
-	})
-
-	result := make([]productResponse, len(products))
-	for i, p := range products {
-		catID := uuid.UUID{}
-		catName := ""
-		if p.Edges.Category != nil {
-			catID = p.Edges.Category.ID
-			catName = p.Edges.Category.Name
-		}
-
-		flavors := make([]flavorResponse, len(p.Edges.Flavors))
-		for j, f := range p.Edges.Flavors {
-			flavors[j] = toFlavorResponse(f)
-		}
-
-		addons := make([]addonResponse, len(p.Edges.Addons))
-		for j, a := range p.Edges.Addons {
-			addons[j] = toAddonResponse(a)
-		}
-
-		result[i] = productResponse{
-			ID:                   p.ID,
-			Name:                 p.Name,
-			Description:          p.Description,
-			Price:                p.Price,
-			CategoryID:           catID,
-			CategoryName:         catName,
-			ImagePath:            p.ImagePath,
-			ImageURL:             h.buildImageURL(p.ImagePath),
-			IsAvailable:          p.IsAvailable,
-			ExcludeGlobalFlavors: p.ExcludeGlobalFlavors,
-			ExcludeGlobalAddons:  p.ExcludeGlobalAddons,
-			Flavors:              flavors,
-			Addons:               addons,
-			CreatedAt:            p.CreatedAt,
-		}
-	}
-	response.JSON(w, http.StatusOK, result)
-}
-
-// Get returns a single product by ID.
-//
-// GET /api/v1/products/{id}
-func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid product ID")
-		return
-	}
-
-	p, err := h.productService.GetByIDWithCategory(r.Context(), id)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			response.Error(w, http.StatusNotFound, "Product not found")
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch product")
-		return
-	}
-
+func (h *ProductHandler) toProductResponse(p dto.Product) productResponse {
 	catID := uuid.UUID{}
 	catName := ""
-	if p.Edges.Category != nil {
-		catID = p.Edges.Category.ID
-		catName = p.Edges.Category.Name
+	if p.Category != nil {
+		catID = p.Category.ID
+		catName = p.Category.Name
 	}
 
-	flavors := make([]flavorResponse, len(p.Edges.Flavors))
-	for i, f := range p.Edges.Flavors {
-		flavors[i] = toFlavorResponse(f)
+	flavors := make([]flavorResponse, len(p.Flavors))
+	for i, f := range p.Flavors {
+		flavors[i] = flavorResponse{
+			ID:           f.ID,
+			Name:         f.Name,
+			DisplayOrder: f.DisplayOrder,
+			IsSeasonal:   f.IsSeasonal,
+			IsActive:     f.IsActive,
+			CreatedAt:    f.CreatedAt,
+		}
 	}
 
-	addons := make([]addonResponse, len(p.Edges.Addons))
-	for i, a := range p.Edges.Addons {
-		addons[i] = toAddonResponse(a)
+	addons := make([]addonResponse, len(p.Addons))
+	for i, a := range p.Addons {
+		addons[i] = addonResponse{
+			ID:           a.ID,
+			Name:         a.Name,
+			Price:        a.Price,
+			GroupName:    a.GroupName,
+			DisplayOrder: a.DisplayOrder,
+			IsActive:     a.IsActive,
+			CreatedAt:    a.CreatedAt,
+		}
 	}
 
-	response.JSON(w, http.StatusOK, productResponse{
+	stockStatus := "not_tracked"
+	if len(p.InventoryItems) > 0 {
+		item := p.InventoryItems[0]
+		if item.CurrentStock <= 0 {
+			stockStatus = "out_of_stock"
+		} else if item.CurrentStock <= item.LowStockThreshold {
+			stockStatus = "low_stock"
+		} else {
+			stockStatus = "in_stock"
+		}
+	}
+
+	return productResponse{
 		ID:                   p.ID,
 		Name:                 p.Name,
 		Description:          p.Description,
@@ -175,27 +125,73 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		IsAvailable:          p.IsAvailable,
 		ExcludeGlobalFlavors: p.ExcludeGlobalFlavors,
 		ExcludeGlobalAddons:  p.ExcludeGlobalAddons,
+		BallBased:            p.BallBased,
+		BallQuantity:         p.BallQuantity,
+		AllowsMixedFlavors:   p.AllowsMixedFlavors,
+		StockStatus:          stockStatus,
 		Flavors:              flavors,
 		Addons:               addons,
 		CreatedAt:            p.CreatedAt,
-	})
+	}
 }
 
-// Create adds a new product. Admin only (enforced by router middleware).
-//
-// POST /api/v1/products
-// Body: { "name", "description", "price", "category_id", "image_path" }
+// List returns all products.
+func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	products, err := h.productService.List(ctx, r.URL.Query().Get("category"), r.URL.Query().Get("all") == "true")
+	if err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
+
+	sort.Slice(products, func(i, j int) bool {
+		return products[i].CreatedAt.Before(products[j].CreatedAt)
+	})
+
+	result := make([]productResponse, len(products))
+	for i, p := range products {
+		result[i] = h.toProductResponse(p)
+	}
+	response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
+}
+
+// Get returns a single product by ID.
+func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid product ID")
+		return
+	}
+
+	p, err := h.productService.GetByIDWithCategory(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			response.Error(w, http.StatusNotFound, "Product not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "Failed to fetch product")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, h.toProductResponse(p))
+}
+
+// Create adds a new product. Admin only.
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name                 string    `json:"name"`
-		Description          string    `json:"description"`
-		Price                float64   `json:"price"`
-		CategoryID           uuid.UUID `json:"category_id"`
-		ImagePath            *string   `json:"image_path"`
-		StockStatus          *string   `json:"stock_status"`
-		IsAvailable          *bool     `json:"is_available"`
-		ExcludeGlobalFlavors *bool     `json:"exclude_global_flavors"`
-		ExcludeGlobalAddons  *bool     `json:"exclude_global_addons"`
+		Name                 string     `json:"name"`
+		Description          string     `json:"description"`
+		Price                float64    `json:"price"`
+		CategoryID           uuid.UUID  `json:"category_id"`
+		ImagePath            *string    `json:"image_path"`
+		StockStatus          *string    `json:"stock_status"`
+		IsAvailable          *bool      `json:"is_available"`
+		ExcludeGlobalFlavors *bool      `json:"exclude_global_flavors"`
+		ExcludeGlobalAddons  *bool      `json:"exclude_global_addons"`
+		BallBased            *bool      `json:"ball_based"`
+		BallQuantity         *int       `json:"ball_quantity"`
+		AllowsMixedFlavors   *bool      `json:"allows_mixed_flavors"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -216,6 +212,9 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ImagePath:            body.ImagePath,
 		ExcludeGlobalFlavors: body.ExcludeGlobalFlavors != nil && *body.ExcludeGlobalFlavors,
 		ExcludeGlobalAddons:  body.ExcludeGlobalAddons != nil && *body.ExcludeGlobalAddons,
+		BallBased:            body.BallBased,
+		BallQuantity:         body.BallQuantity,
+		AllowsMixedFlavors:   body.AllowsMixedFlavors,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create product")
@@ -223,7 +222,15 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusCreated, p)
+	// Auto-create inventory item for unit-based products
+	if body.BallBased != nil && !*body.BallBased {
+		_, invErr := h.inventoryService.CreateUnitInventoryItem(r.Context(), p.Name, p.ID, 10)
+		if invErr != nil {
+			log.Warn().Err(invErr).Str("product", p.Name).Msg("Failed to auto-create inventory item for product")
+		}
+	}
+
+	response.JSON(w, http.StatusCreated, h.toProductResponse(p))
 }
 
 func normalizeStockStatus(stockStatus *string, isAvailable *bool) string {
@@ -242,8 +249,6 @@ func normalizeStockStatus(stockStatus *string, isAvailable *bool) string {
 }
 
 // Update modifies a product. Admin only.
-//
-// PATCH /api/v1/products/{id}
 func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -260,6 +265,9 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsAvailable          *bool      `json:"is_available"`
 		ExcludeGlobalFlavors *bool      `json:"exclude_global_flavors"`
 		ExcludeGlobalAddons  *bool      `json:"exclude_global_addons"`
+		BallBased            *bool      `json:"ball_based"`
+		BallQuantity         *int       `json:"ball_quantity"`
+		AllowsMixedFlavors   *bool      `json:"allows_mixed_flavors"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -280,21 +288,22 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsAvailable:          body.IsAvailable,
 		ExcludeGlobalFlavors: body.ExcludeGlobalFlavors,
 		ExcludeGlobalAddons:  body.ExcludeGlobalAddons,
+		BallBased:            body.BallBased,
+		BallQuantity:         body.BallQuantity,
+		AllowsMixedFlavors:   body.AllowsMixedFlavors,
 	})
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Product not found")
 			return
 		}
 		response.Error(w, http.StatusInternalServerError, "Failed to update product")
 		return
 	}
-	response.JSON(w, http.StatusOK, p)
+	response.JSON(w, http.StatusOK, h.toProductResponse(p))
 }
 
 // Delete removes a product. Admin only.
-//
-// DELETE /api/v1/products/{id}
 func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -303,12 +312,12 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.productService.Delete(r.Context(), id); err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Product not found")
 			return
 		}
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr.Code == "23503" {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 			response.Error(w, http.StatusConflict, "Cannot delete product with existing order history. Mark it unavailable instead")
 			return
 		}
@@ -319,8 +328,6 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ToggleAvailability flips is_available. Admin only.
-//
-// PATCH /api/v1/products/{id}/availability
 func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -330,40 +337,32 @@ func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Reque
 
 	updated, err := h.productService.ToggleAvailability(r.Context(), id)
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Product not found")
 			return
 		}
 		response.Error(w, http.StatusInternalServerError, "Failed to toggle availability")
 		return
 	}
-	response.JSON(w, http.StatusOK, updated)
+	response.JSON(w, http.StatusOK, h.toProductResponse(updated))
 }
 
 // LinkFlavor adds a flavor to a product. Admin only.
-//
-// POST /api/v1/products/{id}/flavors/{flavorId}
 func (h *ProductHandler) LinkFlavor(w http.ResponseWriter, r *http.Request) {
 	response.Error(w, http.StatusGone, "Legacy product-flavor linking is disabled. Use product exclusion flags with global flavors instead")
 }
 
 // UnlinkFlavor removes a flavor from a product. Admin only.
-//
-// DELETE /api/v1/products/{id}/flavors/{flavorId}
 func (h *ProductHandler) UnlinkFlavor(w http.ResponseWriter, r *http.Request) {
 	response.Error(w, http.StatusGone, "Legacy product-flavor unlinking is disabled. Use product exclusion flags with global flavors instead")
 }
 
 // LinkAddon adds an addon to a product. Admin only.
-//
-// POST /api/v1/products/{id}/addons/{addonId}
 func (h *ProductHandler) LinkAddon(w http.ResponseWriter, r *http.Request) {
 	response.Error(w, http.StatusGone, "Legacy product-addon linking is disabled. Use product exclusion flags with global addons instead")
 }
 
 // UnlinkAddon removes an addon from a product. Admin only.
-//
-// DELETE /api/v1/products/{id}/addons/{addonId}
 func (h *ProductHandler) UnlinkAddon(w http.ResponseWriter, r *http.Request) {
 	response.Error(w, http.StatusGone, "Legacy product-addon unlinking is disabled. Use product exclusion flags with global addons instead")
 }

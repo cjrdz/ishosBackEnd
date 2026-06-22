@@ -18,13 +18,19 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/adminsetting"
+	"github.com/cjrdz/ishosBackEnd/ent/auditlog"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/containertype"
 	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/ent/ordertrackingtoken"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/revokedtoken"
+	"github.com/cjrdz/ishosBackEnd/ent/stockmovement"
 )
 
 // Client is the client that holds all ent builders.
@@ -36,20 +42,32 @@ type Client struct {
 	Addon *AddonClient
 	// AdminSetting is the client for interacting with the AdminSetting builders.
 	AdminSetting *AdminSettingClient
+	// AuditLog is the client for interacting with the AuditLog builders.
+	AuditLog *AuditLogClient
 	// Category is the client for interacting with the Category builders.
 	Category *CategoryClient
+	// ContainerType is the client for interacting with the ContainerType builders.
+	ContainerType *ContainerTypeClient
 	// Customer is the client for interacting with the Customer builders.
 	Customer *CustomerClient
 	// Flavor is the client for interacting with the Flavor builders.
 	Flavor *FlavorClient
+	// InventoryItem is the client for interacting with the InventoryItem builders.
+	InventoryItem *InventoryItemClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
 	// OrderItem is the client for interacting with the OrderItem builders.
 	OrderItem *OrderItemClient
+	// OrderTrackingToken is the client for interacting with the OrderTrackingToken builders.
+	OrderTrackingToken *OrderTrackingTokenClient
 	// Product is the client for interacting with the Product builders.
 	Product *ProductClient
 	// RateLimit is the client for interacting with the RateLimit builders.
 	RateLimit *RateLimitClient
+	// RevokedToken is the client for interacting with the RevokedToken builders.
+	RevokedToken *RevokedTokenClient
+	// StockMovement is the client for interacting with the StockMovement builders.
+	StockMovement *StockMovementClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -63,13 +81,19 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Addon = NewAddonClient(c.config)
 	c.AdminSetting = NewAdminSettingClient(c.config)
+	c.AuditLog = NewAuditLogClient(c.config)
 	c.Category = NewCategoryClient(c.config)
+	c.ContainerType = NewContainerTypeClient(c.config)
 	c.Customer = NewCustomerClient(c.config)
 	c.Flavor = NewFlavorClient(c.config)
+	c.InventoryItem = NewInventoryItemClient(c.config)
 	c.Order = NewOrderClient(c.config)
 	c.OrderItem = NewOrderItemClient(c.config)
+	c.OrderTrackingToken = NewOrderTrackingTokenClient(c.config)
 	c.Product = NewProductClient(c.config)
 	c.RateLimit = NewRateLimitClient(c.config)
+	c.RevokedToken = NewRevokedTokenClient(c.config)
+	c.StockMovement = NewStockMovementClient(c.config)
 }
 
 type (
@@ -160,17 +184,23 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		Addon:        NewAddonClient(cfg),
-		AdminSetting: NewAdminSettingClient(cfg),
-		Category:     NewCategoryClient(cfg),
-		Customer:     NewCustomerClient(cfg),
-		Flavor:       NewFlavorClient(cfg),
-		Order:        NewOrderClient(cfg),
-		OrderItem:    NewOrderItemClient(cfg),
-		Product:      NewProductClient(cfg),
-		RateLimit:    NewRateLimitClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Addon:              NewAddonClient(cfg),
+		AdminSetting:       NewAdminSettingClient(cfg),
+		AuditLog:           NewAuditLogClient(cfg),
+		Category:           NewCategoryClient(cfg),
+		ContainerType:      NewContainerTypeClient(cfg),
+		Customer:           NewCustomerClient(cfg),
+		Flavor:             NewFlavorClient(cfg),
+		InventoryItem:      NewInventoryItemClient(cfg),
+		Order:              NewOrderClient(cfg),
+		OrderItem:          NewOrderItemClient(cfg),
+		OrderTrackingToken: NewOrderTrackingTokenClient(cfg),
+		Product:            NewProductClient(cfg),
+		RateLimit:          NewRateLimitClient(cfg),
+		RevokedToken:       NewRevokedTokenClient(cfg),
+		StockMovement:      NewStockMovementClient(cfg),
 	}, nil
 }
 
@@ -188,17 +218,23 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:          ctx,
-		config:       cfg,
-		Addon:        NewAddonClient(cfg),
-		AdminSetting: NewAdminSettingClient(cfg),
-		Category:     NewCategoryClient(cfg),
-		Customer:     NewCustomerClient(cfg),
-		Flavor:       NewFlavorClient(cfg),
-		Order:        NewOrderClient(cfg),
-		OrderItem:    NewOrderItemClient(cfg),
-		Product:      NewProductClient(cfg),
-		RateLimit:    NewRateLimitClient(cfg),
+		ctx:                ctx,
+		config:             cfg,
+		Addon:              NewAddonClient(cfg),
+		AdminSetting:       NewAdminSettingClient(cfg),
+		AuditLog:           NewAuditLogClient(cfg),
+		Category:           NewCategoryClient(cfg),
+		ContainerType:      NewContainerTypeClient(cfg),
+		Customer:           NewCustomerClient(cfg),
+		Flavor:             NewFlavorClient(cfg),
+		InventoryItem:      NewInventoryItemClient(cfg),
+		Order:              NewOrderClient(cfg),
+		OrderItem:          NewOrderItemClient(cfg),
+		OrderTrackingToken: NewOrderTrackingTokenClient(cfg),
+		Product:            NewProductClient(cfg),
+		RateLimit:          NewRateLimitClient(cfg),
+		RevokedToken:       NewRevokedTokenClient(cfg),
+		StockMovement:      NewStockMovementClient(cfg),
 	}, nil
 }
 
@@ -228,8 +264,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Addon, c.AdminSetting, c.Category, c.Customer, c.Flavor, c.Order, c.OrderItem,
-		c.Product, c.RateLimit,
+		c.Addon, c.AdminSetting, c.AuditLog, c.Category, c.ContainerType, c.Customer,
+		c.Flavor, c.InventoryItem, c.Order, c.OrderItem, c.OrderTrackingToken,
+		c.Product, c.RateLimit, c.RevokedToken, c.StockMovement,
 	} {
 		n.Use(hooks...)
 	}
@@ -239,8 +276,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Addon, c.AdminSetting, c.Category, c.Customer, c.Flavor, c.Order, c.OrderItem,
-		c.Product, c.RateLimit,
+		c.Addon, c.AdminSetting, c.AuditLog, c.Category, c.ContainerType, c.Customer,
+		c.Flavor, c.InventoryItem, c.Order, c.OrderItem, c.OrderTrackingToken,
+		c.Product, c.RateLimit, c.RevokedToken, c.StockMovement,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -253,20 +291,32 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Addon.mutate(ctx, m)
 	case *AdminSettingMutation:
 		return c.AdminSetting.mutate(ctx, m)
+	case *AuditLogMutation:
+		return c.AuditLog.mutate(ctx, m)
 	case *CategoryMutation:
 		return c.Category.mutate(ctx, m)
+	case *ContainerTypeMutation:
+		return c.ContainerType.mutate(ctx, m)
 	case *CustomerMutation:
 		return c.Customer.mutate(ctx, m)
 	case *FlavorMutation:
 		return c.Flavor.mutate(ctx, m)
+	case *InventoryItemMutation:
+		return c.InventoryItem.mutate(ctx, m)
 	case *OrderMutation:
 		return c.Order.mutate(ctx, m)
 	case *OrderItemMutation:
 		return c.OrderItem.mutate(ctx, m)
+	case *OrderTrackingTokenMutation:
+		return c.OrderTrackingToken.mutate(ctx, m)
 	case *ProductMutation:
 		return c.Product.mutate(ctx, m)
 	case *RateLimitMutation:
 		return c.RateLimit.mutate(ctx, m)
+	case *RevokedTokenMutation:
+		return c.RevokedToken.mutate(ctx, m)
+	case *StockMovementMutation:
+		return c.StockMovement.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -378,22 +428,6 @@ func (c *AddonClient) GetX(ctx context.Context, id uuid.UUID) *Addon {
 		panic(err)
 	}
 	return obj
-}
-
-// QueryProducts queries the products edge of a Addon.
-func (c *AddonClient) QueryProducts(_m *Addon) *ProductQuery {
-	query := (&ProductClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(addon.Table, addon.FieldID, id),
-			sqlgraph.To(product.Table, product.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, addon.ProductsTable, addon.ProductsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
 }
 
 // Hooks returns the client hooks.
@@ -554,6 +588,139 @@ func (c *AdminSettingClient) mutate(ctx context.Context, m *AdminSettingMutation
 	}
 }
 
+// AuditLogClient is a client for the AuditLog schema.
+type AuditLogClient struct {
+	config
+}
+
+// NewAuditLogClient returns a client for the AuditLog from the given config.
+func NewAuditLogClient(c config) *AuditLogClient {
+	return &AuditLogClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `auditlog.Hooks(f(g(h())))`.
+func (c *AuditLogClient) Use(hooks ...Hook) {
+	c.hooks.AuditLog = append(c.hooks.AuditLog, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `auditlog.Intercept(f(g(h())))`.
+func (c *AuditLogClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AuditLog = append(c.inters.AuditLog, interceptors...)
+}
+
+// Create returns a builder for creating a AuditLog entity.
+func (c *AuditLogClient) Create() *AuditLogCreate {
+	mutation := newAuditLogMutation(c.config, OpCreate)
+	return &AuditLogCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AuditLog entities.
+func (c *AuditLogClient) CreateBulk(builders ...*AuditLogCreate) *AuditLogCreateBulk {
+	return &AuditLogCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AuditLogClient) MapCreateBulk(slice any, setFunc func(*AuditLogCreate, int)) *AuditLogCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AuditLogCreateBulk{err: fmt.Errorf("calling to AuditLogClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AuditLogCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AuditLogCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AuditLog.
+func (c *AuditLogClient) Update() *AuditLogUpdate {
+	mutation := newAuditLogMutation(c.config, OpUpdate)
+	return &AuditLogUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AuditLogClient) UpdateOne(_m *AuditLog) *AuditLogUpdateOne {
+	mutation := newAuditLogMutation(c.config, OpUpdateOne, withAuditLog(_m))
+	return &AuditLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AuditLogClient) UpdateOneID(id uuid.UUID) *AuditLogUpdateOne {
+	mutation := newAuditLogMutation(c.config, OpUpdateOne, withAuditLogID(id))
+	return &AuditLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AuditLog.
+func (c *AuditLogClient) Delete() *AuditLogDelete {
+	mutation := newAuditLogMutation(c.config, OpDelete)
+	return &AuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AuditLogClient) DeleteOne(_m *AuditLog) *AuditLogDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AuditLogClient) DeleteOneID(id uuid.UUID) *AuditLogDeleteOne {
+	builder := c.Delete().Where(auditlog.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AuditLogDeleteOne{builder}
+}
+
+// Query returns a query builder for AuditLog.
+func (c *AuditLogClient) Query() *AuditLogQuery {
+	return &AuditLogQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAuditLog},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AuditLog entity by its id.
+func (c *AuditLogClient) Get(ctx context.Context, id uuid.UUID) (*AuditLog, error) {
+	return c.Query().Where(auditlog.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AuditLogClient) GetX(ctx context.Context, id uuid.UUID) *AuditLog {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AuditLogClient) Hooks() []Hook {
+	return c.hooks.AuditLog
+}
+
+// Interceptors returns the client interceptors.
+func (c *AuditLogClient) Interceptors() []Interceptor {
+	return c.inters.AuditLog
+}
+
+func (c *AuditLogClient) mutate(ctx context.Context, m *AuditLogMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AuditLogCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AuditLogUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AuditLogUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AuditLogDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AuditLog mutation op: %q", m.Op())
+	}
+}
+
 // CategoryClient is a client for the Category schema.
 type CategoryClient struct {
 	config
@@ -700,6 +867,155 @@ func (c *CategoryClient) mutate(ctx context.Context, m *CategoryMutation) (Value
 		return (&CategoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Category mutation op: %q", m.Op())
+	}
+}
+
+// ContainerTypeClient is a client for the ContainerType schema.
+type ContainerTypeClient struct {
+	config
+}
+
+// NewContainerTypeClient returns a client for the ContainerType from the given config.
+func NewContainerTypeClient(c config) *ContainerTypeClient {
+	return &ContainerTypeClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `containertype.Hooks(f(g(h())))`.
+func (c *ContainerTypeClient) Use(hooks ...Hook) {
+	c.hooks.ContainerType = append(c.hooks.ContainerType, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `containertype.Intercept(f(g(h())))`.
+func (c *ContainerTypeClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ContainerType = append(c.inters.ContainerType, interceptors...)
+}
+
+// Create returns a builder for creating a ContainerType entity.
+func (c *ContainerTypeClient) Create() *ContainerTypeCreate {
+	mutation := newContainerTypeMutation(c.config, OpCreate)
+	return &ContainerTypeCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ContainerType entities.
+func (c *ContainerTypeClient) CreateBulk(builders ...*ContainerTypeCreate) *ContainerTypeCreateBulk {
+	return &ContainerTypeCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ContainerTypeClient) MapCreateBulk(slice any, setFunc func(*ContainerTypeCreate, int)) *ContainerTypeCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ContainerTypeCreateBulk{err: fmt.Errorf("calling to ContainerTypeClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ContainerTypeCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ContainerTypeCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ContainerType.
+func (c *ContainerTypeClient) Update() *ContainerTypeUpdate {
+	mutation := newContainerTypeMutation(c.config, OpUpdate)
+	return &ContainerTypeUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ContainerTypeClient) UpdateOne(_m *ContainerType) *ContainerTypeUpdateOne {
+	mutation := newContainerTypeMutation(c.config, OpUpdateOne, withContainerType(_m))
+	return &ContainerTypeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ContainerTypeClient) UpdateOneID(id uuid.UUID) *ContainerTypeUpdateOne {
+	mutation := newContainerTypeMutation(c.config, OpUpdateOne, withContainerTypeID(id))
+	return &ContainerTypeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ContainerType.
+func (c *ContainerTypeClient) Delete() *ContainerTypeDelete {
+	mutation := newContainerTypeMutation(c.config, OpDelete)
+	return &ContainerTypeDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ContainerTypeClient) DeleteOne(_m *ContainerType) *ContainerTypeDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ContainerTypeClient) DeleteOneID(id uuid.UUID) *ContainerTypeDeleteOne {
+	builder := c.Delete().Where(containertype.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ContainerTypeDeleteOne{builder}
+}
+
+// Query returns a query builder for ContainerType.
+func (c *ContainerTypeClient) Query() *ContainerTypeQuery {
+	return &ContainerTypeQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeContainerType},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ContainerType entity by its id.
+func (c *ContainerTypeClient) Get(ctx context.Context, id uuid.UUID) (*ContainerType, error) {
+	return c.Query().Where(containertype.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ContainerTypeClient) GetX(ctx context.Context, id uuid.UUID) *ContainerType {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryStockMovements queries the stock_movements edge of a ContainerType.
+func (c *ContainerTypeClient) QueryStockMovements(_m *ContainerType) *StockMovementQuery {
+	query := (&StockMovementClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(containertype.Table, containertype.FieldID, id),
+			sqlgraph.To(stockmovement.Table, stockmovement.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, containertype.StockMovementsTable, containertype.StockMovementsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ContainerTypeClient) Hooks() []Hook {
+	return c.hooks.ContainerType
+}
+
+// Interceptors returns the client interceptors.
+func (c *ContainerTypeClient) Interceptors() []Interceptor {
+	return c.inters.ContainerType
+}
+
+func (c *ContainerTypeClient) mutate(ctx context.Context, m *ContainerTypeMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ContainerTypeCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ContainerTypeUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ContainerTypeUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ContainerTypeDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ContainerType mutation op: %q", m.Op())
 	}
 }
 
@@ -944,15 +1260,31 @@ func (c *FlavorClient) GetX(ctx context.Context, id uuid.UUID) *Flavor {
 	return obj
 }
 
-// QueryProducts queries the products edge of a Flavor.
-func (c *FlavorClient) QueryProducts(_m *Flavor) *ProductQuery {
-	query := (&ProductClient{config: c.config}).Query()
+// QueryInventoryItem queries the inventory_item edge of a Flavor.
+func (c *FlavorClient) QueryInventoryItem(_m *Flavor) *InventoryItemQuery {
+	query := (&InventoryItemClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(flavor.Table, flavor.FieldID, id),
-			sqlgraph.To(product.Table, product.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, flavor.ProductsTable, flavor.ProductsColumn),
+			sqlgraph.To(inventoryitem.Table, inventoryitem.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, flavor.InventoryItemTable, flavor.InventoryItemColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryFlavorStockMovements queries the flavor_stock_movements edge of a Flavor.
+func (c *FlavorClient) QueryFlavorStockMovements(_m *Flavor) *StockMovementQuery {
+	query := (&StockMovementClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(flavor.Table, flavor.FieldID, id),
+			sqlgraph.To(stockmovement.Table, stockmovement.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, flavor.FlavorStockMovementsTable, flavor.FlavorStockMovementsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -982,6 +1314,187 @@ func (c *FlavorClient) mutate(ctx context.Context, m *FlavorMutation) (Value, er
 		return (&FlavorDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Flavor mutation op: %q", m.Op())
+	}
+}
+
+// InventoryItemClient is a client for the InventoryItem schema.
+type InventoryItemClient struct {
+	config
+}
+
+// NewInventoryItemClient returns a client for the InventoryItem from the given config.
+func NewInventoryItemClient(c config) *InventoryItemClient {
+	return &InventoryItemClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `inventoryitem.Hooks(f(g(h())))`.
+func (c *InventoryItemClient) Use(hooks ...Hook) {
+	c.hooks.InventoryItem = append(c.hooks.InventoryItem, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `inventoryitem.Intercept(f(g(h())))`.
+func (c *InventoryItemClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InventoryItem = append(c.inters.InventoryItem, interceptors...)
+}
+
+// Create returns a builder for creating a InventoryItem entity.
+func (c *InventoryItemClient) Create() *InventoryItemCreate {
+	mutation := newInventoryItemMutation(c.config, OpCreate)
+	return &InventoryItemCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InventoryItem entities.
+func (c *InventoryItemClient) CreateBulk(builders ...*InventoryItemCreate) *InventoryItemCreateBulk {
+	return &InventoryItemCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InventoryItemClient) MapCreateBulk(slice any, setFunc func(*InventoryItemCreate, int)) *InventoryItemCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InventoryItemCreateBulk{err: fmt.Errorf("calling to InventoryItemClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InventoryItemCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InventoryItemCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InventoryItem.
+func (c *InventoryItemClient) Update() *InventoryItemUpdate {
+	mutation := newInventoryItemMutation(c.config, OpUpdate)
+	return &InventoryItemUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InventoryItemClient) UpdateOne(_m *InventoryItem) *InventoryItemUpdateOne {
+	mutation := newInventoryItemMutation(c.config, OpUpdateOne, withInventoryItem(_m))
+	return &InventoryItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InventoryItemClient) UpdateOneID(id uuid.UUID) *InventoryItemUpdateOne {
+	mutation := newInventoryItemMutation(c.config, OpUpdateOne, withInventoryItemID(id))
+	return &InventoryItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InventoryItem.
+func (c *InventoryItemClient) Delete() *InventoryItemDelete {
+	mutation := newInventoryItemMutation(c.config, OpDelete)
+	return &InventoryItemDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InventoryItemClient) DeleteOne(_m *InventoryItem) *InventoryItemDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InventoryItemClient) DeleteOneID(id uuid.UUID) *InventoryItemDeleteOne {
+	builder := c.Delete().Where(inventoryitem.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InventoryItemDeleteOne{builder}
+}
+
+// Query returns a query builder for InventoryItem.
+func (c *InventoryItemClient) Query() *InventoryItemQuery {
+	return &InventoryItemQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInventoryItem},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InventoryItem entity by its id.
+func (c *InventoryItemClient) Get(ctx context.Context, id uuid.UUID) (*InventoryItem, error) {
+	return c.Query().Where(inventoryitem.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InventoryItemClient) GetX(ctx context.Context, id uuid.UUID) *InventoryItem {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryStockMovements queries the stock_movements edge of a InventoryItem.
+func (c *InventoryItemClient) QueryStockMovements(_m *InventoryItem) *StockMovementQuery {
+	query := (&StockMovementClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(inventoryitem.Table, inventoryitem.FieldID, id),
+			sqlgraph.To(stockmovement.Table, stockmovement.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, inventoryitem.StockMovementsTable, inventoryitem.StockMovementsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryProduct queries the product edge of a InventoryItem.
+func (c *InventoryItemClient) QueryProduct(_m *InventoryItem) *ProductQuery {
+	query := (&ProductClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(inventoryitem.Table, inventoryitem.FieldID, id),
+			sqlgraph.To(product.Table, product.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, inventoryitem.ProductTable, inventoryitem.ProductColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryFlavor queries the flavor edge of a InventoryItem.
+func (c *InventoryItemClient) QueryFlavor(_m *InventoryItem) *FlavorQuery {
+	query := (&FlavorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(inventoryitem.Table, inventoryitem.FieldID, id),
+			sqlgraph.To(flavor.Table, flavor.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, inventoryitem.FlavorTable, inventoryitem.FlavorColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *InventoryItemClient) Hooks() []Hook {
+	return c.hooks.InventoryItem
+}
+
+// Interceptors returns the client interceptors.
+func (c *InventoryItemClient) Interceptors() []Interceptor {
+	return c.inters.InventoryItem
+}
+
+func (c *InventoryItemClient) mutate(ctx context.Context, m *InventoryItemMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InventoryItemCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InventoryItemUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InventoryItemUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InventoryItemDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InventoryItem mutation op: %q", m.Op())
 	}
 }
 
@@ -1299,6 +1812,139 @@ func (c *OrderItemClient) mutate(ctx context.Context, m *OrderItemMutation) (Val
 	}
 }
 
+// OrderTrackingTokenClient is a client for the OrderTrackingToken schema.
+type OrderTrackingTokenClient struct {
+	config
+}
+
+// NewOrderTrackingTokenClient returns a client for the OrderTrackingToken from the given config.
+func NewOrderTrackingTokenClient(c config) *OrderTrackingTokenClient {
+	return &OrderTrackingTokenClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `ordertrackingtoken.Hooks(f(g(h())))`.
+func (c *OrderTrackingTokenClient) Use(hooks ...Hook) {
+	c.hooks.OrderTrackingToken = append(c.hooks.OrderTrackingToken, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `ordertrackingtoken.Intercept(f(g(h())))`.
+func (c *OrderTrackingTokenClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OrderTrackingToken = append(c.inters.OrderTrackingToken, interceptors...)
+}
+
+// Create returns a builder for creating a OrderTrackingToken entity.
+func (c *OrderTrackingTokenClient) Create() *OrderTrackingTokenCreate {
+	mutation := newOrderTrackingTokenMutation(c.config, OpCreate)
+	return &OrderTrackingTokenCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OrderTrackingToken entities.
+func (c *OrderTrackingTokenClient) CreateBulk(builders ...*OrderTrackingTokenCreate) *OrderTrackingTokenCreateBulk {
+	return &OrderTrackingTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OrderTrackingTokenClient) MapCreateBulk(slice any, setFunc func(*OrderTrackingTokenCreate, int)) *OrderTrackingTokenCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OrderTrackingTokenCreateBulk{err: fmt.Errorf("calling to OrderTrackingTokenClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OrderTrackingTokenCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OrderTrackingTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OrderTrackingToken.
+func (c *OrderTrackingTokenClient) Update() *OrderTrackingTokenUpdate {
+	mutation := newOrderTrackingTokenMutation(c.config, OpUpdate)
+	return &OrderTrackingTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OrderTrackingTokenClient) UpdateOne(_m *OrderTrackingToken) *OrderTrackingTokenUpdateOne {
+	mutation := newOrderTrackingTokenMutation(c.config, OpUpdateOne, withOrderTrackingToken(_m))
+	return &OrderTrackingTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OrderTrackingTokenClient) UpdateOneID(id int) *OrderTrackingTokenUpdateOne {
+	mutation := newOrderTrackingTokenMutation(c.config, OpUpdateOne, withOrderTrackingTokenID(id))
+	return &OrderTrackingTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OrderTrackingToken.
+func (c *OrderTrackingTokenClient) Delete() *OrderTrackingTokenDelete {
+	mutation := newOrderTrackingTokenMutation(c.config, OpDelete)
+	return &OrderTrackingTokenDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OrderTrackingTokenClient) DeleteOne(_m *OrderTrackingToken) *OrderTrackingTokenDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OrderTrackingTokenClient) DeleteOneID(id int) *OrderTrackingTokenDeleteOne {
+	builder := c.Delete().Where(ordertrackingtoken.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OrderTrackingTokenDeleteOne{builder}
+}
+
+// Query returns a query builder for OrderTrackingToken.
+func (c *OrderTrackingTokenClient) Query() *OrderTrackingTokenQuery {
+	return &OrderTrackingTokenQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOrderTrackingToken},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OrderTrackingToken entity by its id.
+func (c *OrderTrackingTokenClient) Get(ctx context.Context, id int) (*OrderTrackingToken, error) {
+	return c.Query().Where(ordertrackingtoken.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OrderTrackingTokenClient) GetX(ctx context.Context, id int) *OrderTrackingToken {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OrderTrackingTokenClient) Hooks() []Hook {
+	return c.hooks.OrderTrackingToken
+}
+
+// Interceptors returns the client interceptors.
+func (c *OrderTrackingTokenClient) Interceptors() []Interceptor {
+	return c.inters.OrderTrackingToken
+}
+
+func (c *OrderTrackingTokenClient) mutate(ctx context.Context, m *OrderTrackingTokenMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OrderTrackingTokenCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OrderTrackingTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OrderTrackingTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OrderTrackingTokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OrderTrackingToken mutation op: %q", m.Op())
+	}
+}
+
 // ProductClient is a client for the Product schema.
 type ProductClient struct {
 	config
@@ -1439,31 +2085,15 @@ func (c *ProductClient) QueryOrderItems(_m *Product) *OrderItemQuery {
 	return query
 }
 
-// QueryFlavors queries the flavors edge of a Product.
-func (c *ProductClient) QueryFlavors(_m *Product) *FlavorQuery {
-	query := (&FlavorClient{config: c.config}).Query()
+// QueryInventoryItem queries the inventory_item edge of a Product.
+func (c *ProductClient) QueryInventoryItem(_m *Product) *InventoryItemQuery {
+	query := (&InventoryItemClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(product.Table, product.FieldID, id),
-			sqlgraph.To(flavor.Table, flavor.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, product.FlavorsTable, product.FlavorsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryAddons queries the addons edge of a Product.
-func (c *ProductClient) QueryAddons(_m *Product) *AddonQuery {
-	query := (&AddonClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(product.Table, product.FieldID, id),
-			sqlgraph.To(addon.Table, addon.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, product.AddonsTable, product.AddonsColumn),
+			sqlgraph.To(inventoryitem.Table, inventoryitem.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, product.InventoryItemTable, product.InventoryItemColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1629,14 +2259,330 @@ func (c *RateLimitClient) mutate(ctx context.Context, m *RateLimitMutation) (Val
 	}
 }
 
+// RevokedTokenClient is a client for the RevokedToken schema.
+type RevokedTokenClient struct {
+	config
+}
+
+// NewRevokedTokenClient returns a client for the RevokedToken from the given config.
+func NewRevokedTokenClient(c config) *RevokedTokenClient {
+	return &RevokedTokenClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `revokedtoken.Hooks(f(g(h())))`.
+func (c *RevokedTokenClient) Use(hooks ...Hook) {
+	c.hooks.RevokedToken = append(c.hooks.RevokedToken, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `revokedtoken.Intercept(f(g(h())))`.
+func (c *RevokedTokenClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RevokedToken = append(c.inters.RevokedToken, interceptors...)
+}
+
+// Create returns a builder for creating a RevokedToken entity.
+func (c *RevokedTokenClient) Create() *RevokedTokenCreate {
+	mutation := newRevokedTokenMutation(c.config, OpCreate)
+	return &RevokedTokenCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RevokedToken entities.
+func (c *RevokedTokenClient) CreateBulk(builders ...*RevokedTokenCreate) *RevokedTokenCreateBulk {
+	return &RevokedTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RevokedTokenClient) MapCreateBulk(slice any, setFunc func(*RevokedTokenCreate, int)) *RevokedTokenCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RevokedTokenCreateBulk{err: fmt.Errorf("calling to RevokedTokenClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RevokedTokenCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RevokedTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RevokedToken.
+func (c *RevokedTokenClient) Update() *RevokedTokenUpdate {
+	mutation := newRevokedTokenMutation(c.config, OpUpdate)
+	return &RevokedTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RevokedTokenClient) UpdateOne(_m *RevokedToken) *RevokedTokenUpdateOne {
+	mutation := newRevokedTokenMutation(c.config, OpUpdateOne, withRevokedToken(_m))
+	return &RevokedTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RevokedTokenClient) UpdateOneID(id int) *RevokedTokenUpdateOne {
+	mutation := newRevokedTokenMutation(c.config, OpUpdateOne, withRevokedTokenID(id))
+	return &RevokedTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RevokedToken.
+func (c *RevokedTokenClient) Delete() *RevokedTokenDelete {
+	mutation := newRevokedTokenMutation(c.config, OpDelete)
+	return &RevokedTokenDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RevokedTokenClient) DeleteOne(_m *RevokedToken) *RevokedTokenDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RevokedTokenClient) DeleteOneID(id int) *RevokedTokenDeleteOne {
+	builder := c.Delete().Where(revokedtoken.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RevokedTokenDeleteOne{builder}
+}
+
+// Query returns a query builder for RevokedToken.
+func (c *RevokedTokenClient) Query() *RevokedTokenQuery {
+	return &RevokedTokenQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRevokedToken},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RevokedToken entity by its id.
+func (c *RevokedTokenClient) Get(ctx context.Context, id int) (*RevokedToken, error) {
+	return c.Query().Where(revokedtoken.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RevokedTokenClient) GetX(ctx context.Context, id int) *RevokedToken {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *RevokedTokenClient) Hooks() []Hook {
+	return c.hooks.RevokedToken
+}
+
+// Interceptors returns the client interceptors.
+func (c *RevokedTokenClient) Interceptors() []Interceptor {
+	return c.inters.RevokedToken
+}
+
+func (c *RevokedTokenClient) mutate(ctx context.Context, m *RevokedTokenMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RevokedTokenCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RevokedTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RevokedTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RevokedTokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RevokedToken mutation op: %q", m.Op())
+	}
+}
+
+// StockMovementClient is a client for the StockMovement schema.
+type StockMovementClient struct {
+	config
+}
+
+// NewStockMovementClient returns a client for the StockMovement from the given config.
+func NewStockMovementClient(c config) *StockMovementClient {
+	return &StockMovementClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `stockmovement.Hooks(f(g(h())))`.
+func (c *StockMovementClient) Use(hooks ...Hook) {
+	c.hooks.StockMovement = append(c.hooks.StockMovement, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `stockmovement.Intercept(f(g(h())))`.
+func (c *StockMovementClient) Intercept(interceptors ...Interceptor) {
+	c.inters.StockMovement = append(c.inters.StockMovement, interceptors...)
+}
+
+// Create returns a builder for creating a StockMovement entity.
+func (c *StockMovementClient) Create() *StockMovementCreate {
+	mutation := newStockMovementMutation(c.config, OpCreate)
+	return &StockMovementCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of StockMovement entities.
+func (c *StockMovementClient) CreateBulk(builders ...*StockMovementCreate) *StockMovementCreateBulk {
+	return &StockMovementCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *StockMovementClient) MapCreateBulk(slice any, setFunc func(*StockMovementCreate, int)) *StockMovementCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &StockMovementCreateBulk{err: fmt.Errorf("calling to StockMovementClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*StockMovementCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &StockMovementCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for StockMovement.
+func (c *StockMovementClient) Update() *StockMovementUpdate {
+	mutation := newStockMovementMutation(c.config, OpUpdate)
+	return &StockMovementUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *StockMovementClient) UpdateOne(_m *StockMovement) *StockMovementUpdateOne {
+	mutation := newStockMovementMutation(c.config, OpUpdateOne, withStockMovement(_m))
+	return &StockMovementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *StockMovementClient) UpdateOneID(id uuid.UUID) *StockMovementUpdateOne {
+	mutation := newStockMovementMutation(c.config, OpUpdateOne, withStockMovementID(id))
+	return &StockMovementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for StockMovement.
+func (c *StockMovementClient) Delete() *StockMovementDelete {
+	mutation := newStockMovementMutation(c.config, OpDelete)
+	return &StockMovementDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *StockMovementClient) DeleteOne(_m *StockMovement) *StockMovementDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *StockMovementClient) DeleteOneID(id uuid.UUID) *StockMovementDeleteOne {
+	builder := c.Delete().Where(stockmovement.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &StockMovementDeleteOne{builder}
+}
+
+// Query returns a query builder for StockMovement.
+func (c *StockMovementClient) Query() *StockMovementQuery {
+	return &StockMovementQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeStockMovement},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a StockMovement entity by its id.
+func (c *StockMovementClient) Get(ctx context.Context, id uuid.UUID) (*StockMovement, error) {
+	return c.Query().Where(stockmovement.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *StockMovementClient) GetX(ctx context.Context, id uuid.UUID) *StockMovement {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryInventoryItem queries the inventory_item edge of a StockMovement.
+func (c *StockMovementClient) QueryInventoryItem(_m *StockMovement) *InventoryItemQuery {
+	query := (&InventoryItemClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(stockmovement.Table, stockmovement.FieldID, id),
+			sqlgraph.To(inventoryitem.Table, inventoryitem.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, stockmovement.InventoryItemTable, stockmovement.InventoryItemColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryContainerType queries the container_type edge of a StockMovement.
+func (c *StockMovementClient) QueryContainerType(_m *StockMovement) *ContainerTypeQuery {
+	query := (&ContainerTypeClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(stockmovement.Table, stockmovement.FieldID, id),
+			sqlgraph.To(containertype.Table, containertype.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, stockmovement.ContainerTypeTable, stockmovement.ContainerTypeColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryFlavor queries the flavor edge of a StockMovement.
+func (c *StockMovementClient) QueryFlavor(_m *StockMovement) *FlavorQuery {
+	query := (&FlavorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(stockmovement.Table, stockmovement.FieldID, id),
+			sqlgraph.To(flavor.Table, flavor.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, stockmovement.FlavorTable, stockmovement.FlavorColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *StockMovementClient) Hooks() []Hook {
+	return c.hooks.StockMovement
+}
+
+// Interceptors returns the client interceptors.
+func (c *StockMovementClient) Interceptors() []Interceptor {
+	return c.inters.StockMovement
+}
+
+func (c *StockMovementClient) mutate(ctx context.Context, m *StockMovementMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&StockMovementCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&StockMovementUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&StockMovementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&StockMovementDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown StockMovement mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Addon, AdminSetting, Category, Customer, Flavor, Order, OrderItem, Product,
-		RateLimit []ent.Hook
+		Addon, AdminSetting, AuditLog, Category, ContainerType, Customer, Flavor,
+		InventoryItem, Order, OrderItem, OrderTrackingToken, Product, RateLimit,
+		RevokedToken, StockMovement []ent.Hook
 	}
 	inters struct {
-		Addon, AdminSetting, Category, Customer, Flavor, Order, OrderItem, Product,
-		RateLimit []ent.Interceptor
+		Addon, AdminSetting, AuditLog, Category, ContainerType, Customer, Flavor,
+		InventoryItem, Order, OrderItem, OrderTrackingToken, Product, RateLimit,
+		RevokedToken, StockMovement []ent.Interceptor
 	}
 )

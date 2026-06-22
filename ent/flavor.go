@@ -32,27 +32,37 @@ type Flavor struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the FlavorQuery when eager-loading is set.
-	Edges           FlavorEdges `json:"edges"`
-	product_flavors *uuid.UUID
-	selectValues    sql.SelectValues
+	Edges        FlavorEdges `json:"edges"`
+	selectValues sql.SelectValues
 }
 
 // FlavorEdges holds the relations/edges for other nodes in the graph.
 type FlavorEdges struct {
-	// Products holds the value of the products edge.
-	Products []*Product `json:"products,omitempty"`
+	// InventoryItem holds the value of the inventory_item edge.
+	InventoryItem []*InventoryItem `json:"inventory_item,omitempty"`
+	// FlavorStockMovements holds the value of the flavor_stock_movements edge.
+	FlavorStockMovements []*StockMovement `json:"flavor_stock_movements,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
-// ProductsOrErr returns the Products value or an error if the edge
+// InventoryItemOrErr returns the InventoryItem value or an error if the edge
 // was not loaded in eager-loading.
-func (e FlavorEdges) ProductsOrErr() ([]*Product, error) {
+func (e FlavorEdges) InventoryItemOrErr() ([]*InventoryItem, error) {
 	if e.loadedTypes[0] {
-		return e.Products, nil
+		return e.InventoryItem, nil
 	}
-	return nil, &NotLoadedError{edge: "products"}
+	return nil, &NotLoadedError{edge: "inventory_item"}
+}
+
+// FlavorStockMovementsOrErr returns the FlavorStockMovements value or an error if the edge
+// was not loaded in eager-loading.
+func (e FlavorEdges) FlavorStockMovementsOrErr() ([]*StockMovement, error) {
+	if e.loadedTypes[1] {
+		return e.FlavorStockMovements, nil
+	}
+	return nil, &NotLoadedError{edge: "flavor_stock_movements"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -70,8 +80,6 @@ func (*Flavor) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullTime)
 		case flavor.FieldID:
 			values[i] = new(uuid.UUID)
-		case flavor.ForeignKeys[0]: // product_flavors
-			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -129,13 +137,6 @@ func (_m *Flavor) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
 			}
-		case flavor.ForeignKeys[0]:
-			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field product_flavors", values[i])
-			} else if value.Valid {
-				_m.product_flavors = new(uuid.UUID)
-				*_m.product_flavors = *value.S.(*uuid.UUID)
-			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -149,9 +150,14 @@ func (_m *Flavor) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// QueryProducts queries the "products" edge of the Flavor entity.
-func (_m *Flavor) QueryProducts() *ProductQuery {
-	return NewFlavorClient(_m.config).QueryProducts(_m)
+// QueryInventoryItem queries the "inventory_item" edge of the Flavor entity.
+func (_m *Flavor) QueryInventoryItem() *InventoryItemQuery {
+	return NewFlavorClient(_m.config).QueryInventoryItem(_m)
+}
+
+// QueryFlavorStockMovements queries the "flavor_stock_movements" edge of the Flavor entity.
+func (_m *Flavor) QueryFlavorStockMovements() *StockMovementQuery {
+	return NewFlavorClient(_m.config).QueryFlavorStockMovements(_m)
 }
 
 // Update returns a builder for updating this Flavor.

@@ -1,101 +1,104 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
 
+	"github.com/caarlos0/env/v10"
 	"github.com/joho/godotenv"
 )
 
 // Config holds all application configuration loaded from environment variables.
 type Config struct {
 	// Server
-	Port string
-	Env  string // "development" | "production"
+	Port string `env:"PORT" envDefault:"8080"`
+	Env  string `env:"ENV" envDefault:"development"` // "development" | "production"
 
 	// Database — Neon PostgreSQL
 	// Connection string format:
 	// postgres://user:pass@ep-xxx.us-east-2.aws.neon.tech/ishosFactory?sslmode=require
-	DatabaseURL string
+	DatabaseURL string `env:"DATABASE_URL,required"`
 
 	// PocketBase
 	// Directory where PocketBase stores its SQLite data (auth collections, logs, etc.)
-	// Defaults to "./pb_data"
-	PBDataDir string
+	PBDataDir string `env:"PB_DATA_DIR" envDefault:"./pb_data"`
 
 	// PocketBase Admin UI
 	// When true, PocketBase's built-in HTTP server (admin dashboard) starts on
 	// PBAdminUIPort alongside the Chi API server.
 	// Development: true  — manage employees via http://localhost:8090/_/
 	// Production:  false — all management goes through the Chi API only.
-	EnablePBAdminUI bool
-	PBAdminUIHost   string // default "127.0.0.1"
-	PBAdminUIPort   string // default "8090"
-	// Comma separated list of allowed origins for PocketBase Admin UI CORS.
-	PBAdminUIAllowedOrigins string
-	// Explicit break-glass option. Keep false in production.
-	AllowPBAdminUIInProduction bool
+	EnablePBAdminUI bool `env:"ENABLE_PB_ADMIN_UI" envDefault:"false"`
+
+	PBAdminUIHost              string `env:"PB_ADMIN_UI_HOST" envDefault:"127.0.0.1"`
+	PBAdminUIPort              string `env:"PB_ADMIN_UI_PORT" envDefault:"8090"`
+	PBAdminUIAllowedOrigins    string `env:"PB_ADMIN_UI_ALLOWED_ORIGINS" envDefault:"http://localhost:8090"`
+	AllowPBAdminUIInProduction bool   `env:"ALLOW_PB_ADMIN_UI_IN_PRODUCTION" envDefault:"false"`
 
 	// Cloudflare R2 (images only)
-	R2AccountID       string // Cloudflare account ID
-	R2AccessKeyID     string // S3-compatible access key ID
-	R2SecretAccessKey string // S3-compatible secret access key
-	R2BucketName      string // bucket name, e.g. "product-images"
-	R2Region          string // typically "auto"
-	R2Endpoint        string // e.g. https://<account_id>.r2.cloudflarestorage.com
-	R2PublicBaseURL   string // e.g. https://pub-xxx.r2.dev
+	R2AccountID       string `env:"R2_ACCOUNT_ID,required"`
+	R2AccessKeyID     string `env:"R2_ACCESS_KEY_ID,required"`
+	R2SecretAccessKey string `env:"R2_SECRET_ACCESS_KEY,required"`
+	R2BucketName      string `env:"R2_BUCKET_NAME" envDefault:"product-images"`
+	R2Region          string `env:"R2_REGION" envDefault:"auto"`
+	R2Endpoint        string `env:"R2_ENDPOINT"`
+	R2PublicBaseURL   string `env:"R2_PUBLIC_BASE_URL,required"`
 	// Maximum uploaded image size in MB.
-	AdminImageUploadMaxMB int
+	AdminImageUploadMaxMB int `env:"ADMIN_IMAGE_UPLOAD_MAX_MB" envDefault:"15"`
 
-	// WhatsApp Business API
-	WhatsAppPhoneID string // Phone number ID from Meta
-	WhatsAppToken   string // Permanent or temporary token
-	WhatsAppNumber  string // Business phone shown to customers
-	PublicStoreURL  string // Public storefront base URL, e.g. https://store.example.com
+	// WhatsApp Business API (optional, but all-or-nothing if set)
+	WhatsAppPhoneID string `env:"WHATSAPP_PHONE_ID"`
+	WhatsAppToken   string `env:"WHATSAPP_TOKEN"`
+	WhatsAppNumber  string `env:"WHATSAPP_NUMBER"`
+	PublicStoreURL  string `env:"PUBLIC_STORE_URL" envDefault:"http://localhost:4321"`
+
+	// Authentication & Session
 	// Browser cookie TTL for auth_token (in hours)
-	AuthCookieTTLHours int
+	AuthCookieTTLHours int `env:"AUTH_COOKIE_TTL_HOURS" envDefault:"24"`
 	// PocketBase auth JWT TTL for employee logins (in hours)
-	AuthTokenTTLHours int
+	AuthTokenTTLHours int `env:"AUTH_TOKEN_TTL_HOURS" envDefault:"168"`
 	// Frontend session inactivity timeout (in seconds)
-	InactivityLogoutSeconds int
+	InactivityLogoutSeconds int `env:"INACTIVITY_LOGOUT_SECONDS" envDefault:"900"` // 15 minutes
 
 	// Rate Limiting
-	OrdersPerHour int
-	OrdersPerDay  int
+	OrdersPerHour int `env:"ORDERS_PER_HOUR" envDefault:"5"`
+	OrdersPerDay  int `env:"ORDERS_PER_DAY" envDefault:"20"`
 	// Max login attempts per IP per minute
-	LoginAttemptsPerMinute int
+	LoginAttemptsPerMinute int `env:"LOGIN_ATTEMPTS_PER_MINUTE" envDefault:"10"`
 	// Failed-login lockout controls
-	LoginLockoutMaxFailures     int
-	LoginLockoutWindowMinutes   int
-	LoginLockoutDurationMinutes int
+	LoginLockoutMaxFailures     int `env:"LOGIN_LOCKOUT_MAX_FAILURES" envDefault:"5"`
+	LoginLockoutWindowMinutes   int `env:"LOGIN_LOCKOUT_WINDOW_MINUTES" envDefault:"15"`
+	LoginLockoutDurationMinutes int `env:"LOGIN_LOCKOUT_DURATION_MINUTES" envDefault:"15"`
 
-	// CORS
-	// Comma separated allowed origins
-	// e.g. "http://localhost:4321,https://yourdomain.com"
-	AllowedOrigins string
+	// CORS — Comma separated allowed origins
+	AllowedOrigins string `env:"ALLOWED_ORIGINS" envDefault:"http://localhost:4321"`
 
 	// Public tracking token signing key. Set a dedicated secret in production.
-	TrackingTokenSecret string
+	TrackingTokenSecret string `env:"TRACKING_TOKEN_SECRET"`
 	// Public order tracking token TTL (in hours)
-	TrackingTokenTTLHours int
+	TrackingTokenTTLHours int `env:"TRACKING_TOKEN_TTL_HOURS" envDefault:"720"`
 
 	// Redis (optional, used for distributed rate limiting).
-	RedisURL    string
-	RedisPrefix string
+	RedisURL    string `env:"REDIS_URL"`
+	RedisPrefix string `env:"REDIS_PREFIX" envDefault:"ishos"`
 
 	// Tracking endpoint abuse controls.
-	TrackingRequestsPerHour int
+	TrackingRequestsPerHour int `env:"TRACKING_REQUESTS_PER_HOUR" envDefault:"240"`
 
 	// One-time bootstrap: if set and no admin employee exists, the server will
 	// create the first admin on startup then ignore the vars on subsequent starts.
-	BootstrapAdminEmail    string
-	BootstrapAdminPassword string
-	BootstrapAdminName     string
+	BootstrapAdminEmail    string `env:"BOOTSTRAP_ADMIN_EMAIL"`
+	BootstrapAdminPassword string `env:"BOOTSTRAP_ADMIN_PASSWORD"`
+	BootstrapAdminName     string `env:"BOOTSTRAP_ADMIN_NAME" envDefault:"Admin"`
 }
 
 // Load reads environment variables (and optional .env file) into Config.
+// It validates the configuration and exits if required vars are missing or invalid.
 func Load() *Config {
 	// In development, load .env file.
 	// In production (Railway, Render, Fly.io) env vars are injected directly.
@@ -103,88 +106,147 @@ func Load() *Config {
 		log.Println("No .env file found, reading from environment")
 	}
 
-	databaseURL := mustEnv("DATABASE_URL")
+	cfg := &Config{}
 
-	cfg := &Config{
-		Port:                        getEnv("PORT", "8080"),
-		Env:                         getEnv("ENV", "development"),
-		DatabaseURL:                 databaseURL,
-		PBDataDir:                   getEnv("PB_DATA_DIR", "./pb_data"),
-		EnablePBAdminUI:             getEnvBool("ENABLE_PB_ADMIN_UI", false),
-		PBAdminUIHost:               getEnv("PB_ADMIN_UI_HOST", "127.0.0.1"),
-		PBAdminUIPort:               getEnv("PB_ADMIN_UI_PORT", "8090"),
-		PBAdminUIAllowedOrigins:     getEnv("PB_ADMIN_UI_ALLOWED_ORIGINS", "http://localhost:8090"),
-		AllowPBAdminUIInProduction:  getEnvBool("ALLOW_PB_ADMIN_UI_IN_PRODUCTION", false),
-		R2AccountID:                 getEnv("R2_ACCOUNT_ID", ""),
-		R2AccessKeyID:               mustEnv("R2_ACCESS_KEY_ID"),
-		R2SecretAccessKey:           mustEnv("R2_SECRET_ACCESS_KEY"),
-		R2BucketName:                getEnv("R2_BUCKET_NAME", "product-images"),
-		R2Region:                    getEnv("R2_REGION", "auto"),
-		R2Endpoint:                  getR2Endpoint(),
-		R2PublicBaseURL:             mustEnv("R2_PUBLIC_BASE_URL"),
-		AdminImageUploadMaxMB:       getEnvInt("ADMIN_IMAGE_UPLOAD_MAX_MB", 15),
-		WhatsAppPhoneID:             getEnv("WHATSAPP_PHONE_ID", ""),
-		WhatsAppToken:               getEnv("WHATSAPP_TOKEN", ""),
-		WhatsAppNumber:              getEnv("WHATSAPP_NUMBER", ""),
-		PublicStoreURL:              getEnv("PUBLIC_STORE_URL", "http://localhost:4321"),
-		AuthCookieTTLHours:          getEnvInt("AUTH_COOKIE_TTL_HOURS", 24),
-		AuthTokenTTLHours:           getEnvInt("AUTH_TOKEN_TTL_HOURS", 168),
-		InactivityLogoutSeconds:     getEnvInt("INACTIVITY_LOGOUT_SECONDS", getEnvInt("INACTIVITY_LOGOUT_MINUTES", 15)*60),
-		OrdersPerHour:               getEnvInt("ORDERS_PER_HOUR", 5),
-		OrdersPerDay:                getEnvInt("ORDERS_PER_DAY", 20),
-		LoginAttemptsPerMinute:      getEnvInt("LOGIN_ATTEMPTS_PER_MINUTE", 10),
-		LoginLockoutMaxFailures:     getEnvInt("LOGIN_LOCKOUT_MAX_FAILURES", 5),
-		LoginLockoutWindowMinutes:   getEnvInt("LOGIN_LOCKOUT_WINDOW_MINUTES", 15),
-		LoginLockoutDurationMinutes: getEnvInt("LOGIN_LOCKOUT_DURATION_MINUTES", 15),
-		AllowedOrigins:              getEnv("ALLOWED_ORIGINS", "http://localhost:4321"),
-		TrackingTokenSecret:         getEnv("TRACKING_TOKEN_SECRET", databaseURL),
-		TrackingTokenTTLHours:       getEnvInt("TRACKING_TOKEN_TTL_HOURS", 720),
-		RedisURL:                    getEnv("REDIS_URL", ""),
-		RedisPrefix:                 getEnv("REDIS_PREFIX", "ishos"),
-		TrackingRequestsPerHour:     getEnvInt("TRACKING_REQUESTS_PER_HOUR", 240),
-		BootstrapAdminEmail:         getEnv("BOOTSTRAP_ADMIN_EMAIL", ""),
-		BootstrapAdminPassword:      getEnv("BOOTSTRAP_ADMIN_PASSWORD", ""),
-		BootstrapAdminName:          getEnv("BOOTSTRAP_ADMIN_NAME", "Admin"),
+	// Parse environment variables using caarlos0/env
+	if err := env.Parse(cfg); err != nil {
+		log.Fatalf("Failed to parse environment configuration: %v", err)
 	}
 
-	// In production, TRACKING_TOKEN_SECRET must be explicitly set.
-	// Using DATABASE_URL as the fallback signing key is a security hole —
-	// anyone who knows the DB URL can forge tracking tokens.
-	if cfg.Env == "production" && os.Getenv("TRACKING_TOKEN_SECRET") == "" {
-		log.Fatalf("TRACKING_TOKEN_SECRET must be explicitly set in production (set ENV != production to bypass)")
+	// Set R2 endpoint if not explicitly provided
+	if cfg.R2Endpoint == "" {
+		if cfg.R2AccountID == "" {
+			log.Fatalf("Required: either R2_ENDPOINT or R2_ACCOUNT_ID must be set")
+		}
+		cfg.R2Endpoint = "https://" + cfg.R2AccountID + ".r2.cloudflarestorage.com"
+	}
+
+	cfg.applyDevelopmentTrackingTokenSecretFallback()
+
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
 	}
 
 	return cfg
 }
 
-func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func (c *Config) applyDevelopmentTrackingTokenSecretFallback() {
+	if c == nil || c.Env == "production" {
+		return
 	}
-	return fallback
+
+	if strings.TrimSpace(c.TrackingTokenSecret) != "" {
+		return
+	}
+
+	// In development, persist a generated secret so tracking tokens remain valid
+	// across server restarts. Stored inside PBDataDir so it is kept with the rest
+	// of the local state and ignored in production.
+	secretPath := filepath.Join(c.PBDataDir, ".tracking_token_secret")
+	if data, err := os.ReadFile(secretPath); err == nil && len(data) > 0 {
+		c.TrackingTokenSecret = strings.TrimSpace(string(data))
+		log.Println("TRACKING_TOKEN_SECRET not set; using persisted development fallback")
+		return
+	}
+
+	// Generate a cryptographically random 32-byte secret for local development.
+	// This avoids deriving the secret from predictable inputs such as DATABASE_URL.
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Fatalf("TRACKING_TOKEN_SECRET not set and failed to generate random fallback: %v", err)
+	}
+	c.TrackingTokenSecret = hex.EncodeToString(b)
+
+	if err := os.MkdirAll(c.PBDataDir, 0o700); err != nil {
+		log.Printf("TRACKING_TOKEN_SECRET: failed to create PBDataDir for persistence: %v", err)
+	} else if err := os.WriteFile(secretPath, []byte(c.TrackingTokenSecret), 0o600); err != nil {
+		log.Printf("TRACKING_TOKEN_SECRET: failed to persist development fallback: %v", err)
+	}
+
+	log.Println("TRACKING_TOKEN_SECRET not set; generated and persisted development fallback")
 }
 
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("Required environment variable %s is not set", key)
+// Validate checks that the configuration is logically valid.
+func (c *Config) Validate() error {
+	// Port validation
+	if c.Port == "" {
+		return fmt.Errorf("PORT cannot be empty")
 	}
-	return v
+
+	// Environment
+	if c.Env != "development" && c.Env != "production" {
+		return fmt.Errorf("ENV must be 'development' or 'production', got %q", c.Env)
+	}
+
+	// In production, PocketBase admin UI should not be enabled unless explicitly allowed
+	if c.Env == "production" && c.EnablePBAdminUI && !c.AllowPBAdminUIInProduction {
+		return fmt.Errorf("PocketBase admin UI cannot be enabled in production unless ALLOW_PB_ADMIN_UI_IN_PRODUCTION=true")
+	}
+
+	// In production, tracking token secret must be explicitly set (not DATABASE_URL)
+	if c.Env == "production" && (c.TrackingTokenSecret == "" || c.TrackingTokenSecret == c.DatabaseURL) {
+		return fmt.Errorf("TRACKING_TOKEN_SECRET must be explicitly set in production (cannot use DATABASE_URL as fallback)")
+	}
+
+	// WhatsApp: all-or-nothing (if any is set, all must be set)
+	whatsappSet := c.WhatsAppPhoneID != "" || c.WhatsAppToken != "" || c.WhatsAppNumber != ""
+	if whatsappSet {
+		if c.WhatsAppPhoneID == "" || c.WhatsAppToken == "" || c.WhatsAppNumber == "" {
+			return fmt.Errorf("WhatsApp configuration is incomplete: all of WHATSAPP_PHONE_ID, WHATSAPP_TOKEN, and WHATSAPP_NUMBER must be set together")
+		}
+	}
+
+	// TTL values must be positive
+	if c.AuthCookieTTLHours <= 0 {
+		return fmt.Errorf("AUTH_COOKIE_TTL_HOURS must be positive, got %d", c.AuthCookieTTLHours)
+	}
+	if c.AuthTokenTTLHours <= 0 {
+		return fmt.Errorf("AUTH_TOKEN_TTL_HOURS must be positive, got %d", c.AuthTokenTTLHours)
+	}
+	if c.InactivityLogoutSeconds <= 0 {
+		return fmt.Errorf("INACTIVITY_LOGOUT_SECONDS must be positive, got %d", c.InactivityLogoutSeconds)
+	}
+
+	// Rate limiting values must be positive
+	if c.OrdersPerHour <= 0 {
+		return fmt.Errorf("ORDERS_PER_HOUR must be positive, got %d", c.OrdersPerHour)
+	}
+	if c.OrdersPerDay <= 0 {
+		return fmt.Errorf("ORDERS_PER_DAY must be positive, got %d", c.OrdersPerDay)
+	}
+	if c.LoginAttemptsPerMinute <= 0 {
+		return fmt.Errorf("LOGIN_ATTEMPTS_PER_MINUTE must be positive, got %d", c.LoginAttemptsPerMinute)
+	}
+
+	// Lockout configuration
+	if c.LoginLockoutMaxFailures <= 0 {
+		return fmt.Errorf("LOGIN_LOCKOUT_MAX_FAILURES must be positive, got %d", c.LoginLockoutMaxFailures)
+	}
+	if c.LoginLockoutWindowMinutes <= 0 {
+		return fmt.Errorf("LOGIN_LOCKOUT_WINDOW_MINUTES must be positive, got %d", c.LoginLockoutWindowMinutes)
+	}
+	if c.LoginLockoutDurationMinutes <= 0 {
+		return fmt.Errorf("LOGIN_LOCKOUT_DURATION_MINUTES must be positive, got %d", c.LoginLockoutDurationMinutes)
+	}
+
+	// Image upload size
+	if c.AdminImageUploadMaxMB <= 0 {
+		return fmt.Errorf("ADMIN_IMAGE_UPLOAD_MAX_MB must be positive, got %d", c.AdminImageUploadMaxMB)
+	}
+
+	// Tracking configuration
+	if c.TrackingTokenTTLHours <= 0 {
+		return fmt.Errorf("TRACKING_TOKEN_TTL_HOURS must be positive, got %d", c.TrackingTokenTTLHours)
+	}
+	if c.TrackingRequestsPerHour <= 0 {
+		return fmt.Errorf("TRACKING_REQUESTS_PER_HOUR must be positive, got %d", c.TrackingRequestsPerHour)
+	}
+
+	return nil
 }
 
-func getR2Endpoint() string {
-	if endpoint := strings.TrimSpace(os.Getenv("R2_ENDPOINT")); endpoint != "" {
-		return endpoint
-	}
-
-	accountID := strings.TrimSpace(os.Getenv("R2_ACCOUNT_ID"))
-	if accountID == "" {
-		log.Fatalf("Required environment variable R2_ENDPOINT or R2_ACCOUNT_ID is not set")
-	}
-
-	return "https://" + accountID + ".r2.cloudflarestorage.com"
-}
-
+// PublicObjectURL constructs the full public URL for an R2 object.
 func (c *Config) PublicObjectURL(objectPath string) string {
 	baseURL := strings.TrimRight(strings.TrimSpace(c.R2PublicBaseURL), "/")
 	cleanPath := strings.TrimLeft(strings.TrimSpace(objectPath), "/")
@@ -192,28 +254,4 @@ func (c *Config) PublicObjectURL(objectPath string) string {
 		return baseURL
 	}
 	return baseURL + "/" + cleanPath
-}
-
-func getEnvInt(key string, fallback int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return fallback
-	}
-	return n
-}
-
-func getEnvBool(key string, fallback bool) bool {
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback
-	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return fallback
-	}
-	return b
 }

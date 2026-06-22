@@ -1,5 +1,11 @@
 [
   {
+    "name": "Leche",
+    "display_order": 0,
+    "is_seasonal": false,
+    "is_active": true
+  },
+  {
     "name": "Vainilla",
     "display_order": 1,
     "is_seasonal": false,

@@ -24,10 +24,9 @@
 package handlers
 
 import (
-	"net"
+	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -42,15 +41,16 @@ import (
 // AuthHandler provides login, session inspection and logout endpoints.
 type AuthHandler struct {
 	pb          *auth.PBAuth
+	authService auth.Service
 	cfg         *config.Config
 	settingsSvc *services.AdminSettingService
 	defaults    services.TokenTTLConfig
-	lockout     *loginLockout
 }
 
-func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config, settingsSvc *services.AdminSettingService) *AuthHandler {
+func NewAuthHandler(pb *auth.PBAuth, authService auth.Service, cfg *config.Config, settingsSvc *services.AdminSettingService) *AuthHandler {
 	return &AuthHandler{
 		pb:          pb,
+		authService: authService,
 		cfg:         cfg,
 		settingsSvc: settingsSvc,
 		defaults: services.TokenTTLConfig{
@@ -58,11 +58,6 @@ func NewAuthHandler(pb *auth.PBAuth, cfg *config.Config, settingsSvc *services.A
 			AuthTokenTTLHours:     cfg.AuthTokenTTLHours,
 			TrackingTokenTTLHours: cfg.TrackingTokenTTLHours,
 		},
-		lockout: newLoginLockout(
-			cfg.LoginLockoutMaxFailures,
-			time.Duration(cfg.LoginLockoutWindowMinutes)*time.Minute,
-			time.Duration(cfg.LoginLockoutDurationMinutes)*time.Minute,
-		),
 	}
 }
 
@@ -90,17 +85,23 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	identifier := normalizeLockoutIdentifier(body.Email)
-	ip := authClientIP(r)
-	if h.lockout.IsLocked(identifier) {
+	ip := auth.ClientIP(r)
+	if locked, retryAfter, err := h.authService.IsLoginLocked(r.Context(), identifier); err == nil && locked {
+		if retryAfter > 0 {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+		}
 		log.Warn().Str("ip", ip).Str("identifier", identifier).Msg("Login blocked by lockout")
-		response.Error(w, http.StatusTooManyRequests, "Too many failed attempts, try again later")
+		response.JSON(w, http.StatusTooManyRequests, map[string]any{
+			"error":      "Too many failed attempts, try again later",
+			"retryAfter": retryAfter,
+		})
 		return
 	}
 
 	ttlConfig := h.resolveTokenTTLConfig(r)
 	token, record, err := h.pb.Login(body.Email, body.Password, time.Duration(ttlConfig.AuthTokenTTLHours)*time.Hour)
 	if err != nil {
-		h.lockout.RecordFailure(identifier)
+		_ = h.authService.RecordLoginLockoutFailure(r.Context(), identifier)
 		log.Warn().Str("ip", ip).Str("identifier", identifier).Msg("Login failed: invalid credentials")
 		response.Error(w, http.StatusUnauthorized, "Invalid email or password")
 		return
@@ -108,13 +109,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Check if the account has been disabled.
 	if auth.IsDisabled(record) {
-		h.lockout.RecordFailure(identifier)
 		log.Warn().Str("ip", ip).Str("identifier", identifier).Msg("Login failed: account disabled")
 		response.Error(w, http.StatusForbidden, "Account has been deactivated")
 		return
 	}
 
-	h.lockout.Reset(identifier)
+	_ = h.authService.ResetLoginLockout(r.Context(), identifier)
 
 	log.Info().Str("email", body.Email).Str("role", auth.RoleFromRecord(record)).Msg("Login successful")
 
@@ -135,13 +135,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"token": token,
 		"employee": map[string]any{
-			"id":    auth.RecordID(record),
-			"email": record.Email(),
-			"name":  record.GetString("name"),
-			"phone": record.GetString("phone"),
-			"role":  auth.RoleFromRecord(record),
+			"id":     auth.RecordID(record),
+			"email":  record.Email(),
+			"name":   record.GetString("name"),
+			"phone":  record.GetString("phone"),
+			"role":   auth.RoleFromRecord(record),
+			"active": !auth.IsDisabled(record),
 		},
 	})
 }
@@ -259,7 +259,7 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.lockout.Reset(email)
+	_ = h.authService.ResetLoginLockout(r.Context(), email)
 	response.JSON(w, http.StatusOK, map[string]any{
 		"message":     "Login lockout reset successfully",
 		"scope":       "employee",
@@ -268,142 +268,8 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-type loginLockout struct {
-	mu                   sync.Mutex
-	failuresByIdentifier map[string][]time.Time
-	lockedUntil          map[string]time.Time
-	maxFailures          int
-	window               time.Duration
-	lockoutFor           time.Duration
-}
-
-func newLoginLockout(maxFailures int, window, lockoutFor time.Duration) *loginLockout {
-	if maxFailures <= 0 {
-		maxFailures = 5
-	}
-	if window <= 0 {
-		window = 15 * time.Minute
-	}
-	if lockoutFor <= 0 {
-		lockoutFor = 15 * time.Minute
-	}
-
-	return &loginLockout{
-		failuresByIdentifier: make(map[string][]time.Time),
-		lockedUntil:          make(map[string]time.Time),
-		maxFailures:          maxFailures,
-		window:               window,
-		lockoutFor:           lockoutFor,
-	}
-}
-
-func (l *loginLockout) IsLocked(identifier string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	identifier = normalizeLockoutIdentifier(identifier)
-	if identifier == "" {
-		return false
-	}
-
-	now := time.Now()
-	until, ok := l.lockedUntil[identifier]
-	if !ok {
-		return false
-	}
-	if until.After(now) {
-		return true
-	}
-	delete(l.lockedUntil, identifier)
-	return false
-}
-
-func (l *loginLockout) RecordFailure(identifier string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	identifier = normalizeLockoutIdentifier(identifier)
-	if identifier == "" {
-		return
-	}
-
-	now := time.Now()
-	cutoff := now.Add(-l.window)
-
-	current := l.failuresByIdentifier[identifier]
-	recent := make([]time.Time, 0, len(current)+1)
-	for _, t := range current {
-		if t.After(cutoff) {
-			recent = append(recent, t)
-		}
-	}
-	recent = append(recent, now)
-	l.failuresByIdentifier[identifier] = recent
-
-	if len(recent) >= l.maxFailures {
-		l.lockedUntil[identifier] = now.Add(l.lockoutFor)
-		l.failuresByIdentifier[identifier] = nil
-	}
-}
-
-func (l *loginLockout) Reset(identifier string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	identifier = normalizeLockoutIdentifier(identifier)
-	if identifier == "" {
-		return
-	}
-
-	delete(l.failuresByIdentifier, identifier)
-	delete(l.lockedUntil, identifier)
-}
-
-func (l *loginLockout) ResetAll() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	keys := make(map[string]struct{}, len(l.failuresByIdentifier)+len(l.lockedUntil))
-	for identifier := range l.failuresByIdentifier {
-		keys[identifier] = struct{}{}
-	}
-	for identifier := range l.lockedUntil {
-		keys[identifier] = struct{}{}
-	}
-
-	cleared := len(keys)
-	l.failuresByIdentifier = make(map[string][]time.Time)
-	l.lockedUntil = make(map[string]time.Time)
-	return cleared
-}
-
 func normalizeLockoutIdentifier(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
-}
-
-func authClientIP(r *http.Request) string {
-	if cfIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cfIP != "" {
-		return cfIP
-	}
-
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			if ip := strings.TrimSpace(parts[0]); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-		return realIP
-	}
-
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil && host != "" {
-		return host
-	}
-	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func extractAuthToken(r *http.Request) string {

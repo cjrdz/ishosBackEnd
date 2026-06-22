@@ -10,6 +10,8 @@ import (
 	"github.com/cjrdz/ishosBackEnd/ent"
 	entCustomer "github.com/cjrdz/ishosBackEnd/ent/customer"
 	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
 type CustomerRepository struct {
@@ -20,7 +22,7 @@ func NewCustomerRepository(db *ent.Client) *CustomerRepository {
 	return &CustomerRepository{db: db}
 }
 
-func (r *CustomerRepository) List(ctx context.Context, status, search string) ([]*ent.Customer, error) {
+func (r *CustomerRepository) List(ctx context.Context, status, search string) ([]dto.Customer, error) {
 	q := r.db.Customer.Query()
 
 	if status != "" {
@@ -40,10 +42,14 @@ func (r *CustomerRepository) List(ctx context.Context, status, search string) ([
 		}
 	}
 
-	return q.Order(ent.Desc(entCustomer.FieldCreatedAt)).All(ctx)
+	rows, err := q.Order(ent.Desc(entCustomer.FieldCreatedAt)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toCustomerDTOs(rows), nil
 }
 
-func (r *CustomerRepository) ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]*ent.Customer, int, error) {
+func (r *CustomerRepository) ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error) {
 	q := r.db.Customer.Query()
 
 	if status != "" {
@@ -68,19 +74,26 @@ func (r *CustomerRepository) ListPaginated(ctx context.Context, status, search s
 		return nil, 0, err
 	}
 
-	customers, err := q.Order(ent.Desc(entCustomer.FieldCreatedAt)).Offset(offset).Limit(limit).All(ctx)
+	rows, err := q.Order(ent.Desc(entCustomer.FieldCreatedAt)).Offset(offset).Limit(limit).All(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	return customers, total, nil
+	return toCustomerDTOs(rows), total, nil
 }
 
-func (r *CustomerRepository) FindByID(ctx context.Context, id uuid.UUID) (*ent.Customer, error) {
-	return r.db.Customer.Get(ctx, id)
+func (r *CustomerRepository) FindByID(ctx context.Context, id uuid.UUID) (dto.Customer, error) {
+	row, err := r.db.Customer.Get(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return dto.Customer{}, &apperror.NotFoundError{Resource: "customer", Cause: err}
+		}
+		return dto.Customer{}, err
+	}
+	return toCustomerDTO(row), nil
 }
 
-func (r *CustomerRepository) Create(ctx context.Context, input CreateCustomerInput) (*ent.Customer, error) {
+func (r *CustomerRepository) Create(ctx context.Context, input CreateCustomerInput) (dto.Customer, error) {
 	create := r.db.Customer.Create().
 		SetName(input.Name).
 		SetUserType(entCustomer.UserType(input.UserType)).
@@ -91,10 +104,14 @@ func (r *CustomerRepository) Create(ctx context.Context, input CreateCustomerInp
 		create = create.SetEmail(*input.Email)
 	}
 
-	return create.Save(ctx)
+	row, err := create.Save(ctx)
+	if err != nil {
+		return dto.Customer{}, err
+	}
+	return toCustomerDTO(row), nil
 }
 
-func (r *CustomerRepository) Update(ctx context.Context, id uuid.UUID, input UpdateCustomerInput) (*ent.Customer, error) {
+func (r *CustomerRepository) Update(ctx context.Context, id uuid.UUID, input UpdateCustomerInput) (dto.Customer, error) {
 	update := r.db.Customer.UpdateOneID(id)
 
 	if input.Name != nil {
@@ -117,24 +134,131 @@ func (r *CustomerRepository) Update(ctx context.Context, id uuid.UUID, input Upd
 		update = update.SetStatus(entCustomer.Status(*input.Status))
 	}
 
-	return update.Save(ctx)
+	row, err := update.Save(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return dto.Customer{}, &apperror.NotFoundError{Resource: "customer", Cause: err}
+		}
+		return dto.Customer{}, err
+	}
+	return toCustomerDTO(row), nil
 }
 
 func (r *CustomerRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.db.Customer.DeleteOneID(id).Exec(ctx)
+	err := r.db.Customer.DeleteOneID(id).Exec(ctx)
+	if err != nil && ent.IsNotFound(err) {
+		return &apperror.NotFoundError{Resource: "customer", Cause: err}
+	}
+	return err
 }
 
-func (r *CustomerRepository) ListOrdersByPhone(ctx context.Context, phone string, limit int) ([]*ent.Order, error) {
-	// Orders are looked up by phone because there is no FK from orders to customers.
+func (r *CustomerRepository) ListOrdersByPhone(ctx context.Context, phone string, limit int) ([]dto.Order, error) {
 	q := r.db.Order.Query().
 		Where(entOrder.CustomerPhoneEQ(phone)).
-		WithItems().
+		WithItems(func(oiq *ent.OrderItemQuery) {
+			oiq.WithProduct()
+		}).
 		Order(ent.Desc(entOrder.FieldCreatedAt))
 	if limit > 0 {
 		q = q.Limit(limit)
 	}
 
-	return q.All(ctx)
+	rows, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return toOrderDTOs(rows), nil
+}
+
+func toCustomerDTOs(rows []*ent.Customer) []dto.Customer {
+	result := make([]dto.Customer, len(rows))
+	for i, row := range rows {
+		result[i] = toCustomerDTO(row)
+	}
+	return result
+}
+
+func toCustomerDTO(c *ent.Customer) dto.Customer {
+	if c == nil {
+		return dto.Customer{}
+	}
+	return dto.Customer{
+		ID:        c.ID,
+		Name:      c.Name,
+		UserType:  string(c.UserType),
+		Phone:     c.Phone,
+		Email:     c.Email,
+		Status:    string(c.Status),
+		CreatedAt: c.CreatedAt,
+		UpdatedAt: c.UpdatedAt,
+	}
+}
+
+func toOrderDTOs(rows []*ent.Order) []dto.Order {
+	result := make([]dto.Order, len(rows))
+	for i, row := range rows {
+		result[i] = toOrderDTO(row)
+	}
+	return result
+}
+
+func toOrderDTO(o *ent.Order) dto.Order {
+	if o == nil {
+		return dto.Order{}
+	}
+	order := dto.Order{
+		ID:            o.ID,
+		OrderNumber:   o.OrderNumber,
+		CustomerName:  o.CustomerName,
+		CustomerPhone: o.CustomerPhone,
+		CustomerEmail: o.CustomerEmail,
+		CustomerIP:    o.CustomerIP,
+		TotalAmount:   o.TotalAmount,
+		Status:        string(o.Status),
+		PaymentMethod: string(o.PaymentMethod),
+		PaymentStatus: string(o.PaymentStatus),
+		OrderType:     string(o.OrderType),
+		TableNumber:   o.TableNumber,
+		Notes:         o.Notes,
+		RejectionReason: o.RejectionReason,
+		ReviewedByUserID: o.ReviewedByUserID,
+		ReviewedAt:    o.ReviewedAt,
+		CreatedByUserID: o.CreatedByUserID,
+		IsArchived:    o.IsArchived,
+		CreatedAt:     o.CreatedAt,
+		UpdatedAt:     o.UpdatedAt,
+	}
+	if o.Edges.Items != nil {
+		order.Items = make([]dto.OrderItem, len(o.Edges.Items))
+		for i, item := range o.Edges.Items {
+			order.Items[i] = toOrderItemDTO(item)
+		}
+	}
+	return order
+}
+
+func toOrderItemDTO(item *ent.OrderItem) dto.OrderItem {
+	if item == nil {
+		return dto.OrderItem{}
+	}
+	var orderID, productID uuid.UUID
+	if item.Edges.Order != nil {
+		orderID = item.Edges.Order.ID
+	}
+	if item.Edges.Product != nil {
+		productID = item.Edges.Product.ID
+	}
+	return dto.OrderItem{
+		ID:             item.ID,
+		OrderID:        orderID,
+		ProductID:      productID,
+		ProductName:    item.ProductName,
+		Quantity:       item.Quantity,
+		UnitPrice:      item.UnitPrice,
+		Subtotal:       item.Subtotal,
+		Customizations: item.Customizations,
+	}
 }
 
 type CreateCustomerInput struct {

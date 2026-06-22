@@ -13,20 +13,21 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent/stockmovement"
 	"github.com/google/uuid"
 )
 
 // FlavorQuery is the builder for querying Flavor entities.
 type FlavorQuery struct {
 	config
-	ctx          *QueryContext
-	order        []flavor.OrderOption
-	inters       []Interceptor
-	predicates   []predicate.Flavor
-	withProducts *ProductQuery
-	withFKs      bool
+	ctx                      *QueryContext
+	order                    []flavor.OrderOption
+	inters                   []Interceptor
+	predicates               []predicate.Flavor
+	withInventoryItem        *InventoryItemQuery
+	withFlavorStockMovements *StockMovementQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -63,9 +64,9 @@ func (_q *FlavorQuery) Order(o ...flavor.OrderOption) *FlavorQuery {
 	return _q
 }
 
-// QueryProducts chains the current query on the "products" edge.
-func (_q *FlavorQuery) QueryProducts() *ProductQuery {
-	query := (&ProductClient{config: _q.config}).Query()
+// QueryInventoryItem chains the current query on the "inventory_item" edge.
+func (_q *FlavorQuery) QueryInventoryItem() *InventoryItemQuery {
+	query := (&InventoryItemClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -76,8 +77,30 @@ func (_q *FlavorQuery) QueryProducts() *ProductQuery {
 		}
 		step := sqlgraph.NewStep(
 			sqlgraph.From(flavor.Table, flavor.FieldID, selector),
-			sqlgraph.To(product.Table, product.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, flavor.ProductsTable, flavor.ProductsColumn),
+			sqlgraph.To(inventoryitem.Table, inventoryitem.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, flavor.InventoryItemTable, flavor.InventoryItemColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryFlavorStockMovements chains the current query on the "flavor_stock_movements" edge.
+func (_q *FlavorQuery) QueryFlavorStockMovements() *StockMovementQuery {
+	query := (&StockMovementClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(flavor.Table, flavor.FieldID, selector),
+			sqlgraph.To(stockmovement.Table, stockmovement.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, flavor.FlavorStockMovementsTable, flavor.FlavorStockMovementsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -272,26 +295,38 @@ func (_q *FlavorQuery) Clone() *FlavorQuery {
 		return nil
 	}
 	return &FlavorQuery{
-		config:       _q.config,
-		ctx:          _q.ctx.Clone(),
-		order:        append([]flavor.OrderOption{}, _q.order...),
-		inters:       append([]Interceptor{}, _q.inters...),
-		predicates:   append([]predicate.Flavor{}, _q.predicates...),
-		withProducts: _q.withProducts.Clone(),
+		config:                   _q.config,
+		ctx:                      _q.ctx.Clone(),
+		order:                    append([]flavor.OrderOption{}, _q.order...),
+		inters:                   append([]Interceptor{}, _q.inters...),
+		predicates:               append([]predicate.Flavor{}, _q.predicates...),
+		withInventoryItem:        _q.withInventoryItem.Clone(),
+		withFlavorStockMovements: _q.withFlavorStockMovements.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
 }
 
-// WithProducts tells the query-builder to eager-load the nodes that are connected to
-// the "products" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *FlavorQuery) WithProducts(opts ...func(*ProductQuery)) *FlavorQuery {
-	query := (&ProductClient{config: _q.config}).Query()
+// WithInventoryItem tells the query-builder to eager-load the nodes that are connected to
+// the "inventory_item" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *FlavorQuery) WithInventoryItem(opts ...func(*InventoryItemQuery)) *FlavorQuery {
+	query := (&InventoryItemClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
-	_q.withProducts = query
+	_q.withInventoryItem = query
+	return _q
+}
+
+// WithFlavorStockMovements tells the query-builder to eager-load the nodes that are connected to
+// the "flavor_stock_movements" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *FlavorQuery) WithFlavorStockMovements(opts ...func(*StockMovementQuery)) *FlavorQuery {
+	query := (&StockMovementClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withFlavorStockMovements = query
 	return _q
 }
 
@@ -372,15 +407,12 @@ func (_q *FlavorQuery) prepareQuery(ctx context.Context) error {
 func (_q *FlavorQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Flavor, error) {
 	var (
 		nodes       = []*Flavor{}
-		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
-			_q.withProducts != nil,
+		loadedTypes = [2]bool{
+			_q.withInventoryItem != nil,
+			_q.withFlavorStockMovements != nil,
 		}
 	)
-	if withFKs {
-		_spec.Node.Columns = append(_spec.Node.Columns, flavor.ForeignKeys...)
-	}
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*Flavor).scanValues(nil, columns)
 	}
@@ -399,17 +431,26 @@ func (_q *FlavorQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Flavo
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
-	if query := _q.withProducts; query != nil {
-		if err := _q.loadProducts(ctx, query, nodes,
-			func(n *Flavor) { n.Edges.Products = []*Product{} },
-			func(n *Flavor, e *Product) { n.Edges.Products = append(n.Edges.Products, e) }); err != nil {
+	if query := _q.withInventoryItem; query != nil {
+		if err := _q.loadInventoryItem(ctx, query, nodes,
+			func(n *Flavor) { n.Edges.InventoryItem = []*InventoryItem{} },
+			func(n *Flavor, e *InventoryItem) { n.Edges.InventoryItem = append(n.Edges.InventoryItem, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withFlavorStockMovements; query != nil {
+		if err := _q.loadFlavorStockMovements(ctx, query, nodes,
+			func(n *Flavor) { n.Edges.FlavorStockMovements = []*StockMovement{} },
+			func(n *Flavor, e *StockMovement) {
+				n.Edges.FlavorStockMovements = append(n.Edges.FlavorStockMovements, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *FlavorQuery) loadProducts(ctx context.Context, query *ProductQuery, nodes []*Flavor, init func(*Flavor), assign func(*Flavor, *Product)) error {
+func (_q *FlavorQuery) loadInventoryItem(ctx context.Context, query *InventoryItemQuery, nodes []*Flavor, init func(*Flavor), assign func(*Flavor, *InventoryItem)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[uuid.UUID]*Flavor)
 	for i := range nodes {
@@ -419,22 +460,57 @@ func (_q *FlavorQuery) loadProducts(ctx context.Context, query *ProductQuery, no
 			init(nodes[i])
 		}
 	}
-	query.withFKs = true
-	query.Where(predicate.Product(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(flavor.ProductsColumn), fks...))
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(inventoryitem.FieldFlavorID)
+	}
+	query.Where(predicate.InventoryItem(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(flavor.InventoryItemColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, n := range neighbors {
-		fk := n.flavor_products
+		fk := n.FlavorID
 		if fk == nil {
-			return fmt.Errorf(`foreign-key "flavor_products" is nil for node %v`, n.ID)
+			return fmt.Errorf(`foreign-key "flavor_id" is nil for node %v`, n.ID)
 		}
 		node, ok := nodeids[*fk]
 		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "flavor_products" returned %v for node %v`, *fk, n.ID)
+			return fmt.Errorf(`unexpected referenced foreign-key "flavor_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *FlavorQuery) loadFlavorStockMovements(ctx context.Context, query *StockMovementQuery, nodes []*Flavor, init func(*Flavor), assign func(*Flavor, *StockMovement)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Flavor)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(stockmovement.FieldFlavorID)
+	}
+	query.Where(predicate.StockMovement(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(flavor.FlavorStockMovementsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.FlavorID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "flavor_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "flavor_id" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}
@@ -566,7 +642,7 @@ func (_g *FlavorGroupBy) sqlScan(ctx context.Context, root *FlavorQuery, v any) 
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -608,6 +684,6 @@ func (_s *FlavorSelect) sqlScan(ctx context.Context, root *FlavorQuery, v any) e
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

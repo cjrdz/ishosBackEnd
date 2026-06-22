@@ -12,9 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
-	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
@@ -24,15 +23,14 @@ import (
 // ProductQuery is the builder for querying Product entities.
 type ProductQuery struct {
 	config
-	ctx            *QueryContext
-	order          []product.OrderOption
-	inters         []Interceptor
-	predicates     []predicate.Product
-	withCategory   *CategoryQuery
-	withOrderItems *OrderItemQuery
-	withFlavors    *FlavorQuery
-	withAddons     *AddonQuery
-	withFKs        bool
+	ctx               *QueryContext
+	order             []product.OrderOption
+	inters            []Interceptor
+	predicates        []predicate.Product
+	withCategory      *CategoryQuery
+	withOrderItems    *OrderItemQuery
+	withInventoryItem *InventoryItemQuery
+	withFKs           bool
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -113,9 +111,9 @@ func (_q *ProductQuery) QueryOrderItems() *OrderItemQuery {
 	return query
 }
 
-// QueryFlavors chains the current query on the "flavors" edge.
-func (_q *ProductQuery) QueryFlavors() *FlavorQuery {
-	query := (&FlavorClient{config: _q.config}).Query()
+// QueryInventoryItem chains the current query on the "inventory_item" edge.
+func (_q *ProductQuery) QueryInventoryItem() *InventoryItemQuery {
+	query := (&InventoryItemClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -126,30 +124,8 @@ func (_q *ProductQuery) QueryFlavors() *FlavorQuery {
 		}
 		step := sqlgraph.NewStep(
 			sqlgraph.From(product.Table, product.FieldID, selector),
-			sqlgraph.To(flavor.Table, flavor.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, product.FlavorsTable, product.FlavorsColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryAddons chains the current query on the "addons" edge.
-func (_q *ProductQuery) QueryAddons() *AddonQuery {
-	query := (&AddonClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(product.Table, product.FieldID, selector),
-			sqlgraph.To(addon.Table, addon.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, product.AddonsTable, product.AddonsColumn),
+			sqlgraph.To(inventoryitem.Table, inventoryitem.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, product.InventoryItemTable, product.InventoryItemColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -344,15 +320,14 @@ func (_q *ProductQuery) Clone() *ProductQuery {
 		return nil
 	}
 	return &ProductQuery{
-		config:         _q.config,
-		ctx:            _q.ctx.Clone(),
-		order:          append([]product.OrderOption{}, _q.order...),
-		inters:         append([]Interceptor{}, _q.inters...),
-		predicates:     append([]predicate.Product{}, _q.predicates...),
-		withCategory:   _q.withCategory.Clone(),
-		withOrderItems: _q.withOrderItems.Clone(),
-		withFlavors:    _q.withFlavors.Clone(),
-		withAddons:     _q.withAddons.Clone(),
+		config:            _q.config,
+		ctx:               _q.ctx.Clone(),
+		order:             append([]product.OrderOption{}, _q.order...),
+		inters:            append([]Interceptor{}, _q.inters...),
+		predicates:        append([]predicate.Product{}, _q.predicates...),
+		withCategory:      _q.withCategory.Clone(),
+		withOrderItems:    _q.withOrderItems.Clone(),
+		withInventoryItem: _q.withInventoryItem.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -381,25 +356,14 @@ func (_q *ProductQuery) WithOrderItems(opts ...func(*OrderItemQuery)) *ProductQu
 	return _q
 }
 
-// WithFlavors tells the query-builder to eager-load the nodes that are connected to
-// the "flavors" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ProductQuery) WithFlavors(opts ...func(*FlavorQuery)) *ProductQuery {
-	query := (&FlavorClient{config: _q.config}).Query()
+// WithInventoryItem tells the query-builder to eager-load the nodes that are connected to
+// the "inventory_item" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ProductQuery) WithInventoryItem(opts ...func(*InventoryItemQuery)) *ProductQuery {
+	query := (&InventoryItemClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
-	_q.withFlavors = query
-	return _q
-}
-
-// WithAddons tells the query-builder to eager-load the nodes that are connected to
-// the "addons" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *ProductQuery) WithAddons(opts ...func(*AddonQuery)) *ProductQuery {
-	query := (&AddonClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withAddons = query
+	_q.withInventoryItem = query
 	return _q
 }
 
@@ -482,11 +446,10 @@ func (_q *ProductQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Prod
 		nodes       = []*Product{}
 		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [3]bool{
 			_q.withCategory != nil,
 			_q.withOrderItems != nil,
-			_q.withFlavors != nil,
-			_q.withAddons != nil,
+			_q.withInventoryItem != nil,
 		}
 	)
 	if _q.withCategory != nil {
@@ -526,17 +489,10 @@ func (_q *ProductQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Prod
 			return nil, err
 		}
 	}
-	if query := _q.withFlavors; query != nil {
-		if err := _q.loadFlavors(ctx, query, nodes,
-			func(n *Product) { n.Edges.Flavors = []*Flavor{} },
-			func(n *Product, e *Flavor) { n.Edges.Flavors = append(n.Edges.Flavors, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withAddons; query != nil {
-		if err := _q.loadAddons(ctx, query, nodes,
-			func(n *Product) { n.Edges.Addons = []*Addon{} },
-			func(n *Product, e *Addon) { n.Edges.Addons = append(n.Edges.Addons, e) }); err != nil {
+	if query := _q.withInventoryItem; query != nil {
+		if err := _q.loadInventoryItem(ctx, query, nodes,
+			func(n *Product) { n.Edges.InventoryItem = []*InventoryItem{} },
+			func(n *Product, e *InventoryItem) { n.Edges.InventoryItem = append(n.Edges.InventoryItem, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -606,7 +562,7 @@ func (_q *ProductQuery) loadOrderItems(ctx context.Context, query *OrderItemQuer
 	}
 	return nil
 }
-func (_q *ProductQuery) loadFlavors(ctx context.Context, query *FlavorQuery, nodes []*Product, init func(*Product), assign func(*Product, *Flavor)) error {
+func (_q *ProductQuery) loadInventoryItem(ctx context.Context, query *InventoryItemQuery, nodes []*Product, init func(*Product), assign func(*Product, *InventoryItem)) error {
 	fks := make([]driver.Value, 0, len(nodes))
 	nodeids := make(map[uuid.UUID]*Product)
 	for i := range nodes {
@@ -616,53 +572,24 @@ func (_q *ProductQuery) loadFlavors(ctx context.Context, query *FlavorQuery, nod
 			init(nodes[i])
 		}
 	}
-	query.withFKs = true
-	query.Where(predicate.Flavor(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(product.FlavorsColumn), fks...))
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(inventoryitem.FieldProductID)
+	}
+	query.Where(predicate.InventoryItem(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(product.InventoryItemColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err
 	}
 	for _, n := range neighbors {
-		fk := n.product_flavors
+		fk := n.ProductID
 		if fk == nil {
-			return fmt.Errorf(`foreign-key "product_flavors" is nil for node %v`, n.ID)
+			return fmt.Errorf(`foreign-key "product_id" is nil for node %v`, n.ID)
 		}
 		node, ok := nodeids[*fk]
 		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "product_flavors" returned %v for node %v`, *fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *ProductQuery) loadAddons(ctx context.Context, query *AddonQuery, nodes []*Product, init func(*Product), assign func(*Product, *Addon)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[uuid.UUID]*Product)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	query.withFKs = true
-	query.Where(predicate.Addon(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(product.AddonsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.product_addons
-		if fk == nil {
-			return fmt.Errorf(`foreign-key "product_addons" is nil for node %v`, n.ID)
-		}
-		node, ok := nodeids[*fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "product_addons" returned %v for node %v`, *fk, n.ID)
+			return fmt.Errorf(`unexpected referenced foreign-key "product_id" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}
@@ -794,7 +721,7 @@ func (_g *ProductGroupBy) sqlScan(ctx context.Context, root *ProductQuery, v any
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -836,6 +763,6 @@ func (_s *ProductSelect) sqlScan(ctx context.Context, root *ProductQuery, v any)
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

@@ -330,6 +330,18 @@ func (_u *OrderUpdate) SetNillableIsArchived(v *bool) *OrderUpdate {
 	return _u
 }
 
+// SetStatusTimestamps sets the "status_timestamps" field.
+func (_u *OrderUpdate) SetStatusTimestamps(v map[string]time.Time) *OrderUpdate {
+	_u.mutation.SetStatusTimestamps(v)
+	return _u
+}
+
+// ClearStatusTimestamps clears the value of the "status_timestamps" field.
+func (_u *OrderUpdate) ClearStatusTimestamps() *OrderUpdate {
+	_u.mutation.ClearStatusTimestamps()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *OrderUpdate) SetUpdatedAt(v time.Time) *OrderUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -545,6 +557,12 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.IsArchived(); ok {
 		_spec.SetField(order.FieldIsArchived, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StatusTimestamps(); ok {
+		_spec.SetField(order.FieldStatusTimestamps, field.TypeJSON, value)
+	}
+	if _u.mutation.StatusTimestampsCleared() {
+		_spec.ClearField(order.FieldStatusTimestamps, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(order.FieldUpdatedAt, field.TypeTime, value)
@@ -914,6 +932,18 @@ func (_u *OrderUpdateOne) SetNillableIsArchived(v *bool) *OrderUpdateOne {
 	return _u
 }
 
+// SetStatusTimestamps sets the "status_timestamps" field.
+func (_u *OrderUpdateOne) SetStatusTimestamps(v map[string]time.Time) *OrderUpdateOne {
+	_u.mutation.SetStatusTimestamps(v)
+	return _u
+}
+
+// ClearStatusTimestamps clears the value of the "status_timestamps" field.
+func (_u *OrderUpdateOne) ClearStatusTimestamps() *OrderUpdateOne {
+	_u.mutation.ClearStatusTimestamps()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *OrderUpdateOne) SetUpdatedAt(v time.Time) *OrderUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -1159,6 +1189,12 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	}
 	if value, ok := _u.mutation.IsArchived(); ok {
 		_spec.SetField(order.FieldIsArchived, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.StatusTimestamps(); ok {
+		_spec.SetField(order.FieldStatusTimestamps, field.TypeJSON, value)
+	}
+	if _u.mutation.StatusTimestampsCleared() {
+		_spec.ClearField(order.FieldStatusTimestamps, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(order.FieldUpdatedAt, field.TypeTime, value)

@@ -4,14 +4,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
@@ -19,14 +20,11 @@ import (
 )
 
 type FlavorHandler struct {
-	flavorService *services.FlavorService
+	flavorService services.FlavorServiceInterface
 }
 
-func NewFlavorHandler(db *ent.Client) *FlavorHandler {
-	flavorRepo := repository.NewFlavorRepository(db)
-	return &FlavorHandler{
-		flavorService: services.NewFlavorService(flavorRepo),
-	}
+func NewFlavorHandler(svc services.FlavorServiceInterface) *FlavorHandler {
+	return &FlavorHandler{flavorService: svc}
 }
 
 type flavorResponse struct {
@@ -38,7 +36,7 @@ type flavorResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-func toFlavorResponse(f *ent.Flavor) flavorResponse {
+func toFlavorResponse(f dto.Flavor) flavorResponse {
 	return flavorResponse{
 		ID:           f.ID,
 		Name:         f.Name,
@@ -57,8 +55,7 @@ func (h *FlavorHandler) List(w http.ResponseWriter, r *http.Request) {
 	showAll := r.URL.Query().Get("all") == "true"
 	flavors, err := h.flavorService.List(r.Context(), !showAll)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to list flavors")
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch flavors")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
@@ -66,22 +63,22 @@ func (h *FlavorHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, f := range flavors {
 		result[i] = toFlavorResponse(f)
 	}
-	response.JSON(w, http.StatusOK, result)
+	response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
 }
 
 // Get returns a single flavor by ID.
 //
 // GET /api/v1/flavors/{id}
 func (h *FlavorHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
+		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	f, err := h.flavorService.GetByID(r.Context(), id)
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Flavor not found")
 			return
 		}
@@ -133,9 +130,9 @@ func (h *FlavorHandler) Create(w http.ResponseWriter, r *http.Request) {
 //
 // PATCH /api/v1/flavors/{id}
 func (h *FlavorHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
+		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -163,7 +160,7 @@ func (h *FlavorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsActive:     body.IsActive,
 	})
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Flavor not found")
 			return
 		}
@@ -179,14 +176,14 @@ func (h *FlavorHandler) Update(w http.ResponseWriter, r *http.Request) {
 //
 // DELETE /api/v1/flavors/{id}
 func (h *FlavorHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
+		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if err := h.flavorService.Delete(r.Context(), id); err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Flavor not found")
 			return
 		}

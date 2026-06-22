@@ -11,9 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
-	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
@@ -144,6 +143,55 @@ func (_u *ProductUpdate) SetNillableExcludeGlobalAddons(v *bool) *ProductUpdate 
 	return _u
 }
 
+// SetBallBased sets the "ball_based" field.
+func (_u *ProductUpdate) SetBallBased(v bool) *ProductUpdate {
+	_u.mutation.SetBallBased(v)
+	return _u
+}
+
+// SetNillableBallBased sets the "ball_based" field if the given value is not nil.
+func (_u *ProductUpdate) SetNillableBallBased(v *bool) *ProductUpdate {
+	if v != nil {
+		_u.SetBallBased(*v)
+	}
+	return _u
+}
+
+// SetBallQuantity sets the "ball_quantity" field.
+func (_u *ProductUpdate) SetBallQuantity(v int) *ProductUpdate {
+	_u.mutation.ResetBallQuantity()
+	_u.mutation.SetBallQuantity(v)
+	return _u
+}
+
+// SetNillableBallQuantity sets the "ball_quantity" field if the given value is not nil.
+func (_u *ProductUpdate) SetNillableBallQuantity(v *int) *ProductUpdate {
+	if v != nil {
+		_u.SetBallQuantity(*v)
+	}
+	return _u
+}
+
+// AddBallQuantity adds value to the "ball_quantity" field.
+func (_u *ProductUpdate) AddBallQuantity(v int) *ProductUpdate {
+	_u.mutation.AddBallQuantity(v)
+	return _u
+}
+
+// SetAllowsMixedFlavors sets the "allows_mixed_flavors" field.
+func (_u *ProductUpdate) SetAllowsMixedFlavors(v bool) *ProductUpdate {
+	_u.mutation.SetAllowsMixedFlavors(v)
+	return _u
+}
+
+// SetNillableAllowsMixedFlavors sets the "allows_mixed_flavors" field if the given value is not nil.
+func (_u *ProductUpdate) SetNillableAllowsMixedFlavors(v *bool) *ProductUpdate {
+	if v != nil {
+		_u.SetAllowsMixedFlavors(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ProductUpdate) SetUpdatedAt(v time.Time) *ProductUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -176,34 +224,19 @@ func (_u *ProductUpdate) AddOrderItems(v ...*OrderItem) *ProductUpdate {
 	return _u.AddOrderItemIDs(ids...)
 }
 
-// AddFlavorIDs adds the "flavors" edge to the Flavor entity by IDs.
-func (_u *ProductUpdate) AddFlavorIDs(ids ...uuid.UUID) *ProductUpdate {
-	_u.mutation.AddFlavorIDs(ids...)
+// AddInventoryItemIDs adds the "inventory_item" edge to the InventoryItem entity by IDs.
+func (_u *ProductUpdate) AddInventoryItemIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.AddInventoryItemIDs(ids...)
 	return _u
 }
 
-// AddFlavors adds the "flavors" edges to the Flavor entity.
-func (_u *ProductUpdate) AddFlavors(v ...*Flavor) *ProductUpdate {
+// AddInventoryItem adds the "inventory_item" edges to the InventoryItem entity.
+func (_u *ProductUpdate) AddInventoryItem(v ...*InventoryItem) *ProductUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.AddFlavorIDs(ids...)
-}
-
-// AddAddonIDs adds the "addons" edge to the Addon entity by IDs.
-func (_u *ProductUpdate) AddAddonIDs(ids ...uuid.UUID) *ProductUpdate {
-	_u.mutation.AddAddonIDs(ids...)
-	return _u
-}
-
-// AddAddons adds the "addons" edges to the Addon entity.
-func (_u *ProductUpdate) AddAddons(v ...*Addon) *ProductUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddAddonIDs(ids...)
+	return _u.AddInventoryItemIDs(ids...)
 }
 
 // Mutation returns the ProductMutation object of the builder.
@@ -238,46 +271,25 @@ func (_u *ProductUpdate) RemoveOrderItems(v ...*OrderItem) *ProductUpdate {
 	return _u.RemoveOrderItemIDs(ids...)
 }
 
-// ClearFlavors clears all "flavors" edges to the Flavor entity.
-func (_u *ProductUpdate) ClearFlavors() *ProductUpdate {
-	_u.mutation.ClearFlavors()
+// ClearInventoryItem clears all "inventory_item" edges to the InventoryItem entity.
+func (_u *ProductUpdate) ClearInventoryItem() *ProductUpdate {
+	_u.mutation.ClearInventoryItem()
 	return _u
 }
 
-// RemoveFlavorIDs removes the "flavors" edge to Flavor entities by IDs.
-func (_u *ProductUpdate) RemoveFlavorIDs(ids ...uuid.UUID) *ProductUpdate {
-	_u.mutation.RemoveFlavorIDs(ids...)
+// RemoveInventoryItemIDs removes the "inventory_item" edge to InventoryItem entities by IDs.
+func (_u *ProductUpdate) RemoveInventoryItemIDs(ids ...uuid.UUID) *ProductUpdate {
+	_u.mutation.RemoveInventoryItemIDs(ids...)
 	return _u
 }
 
-// RemoveFlavors removes "flavors" edges to Flavor entities.
-func (_u *ProductUpdate) RemoveFlavors(v ...*Flavor) *ProductUpdate {
+// RemoveInventoryItem removes "inventory_item" edges to InventoryItem entities.
+func (_u *ProductUpdate) RemoveInventoryItem(v ...*InventoryItem) *ProductUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.RemoveFlavorIDs(ids...)
-}
-
-// ClearAddons clears all "addons" edges to the Addon entity.
-func (_u *ProductUpdate) ClearAddons() *ProductUpdate {
-	_u.mutation.ClearAddons()
-	return _u
-}
-
-// RemoveAddonIDs removes the "addons" edge to Addon entities by IDs.
-func (_u *ProductUpdate) RemoveAddonIDs(ids ...uuid.UUID) *ProductUpdate {
-	_u.mutation.RemoveAddonIDs(ids...)
-	return _u
-}
-
-// RemoveAddons removes "addons" edges to Addon entities.
-func (_u *ProductUpdate) RemoveAddons(v ...*Addon) *ProductUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveAddonIDs(ids...)
+	return _u.RemoveInventoryItemIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -373,6 +385,18 @@ func (_u *ProductUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ExcludeGlobalAddons(); ok {
 		_spec.SetField(product.FieldExcludeGlobalAddons, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.BallBased(); ok {
+		_spec.SetField(product.FieldBallBased, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.BallQuantity(); ok {
+		_spec.SetField(product.FieldBallQuantity, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedBallQuantity(); ok {
+		_spec.AddField(product.FieldBallQuantity, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowsMixedFlavors(); ok {
+		_spec.SetField(product.FieldAllowsMixedFlavors, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -450,28 +474,28 @@ func (_u *ProductUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.FlavorsCleared() {
+	if _u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.RemovedFlavorsIDs(); len(nodes) > 0 && !_u.mutation.FlavorsCleared() {
+	if nodes := _u.mutation.RemovedInventoryItemIDs(); len(nodes) > 0 && !_u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -479,60 +503,15 @@ func (_u *ProductUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.FlavorsIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.InventoryItemIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.AddonsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedAddonsIDs(); len(nodes) > 0 && !_u.mutation.AddonsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.AddonsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -671,6 +650,55 @@ func (_u *ProductUpdateOne) SetNillableExcludeGlobalAddons(v *bool) *ProductUpda
 	return _u
 }
 
+// SetBallBased sets the "ball_based" field.
+func (_u *ProductUpdateOne) SetBallBased(v bool) *ProductUpdateOne {
+	_u.mutation.SetBallBased(v)
+	return _u
+}
+
+// SetNillableBallBased sets the "ball_based" field if the given value is not nil.
+func (_u *ProductUpdateOne) SetNillableBallBased(v *bool) *ProductUpdateOne {
+	if v != nil {
+		_u.SetBallBased(*v)
+	}
+	return _u
+}
+
+// SetBallQuantity sets the "ball_quantity" field.
+func (_u *ProductUpdateOne) SetBallQuantity(v int) *ProductUpdateOne {
+	_u.mutation.ResetBallQuantity()
+	_u.mutation.SetBallQuantity(v)
+	return _u
+}
+
+// SetNillableBallQuantity sets the "ball_quantity" field if the given value is not nil.
+func (_u *ProductUpdateOne) SetNillableBallQuantity(v *int) *ProductUpdateOne {
+	if v != nil {
+		_u.SetBallQuantity(*v)
+	}
+	return _u
+}
+
+// AddBallQuantity adds value to the "ball_quantity" field.
+func (_u *ProductUpdateOne) AddBallQuantity(v int) *ProductUpdateOne {
+	_u.mutation.AddBallQuantity(v)
+	return _u
+}
+
+// SetAllowsMixedFlavors sets the "allows_mixed_flavors" field.
+func (_u *ProductUpdateOne) SetAllowsMixedFlavors(v bool) *ProductUpdateOne {
+	_u.mutation.SetAllowsMixedFlavors(v)
+	return _u
+}
+
+// SetNillableAllowsMixedFlavors sets the "allows_mixed_flavors" field if the given value is not nil.
+func (_u *ProductUpdateOne) SetNillableAllowsMixedFlavors(v *bool) *ProductUpdateOne {
+	if v != nil {
+		_u.SetAllowsMixedFlavors(*v)
+	}
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *ProductUpdateOne) SetUpdatedAt(v time.Time) *ProductUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -703,34 +731,19 @@ func (_u *ProductUpdateOne) AddOrderItems(v ...*OrderItem) *ProductUpdateOne {
 	return _u.AddOrderItemIDs(ids...)
 }
 
-// AddFlavorIDs adds the "flavors" edge to the Flavor entity by IDs.
-func (_u *ProductUpdateOne) AddFlavorIDs(ids ...uuid.UUID) *ProductUpdateOne {
-	_u.mutation.AddFlavorIDs(ids...)
+// AddInventoryItemIDs adds the "inventory_item" edge to the InventoryItem entity by IDs.
+func (_u *ProductUpdateOne) AddInventoryItemIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.AddInventoryItemIDs(ids...)
 	return _u
 }
 
-// AddFlavors adds the "flavors" edges to the Flavor entity.
-func (_u *ProductUpdateOne) AddFlavors(v ...*Flavor) *ProductUpdateOne {
+// AddInventoryItem adds the "inventory_item" edges to the InventoryItem entity.
+func (_u *ProductUpdateOne) AddInventoryItem(v ...*InventoryItem) *ProductUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.AddFlavorIDs(ids...)
-}
-
-// AddAddonIDs adds the "addons" edge to the Addon entity by IDs.
-func (_u *ProductUpdateOne) AddAddonIDs(ids ...uuid.UUID) *ProductUpdateOne {
-	_u.mutation.AddAddonIDs(ids...)
-	return _u
-}
-
-// AddAddons adds the "addons" edges to the Addon entity.
-func (_u *ProductUpdateOne) AddAddons(v ...*Addon) *ProductUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddAddonIDs(ids...)
+	return _u.AddInventoryItemIDs(ids...)
 }
 
 // Mutation returns the ProductMutation object of the builder.
@@ -765,46 +778,25 @@ func (_u *ProductUpdateOne) RemoveOrderItems(v ...*OrderItem) *ProductUpdateOne 
 	return _u.RemoveOrderItemIDs(ids...)
 }
 
-// ClearFlavors clears all "flavors" edges to the Flavor entity.
-func (_u *ProductUpdateOne) ClearFlavors() *ProductUpdateOne {
-	_u.mutation.ClearFlavors()
+// ClearInventoryItem clears all "inventory_item" edges to the InventoryItem entity.
+func (_u *ProductUpdateOne) ClearInventoryItem() *ProductUpdateOne {
+	_u.mutation.ClearInventoryItem()
 	return _u
 }
 
-// RemoveFlavorIDs removes the "flavors" edge to Flavor entities by IDs.
-func (_u *ProductUpdateOne) RemoveFlavorIDs(ids ...uuid.UUID) *ProductUpdateOne {
-	_u.mutation.RemoveFlavorIDs(ids...)
+// RemoveInventoryItemIDs removes the "inventory_item" edge to InventoryItem entities by IDs.
+func (_u *ProductUpdateOne) RemoveInventoryItemIDs(ids ...uuid.UUID) *ProductUpdateOne {
+	_u.mutation.RemoveInventoryItemIDs(ids...)
 	return _u
 }
 
-// RemoveFlavors removes "flavors" edges to Flavor entities.
-func (_u *ProductUpdateOne) RemoveFlavors(v ...*Flavor) *ProductUpdateOne {
+// RemoveInventoryItem removes "inventory_item" edges to InventoryItem entities.
+func (_u *ProductUpdateOne) RemoveInventoryItem(v ...*InventoryItem) *ProductUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.RemoveFlavorIDs(ids...)
-}
-
-// ClearAddons clears all "addons" edges to the Addon entity.
-func (_u *ProductUpdateOne) ClearAddons() *ProductUpdateOne {
-	_u.mutation.ClearAddons()
-	return _u
-}
-
-// RemoveAddonIDs removes the "addons" edge to Addon entities by IDs.
-func (_u *ProductUpdateOne) RemoveAddonIDs(ids ...uuid.UUID) *ProductUpdateOne {
-	_u.mutation.RemoveAddonIDs(ids...)
-	return _u
-}
-
-// RemoveAddons removes "addons" edges to Addon entities.
-func (_u *ProductUpdateOne) RemoveAddons(v ...*Addon) *ProductUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveAddonIDs(ids...)
+	return _u.RemoveInventoryItemIDs(ids...)
 }
 
 // Where appends a list predicates to the ProductUpdate builder.
@@ -930,6 +922,18 @@ func (_u *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err er
 	if value, ok := _u.mutation.ExcludeGlobalAddons(); ok {
 		_spec.SetField(product.FieldExcludeGlobalAddons, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.BallBased(); ok {
+		_spec.SetField(product.FieldBallBased, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.BallQuantity(); ok {
+		_spec.SetField(product.FieldBallQuantity, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedBallQuantity(); ok {
+		_spec.AddField(product.FieldBallQuantity, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowsMixedFlavors(); ok {
+		_spec.SetField(product.FieldAllowsMixedFlavors, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(product.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -1007,28 +1011,28 @@ func (_u *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err er
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	if _u.mutation.FlavorsCleared() {
+	if _u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.RemovedFlavorsIDs(); len(nodes) > 0 && !_u.mutation.FlavorsCleared() {
+	if nodes := _u.mutation.RemovedInventoryItemIDs(); len(nodes) > 0 && !_u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -1036,60 +1040,15 @@ func (_u *ProductUpdateOne) sqlSave(ctx context.Context) (_node *Product, err er
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.FlavorsIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.InventoryItemIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   product.FlavorsTable,
-			Columns: []string{product.FlavorsColumn},
+			Table:   product.InventoryItemTable,
+			Columns: []string{product.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(flavor.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.AddonsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedAddonsIDs(); len(nodes) > 0 && !_u.mutation.AddonsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.AddonsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   product.AddonsTable,
-			Columns: []string{product.AddonsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(addon.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

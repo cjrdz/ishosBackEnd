@@ -40,8 +40,10 @@ func (Flavor) Fields() []ent.Field {
 
 func (Flavor) Edges() []ent.Edge {
 	return []ent.Edge{
-		// Flavor can be linked to many products
-		edge.To("products", Product.Type),
+		// Flavor can have inventory tracking
+		edge.To("inventory_item", InventoryItem.Type),
+		// Flavor can have stock movements
+		edge.To("flavor_stock_movements", StockMovement.Type),
 	}
 }
 

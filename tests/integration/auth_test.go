@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 )
@@ -20,16 +19,18 @@ func TestAuthLoginAndSession(t *testing.T) {
 	}, "")
 	requireStatus(t, loginResp, http.StatusOK, loginBody)
 
-	var loginResult struct {
-		Token string `json:"token"`
+	// Extract token from HttpOnly cookie set by backend
+	var token string
+	for _, c := range loginResp.Cookies() {
+		if c.Name == "auth_token" {
+			token = c.Value
+			break
+		}
 	}
-	if err := json.Unmarshal(loginBody, &loginResult); err != nil {
-		t.Fatalf("failed to decode login response: %v", err)
-	}
-	if loginResult.Token == "" {
-		t.Fatalf("expected non-empty token in login response")
+	if token == "" {
+		t.Fatalf("expected auth_token cookie in login response")
 	}
 
-	sessionResp, sessionBody := doJSONRequest(t, client, http.MethodGet, cfg.BaseURL+"/api/v1/auth/session", nil, loginResult.Token)
+	sessionResp, sessionBody := doJSONRequest(t, client, http.MethodGet, cfg.BaseURL+"/api/v1/auth/session", nil, token)
 	requireStatus(t, sessionResp, http.StatusOK, sessionBody)
 }

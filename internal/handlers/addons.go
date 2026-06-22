@@ -4,14 +4,15 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
@@ -19,14 +20,11 @@ import (
 )
 
 type AddonHandler struct {
-	addonService *services.AddonService
+	addonService services.AddonServiceInterface
 }
 
-func NewAddonHandler(db *ent.Client) *AddonHandler {
-	addonRepo := repository.NewAddonRepository(db)
-	return &AddonHandler{
-		addonService: services.NewAddonService(addonRepo),
-	}
+func NewAddonHandler(svc services.AddonServiceInterface) *AddonHandler {
+	return &AddonHandler{addonService: svc}
 }
 
 type addonResponse struct {
@@ -39,7 +37,7 @@ type addonResponse struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-func toAddonResponse(a *ent.Addon) addonResponse {
+func toAddonResponse(a dto.Addon) addonResponse {
 	return addonResponse{
 		ID:           a.ID,
 		Name:         a.Name,
@@ -59,8 +57,7 @@ func (h *AddonHandler) List(w http.ResponseWriter, r *http.Request) {
 	showAll := r.URL.Query().Get("all") == "true"
 	addons, err := h.addonService.List(r.Context(), !showAll)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to list addons")
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch addons")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
@@ -68,22 +65,22 @@ func (h *AddonHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, a := range addons {
 		result[i] = toAddonResponse(a)
 	}
-	response.JSON(w, http.StatusOK, result)
+	response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
 }
 
 // Get returns a single addon by ID.
 //
 // GET /api/v1/addons/{id}
 func (h *AddonHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid addon ID")
+		response.Error(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
 	a, err := h.addonService.GetByID(r.Context(), id)
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Addon not found")
 			return
 		}
@@ -142,9 +139,9 @@ func (h *AddonHandler) Create(w http.ResponseWriter, r *http.Request) {
 //
 // PATCH /api/v1/addons/{id}
 func (h *AddonHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid addon ID")
+		response.Error(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
@@ -174,7 +171,7 @@ func (h *AddonHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsActive:     body.IsActive,
 	})
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Addon not found")
 			return
 		}
@@ -190,14 +187,14 @@ func (h *AddonHandler) Update(w http.ResponseWriter, r *http.Request) {
 //
 // DELETE /api/v1/addons/{id}
 func (h *AddonHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	id, err := ParseUUID(r, "id")
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid addon ID")
+		response.Error(w, http.StatusBadRequest, "invalid id format")
 		return
 	}
 
 	if err := h.addonService.Delete(r.Context(), id); err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Addon not found")
 			return
 		}

@@ -5,11 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
-	"github.com/google/uuid"
-
+	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
-	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
 const AdminTokenTTLSettingKey = "admin.tokens.ttl" // #nosec G101 -- Settings lookup key, not a credential.
@@ -22,11 +21,18 @@ type TokenTTLConfig struct {
 }
 
 type AdminSettingService struct {
-	repo *repository.AdminSettingRepository
+	repo  AdminSettingRepository
+	cache *cache.TTLCache
 }
 
+const (
+	ordersEnabledCacheKey = "settings:orders_enabled"
+	tokenTTLConfigCacheKey = "settings:token_ttl_config"
+	settingsCacheTTL       = 10 * time.Second
+)
+
 // Helper to validate and upsert a setting with audit
-func (s *AdminSettingService) upsertSetting(ctx context.Context, key string, value map[string]any, changedBy uuid.UUID) error {
+func (s *AdminSettingService) upsertSetting(ctx context.Context, key string, value map[string]any, changedBy string) error {
 	if s.repo == nil {
 		return nil
 	}
@@ -41,14 +47,22 @@ func (s *AdminSettingService) upsertSetting(ctx context.Context, key string, val
 	return err
 }
 
-func NewAdminSettingService(repo *repository.AdminSettingRepository) *AdminSettingService {
-	return &AdminSettingService{repo: repo}
+func NewAdminSettingService(repo AdminSettingRepository) *AdminSettingService {
+	return &AdminSettingService{
+		repo:  repo,
+		cache: cache.New(settingsCacheTTL),
+	}
 }
 
 func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults TokenTTLConfig) (TokenTTLConfig, error) {
 	if s.repo == nil {
 		return sanitizeTokenTTLConfig(TokenTTLConfig{}, defaults), nil
 	}
+
+	if v, ok := s.cache.Get(tokenTTLConfigCacheKey); ok {
+		return sanitizeTokenTTLConfig(v.(TokenTTLConfig), defaults), nil
+	}
+
 	record, err := s.repo.GetByKey(ctx, AdminTokenTTLSettingKey)
 	if err != nil {
 		return sanitizeTokenTTLConfig(TokenTTLConfig{}, defaults), nil
@@ -74,7 +88,9 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 		}
 	}
 
-	return sanitizeTokenTTLConfig(resolved, defaults), nil
+	result := sanitizeTokenTTLConfig(resolved, defaults)
+	s.cache.Set(tokenTTLConfigCacheKey, result)
+	return result, nil
 }
 
 func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
@@ -206,7 +222,7 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 	return result, nil
 }
 
-func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings, changedBy uuid.UUID) (StoreSettings, error) {
+func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings, changedBy string) (StoreSettings, error) {
 	if s.repo == nil {
 		return input, nil
 	}
@@ -215,6 +231,8 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 	if err := s.upsertSetting(ctx, StoreOrdersEnabledKey, ordersValue, changedBy); err != nil {
 		return StoreSettings{}, fmt.Errorf("failed to save orders enabled: %w", err)
 	}
+	s.cache.Delete(ordersEnabledCacheKey)
+
 	// Persist offers
 	items := make([]map[string]any, 0, len(input.Offers))
 	for _, o := range input.Offers {
@@ -239,14 +257,23 @@ func (s *AdminSettingService) AreOrdersEnabled(ctx context.Context) bool {
 	if s.repo == nil {
 		return true
 	}
+
+	if v, ok := s.cache.Get(ordersEnabledCacheKey); ok {
+		return v.(bool)
+	}
+
 	rec, err := s.repo.GetByKey(ctx, StoreOrdersEnabledKey)
 	if err != nil {
 		return true // fail-open
 	}
-	if enabled, ok := rec.Value["enabled"]; ok {
-		if b, castOK := enabled.(bool); castOK {
-			return b
+
+	enabled := true
+	if raw, ok := rec.Value["enabled"]; ok {
+		if b, castOK := raw.(bool); castOK {
+			enabled = b
 		}
 	}
-	return true
+
+	s.cache.Set(ordersEnabledCacheKey, enabled)
+	return enabled
 }

@@ -47,6 +47,10 @@ func EnsureSchema(ctx context.Context, client *ent.Client, rawDB *stdsql.DB) err
 		return err
 	}
 
+	if err := backfillOrderItemSnapshotProductID(ctx, rawDB); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -71,6 +75,31 @@ SELECT EXISTS (
 		return fmt.Errorf("verify addons.group_name column: missing after migration")
 	}
 
+	return nil
+}
+
+// backfillOrderItemSnapshotProductID copies the existing product foreign-key
+// (product_order_items) into the new snapshot_product_id column for rows that
+// haven't been backfilled yet. This lets list queries avoid loading the product
+// edge while keeping detail views working during the transition.
+func backfillOrderItemSnapshotProductID(ctx context.Context, rawDB *stdsql.DB) error {
+	const query = `
+UPDATE order_items
+SET snapshot_product_id = product_order_items
+WHERE snapshot_product_id IS NULL
+  AND product_order_items IS NOT NULL`
+
+	res, err := rawDB.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("backfill order_items.snapshot_product_id: %w", err)
+	}
+	if res != nil {
+		rows, rowsErr := res.RowsAffected()
+		if rowsErr == nil && rows > 0 {
+			// Best-effort logging via stdlib log since zerolog isn't wired here.
+			fmt.Printf("backfilled %d order_items.snapshot_product_id rows\n", rows)
+		}
+	}
 	return nil
 }
 

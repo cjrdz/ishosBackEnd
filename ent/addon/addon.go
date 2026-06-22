@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
-	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/google/uuid"
 )
 
@@ -29,17 +28,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
-	// EdgeProducts holds the string denoting the products edge name in mutations.
-	EdgeProducts = "products"
 	// Table holds the table name of the addon in the database.
 	Table = "addons"
-	// ProductsTable is the table that holds the products relation/edge.
-	ProductsTable = "products"
-	// ProductsInverseTable is the table name for the Product entity.
-	// It exists in this package in order to avoid circular dependency with the "product" package.
-	ProductsInverseTable = "products"
-	// ProductsColumn is the table column denoting the products relation/edge.
-	ProductsColumn = "addon_products"
 )
 
 // Columns holds all SQL columns for addon fields.
@@ -54,21 +44,10 @@ var Columns = []string{
 	FieldUpdatedAt,
 }
 
-// ForeignKeys holds the SQL foreign-keys that are owned by the "addons"
-// table and are not defined as standalone fields in the schema.
-var ForeignKeys = []string{
-	"product_addons",
-}
-
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
 	for i := range Columns {
 		if column == Columns[i] {
-			return true
-		}
-	}
-	for i := range ForeignKeys {
-		if column == ForeignKeys[i] {
 			return true
 		}
 	}
@@ -139,25 +118,4 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByUpdatedAt orders the results by the updated_at field.
 func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
-}
-
-// ByProductsCount orders the results by products count.
-func ByProductsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newProductsStep(), opts...)
-	}
-}
-
-// ByProducts orders the results by products terms.
-func ByProducts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newProductsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-func newProductsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(ProductsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, ProductsTable, ProductsColumn),
-	)
 }

@@ -1,66 +1,55 @@
-// login_ratelimit.go — IP-based sliding window rate limiter for login endpoints.
+// login_ratelimit.go — Login attempt rate limiting and lockout middleware.
+//
+// This middleware wraps login endpoints and checks if the client IP has
+// exceeded the rate limit for login attempts. It integrates with the auth
+// service for stateful lockout tracking.
 package middleware
 
 import (
-	"net"
+	"fmt"
 	"net/http"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
-// LoginRateLimiter limits login attempts per IP within a rolling 1-minute window.
-// This helps reduce brute-force attempts against POST /api/v1/auth/login.
-type LoginRateLimiter struct {
-	mu                 sync.Mutex
-	attemptsByIP       map[string][]time.Time
-	maxAttemptsPerMins int
+// LoginRateLimit wraps the auth service to apply rate limiting to login attempts.
+type LoginRateLimit struct {
+	authService auth.Service
 }
 
-func NewLoginRateLimiter(maxAttemptsPerMinute int) *LoginRateLimiter {
-	if maxAttemptsPerMinute <= 0 {
-		maxAttemptsPerMinute = 10
-	}
-
-	return &LoginRateLimiter{
-		attemptsByIP:       make(map[string][]time.Time),
-		maxAttemptsPerMins: maxAttemptsPerMinute,
-	}
+// NewLoginRateLimit creates a new login rate limit middleware.
+func NewLoginRateLimit(authService auth.Service) *LoginRateLimit {
+	return &LoginRateLimit{authService: authService}
 }
 
-func (rl *LoginRateLimiter) allow(ip string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	now := time.Now()
-	cutoff := now.Add(-time.Minute)
-
-	attempts := rl.attemptsByIP[ip]
-	recent := make([]time.Time, 0, len(attempts))
-	for _, t := range attempts {
-		if t.After(cutoff) {
-			recent = append(recent, t)
-		}
-	}
-
-	if len(recent) >= rl.maxAttemptsPerMins {
-		log.Warn().Str("ip", ip).Msg("Login rate limit exceeded")
-		rl.attemptsByIP[ip] = recent
-		return false
-	}
-
-	rl.attemptsByIP[ip] = append(recent, now)
-	return true
-}
-
-func (rl *LoginRateLimiter) Middleware(next http.Handler) http.Handler {
+// Middleware checks login rate limits before allowing the handler to execute.
+func (lrl *LoginRateLimit) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := loginClientIP(r)
-		if !rl.allow(ip) {
-			http.Error(w, `{"error":"too many login attempts, try again in a minute"}`,
-				http.StatusTooManyRequests)
+		ip := extractClientIP(r)
+
+		// Check if this IP has exceeded rate limits
+		err := lrl.authService.CheckLoginAttempt(r.Context(), ip)
+		if err != nil {
+			status := apperror.StatusCode(err)
+			if rlErr, ok := err.(*apperror.RateLimitError); ok {
+				retryAfter := rlErr.RetryAfter
+				if retryAfter > 0 {
+					w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
+				}
+				response.JSON(w, status, map[string]any{
+					"error":      err.Error(),
+					"retryAfter": retryAfter,
+				})
+				log.Warn().Str("ip", ip).Err(err).Int("retry_after", retryAfter).Msg("login: rate limit exceeded")
+				return
+			}
+
+			response.Error(w, status, err.Error())
+			log.Warn().Str("ip", ip).Err(err).Msg("login: rate limit exceeded")
 			return
 		}
 
@@ -68,27 +57,7 @@ func (rl *LoginRateLimiter) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-func loginClientIP(r *http.Request) string {
-	if cfIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cfIP != "" {
-		return cfIP
-	}
-
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			if ip := strings.TrimSpace(parts[0]); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-		return realIP
-	}
-
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err != nil {
-		return strings.TrimSpace(r.RemoteAddr)
-	}
-	return host
+// extractClientIP returns the client IP from the request context.
+func extractClientIP(r *http.Request) string {
+	return auth.ClientIP(r)
 }

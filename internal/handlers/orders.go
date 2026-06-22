@@ -1,16 +1,11 @@
-// orders.go — Order lifecycle handlers (create, list, approve, reject, track, purge).
+// orders.go — Thin order lifecycle handlers (create, list, approve, reject, track, purge).
 // Public customers submit orders and track them by token; staff manage status transitions.
-// WhatsApp notifications are dispatched asynchronously via the event dispatcher.
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -18,12 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
-	"github.com/cjrdz/ishosBackEnd/internal/config"
-	"github.com/cjrdz/ishosBackEnd/internal/events"
+	"github.com/cjrdz/ishosBackEnd/internal/handlers/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
-	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
@@ -33,199 +27,33 @@ type OrderHandler struct {
 	rateLimiter    *middleware.OrderRateLimiter
 	orderSvc       services.OrderServiceInterface
 	tracker        *services.TrackingTokenService
-	pb             *auth.PBAuth
+	mapper         *services.OrderResponseMapper
 	settingsSvc    *services.AdminSettingService
 	publicStoreURL string
 }
 
-func NewOrderHandler(db *ent.Client, tracker *services.TrackingTokenService, pb *auth.PBAuth, cfg *config.Config, rl *middleware.OrderRateLimiter, settingsSvc *services.AdminSettingService) *OrderHandler {
-	orderRepo := repository.NewOrderRepository(db)
-	productRepo := repository.NewProductRepository(db)
-	whatsapp := services.NewWhatsAppService(cfg)
-	dispatcher := events.NewDispatcher()
-	dispatcher.SubscribeOrderStatusChanged(func(evt events.OrderStatusChanged) {
-		switch evt.Status {
-		case events.OrderStatusCreated:
-			whatsapp.SendOrderCreated(evt.Phone, evt.OrderNumber, evt.Total, evt.TrackingURL)
-		case events.OrderStatusApproved:
-			whatsapp.SendOrderApproved(evt.Phone, evt.OrderNumber, evt.TrackingURL)
-		case events.OrderStatusRejected:
-			whatsapp.SendOrderRejected(evt.Phone, evt.OrderNumber, evt.Reason, evt.TrackingURL)
-		case events.OrderStatusReady:
-			whatsapp.SendOrderReady(evt.Phone, evt.OrderNumber, evt.TrackingURL)
-		}
-	})
-
+func NewOrderHandler(
+	orderSvc services.OrderServiceInterface,
+	tracker *services.TrackingTokenService,
+	mapper *services.OrderResponseMapper,
+	settingsSvc *services.AdminSettingService,
+	publicStoreURL string,
+	rl *middleware.OrderRateLimiter,
+) *OrderHandler {
 	return &OrderHandler{
 		rateLimiter:    rl,
-		pb:             pb,
+		orderSvc:       orderSvc,
 		tracker:        tracker,
+		mapper:         mapper,
 		settingsSvc:    settingsSvc,
-		publicStoreURL: strings.TrimRight(strings.TrimSpace(cfg.PublicStoreURL), "/"),
-		orderSvc: services.NewOrderService(
-			db,
-			orderRepo,
-			productRepo,
-			tracker,
-			dispatcher,
-			cfg.PublicStoreURL,
-		),
-	}
-}
-
-type createOrderBody struct {
-	CustomerName  string `json:"customer_name"`
-	CustomerPhone string `json:"customer_phone"`
-	CustomerEmail string `json:"customer_email,omitempty"`
-	PaymentMethod string `json:"payment_method"`
-	OrderType     string `json:"order_type"`
-	TableNumber   *int   `json:"table_number,omitempty"`
-	Notes         string `json:"notes,omitempty"`
-	Items         []struct {
-		ProductID      uuid.UUID              `json:"product_id"`
-		Quantity       int                    `json:"quantity"`
-		Customizations map[string]interface{} `json:"customizations,omitempty"`
-	} `json:"items"`
-}
-
-type updateOrderBody struct {
-	CustomerName  string `json:"customer_name"`
-	CustomerPhone string `json:"customer_phone"`
-	CustomerEmail string `json:"customer_email,omitempty"`
-	PaymentMethod string `json:"payment_method"`
-	OrderType     string `json:"order_type"`
-	TableNumber   *int   `json:"table_number,omitempty"`
-	Notes         string `json:"notes,omitempty"`
-	Items         []struct {
-		ProductID      uuid.UUID              `json:"product_id"`
-		Quantity       int                    `json:"quantity"`
-		Customizations map[string]interface{} `json:"customizations,omitempty"`
-	} `json:"items,omitempty"`
-}
-
-type orderItemResponse struct {
-	ID             uuid.UUID              `json:"id"`
-	ProductID      uuid.UUID              `json:"product_id"`
-	ProductName    string                 `json:"product_name"`
-	Quantity       int                    `json:"quantity"`
-	UnitPrice      float64                `json:"unit_price"`
-	Subtotal       float64                `json:"subtotal"`
-	Customizations map[string]interface{} `json:"customizations,omitempty"`
-}
-
-type orderResponse struct {
-	ID                     uuid.UUID           `json:"id"`
-	OrderNumber            string              `json:"order_number"`
-	CustomerName           string              `json:"customer_name"`
-	CustomerPhone          string              `json:"customer_phone"`
-	CustomerEmail          *string             `json:"customer_email,omitempty"`
-	Status                 string              `json:"status"`
-	PaymentMethod          string              `json:"payment_method"`
-	PaymentStatus          string              `json:"payment_status"`
-	OrderType              string              `json:"order_type"`
-	TableNumber            *int                `json:"table_number,omitempty"`
-	TotalAmount            float64             `json:"total_amount"`
-	Notes                  *string             `json:"notes,omitempty"`
-	RejectionReason        *string             `json:"rejection_reason,omitempty"`
-	CreatedByUserID        *string             `json:"created_by_user_id,omitempty"`
-	CreatedByName          string              `json:"created_by_name"`
-	CreatedByRole          string              `json:"created_by_role"`
-	CreatedAt              time.Time           `json:"created_at"`
-	UpdatedAt              time.Time           `json:"updated_at"`
-	Items                  []orderItemResponse `json:"items"`
-	TrackingToken          *string             `json:"tracking_token,omitempty"`
-	TrackingTokenExpiresAt *time.Time          `json:"tracking_token_expires_at,omitempty"`
-	TrackingURL            *string             `json:"tracking_url,omitempty"`
-}
-
-func mapOrderResponse(order *ent.Order) orderResponse {
-	return mapOrderResponseWithPB(order, nil)
-}
-
-func (h *OrderHandler) mapOrderResponse(ctx context.Context, order *ent.Order) orderResponse {
-	resp := mapOrderResponseWithPB(order, h.pb)
-	if trackingAccess, err := h.orderSvc.IssueTrackingAccess(ctx, order.OrderNumber); err == nil {
-		resp.TrackingToken = &trackingAccess.Token
-		resp.TrackingTokenExpiresAt = &trackingAccess.ExpiresAt
-		if trackingAccess.URL != "" {
-			resp.TrackingURL = &trackingAccess.URL
-		}
-	}
-	return resp
-}
-
-func mapOrderResponseWithPB(order *ent.Order, pb *auth.PBAuth) orderResponse {
-	items := make([]orderItemResponse, 0)
-	if order.Edges.Items != nil {
-		items = make([]orderItemResponse, 0, len(order.Edges.Items))
-		for _, item := range order.Edges.Items {
-			if item == nil {
-				continue
-			}
-			productID := uuid.Nil
-			if item.Edges.Product != nil {
-				productID = item.Edges.Product.ID
-			}
-			items = append(items, orderItemResponse{
-				ID:             item.ID,
-				ProductID:      productID,
-				ProductName:    item.ProductName,
-				Quantity:       item.Quantity,
-				UnitPrice:      item.UnitPrice,
-				Subtotal:       item.Subtotal,
-				Customizations: item.Customizations,
-			})
-		}
-	}
-
-	createdByName := order.CustomerName
-	createdByRole := "customer"
-	if order.CreatedByUserID != nil && *order.CreatedByUserID != "" {
-		createdByRole = "employee"
-		if pb != nil {
-			record, err := pb.FindEmployeeByID(*order.CreatedByUserID)
-			if err == nil && record != nil {
-				if name := strings.TrimSpace(record.GetString("name")); name != "" {
-					createdByName = name
-				} else {
-					createdByName = record.Email()
-				}
-				createdByRole = auth.RoleFromRecord(record)
-			} else {
-				createdByName = *order.CreatedByUserID
-			}
-		} else {
-			createdByName = *order.CreatedByUserID
-		}
-	}
-
-	return orderResponse{
-		ID:              order.ID,
-		OrderNumber:     order.OrderNumber,
-		CustomerName:    order.CustomerName,
-		CustomerPhone:   order.CustomerPhone,
-		CustomerEmail:   order.CustomerEmail,
-		Status:          string(order.Status),
-		PaymentMethod:   string(order.PaymentMethod),
-		PaymentStatus:   string(order.PaymentStatus),
-		OrderType:       string(order.OrderType),
-		TableNumber:     order.TableNumber,
-		TotalAmount:     order.TotalAmount,
-		Notes:           order.Notes,
-		RejectionReason: order.RejectionReason,
-		CreatedByUserID: order.CreatedByUserID,
-		CreatedByName:   createdByName,
-		CreatedByRole:   createdByRole,
-		CreatedAt:       order.CreatedAt,
-		UpdatedAt:       order.UpdatedAt,
-		Items:           items,
+		publicStoreURL: publicStoreURL,
 	}
 }
 
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var body createOrderBody
+	var body dto.CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
@@ -233,23 +61,17 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.OrderType = "para_llevar"
 	}
 
-	isStaff := false
-	var staffID string
+	isStaff, staffID := false, ""
 	if record, ok := auth.GetRecord(r.Context()); ok {
 		isStaff = true
 		staffID = auth.RecordID(record)
 	}
 
 	if errs := validator.ValidateOrderCreate(
-		body.CustomerName,
-		body.CustomerPhone,
-		body.PaymentMethod,
-		body.OrderType,
-		body.TableNumber,
-		len(body.Items),
-		isStaff,
+		body.CustomerName, body.CustomerPhone, body.PaymentMethod, body.OrderType,
+		body.TableNumber, len(body.Items), isStaff,
 	); errs.HasErrors() {
-		response.Error(w, http.StatusBadRequest, errs.Error())
+		response.WriteOrError(w, nil, errs)
 		return
 	}
 
@@ -257,31 +79,21 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.TableNumber = nil
 	}
 
-	if isStaff {
-		log.Info().
-			Str("staff_id", staffID).
-			Str("customer_phone", body.CustomerPhone).
-			Msg("Order creation by authenticated staff - rate limits bypassed")
-	}
-
 	if !isStaff {
 		if !h.settingsSvc.AreOrdersEnabled(r.Context()) {
-			response.Error(w, http.StatusServiceUnavailable, "Los pedidos están temporalmente desactivados")
+			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: "Los pedidos están temporalmente desactivados"})
 			return
 		}
 		if !h.rateLimiter.CheckAndRecordPhone(body.CustomerPhone) {
-			response.Error(w, http.StatusTooManyRequests,
-				"too many orders from this phone number, try again tomorrow")
+			response.WriteOrError(w, nil, &apperror.RateLimitError{})
 			return
 		}
 	}
-
-	ip := clientIPFromRequest(r)
 
 	items := make([]services.OrderItemInput, 0, len(body.Items))
 	for _, item := range body.Items {
 		if item.Quantity <= 0 {
-			response.Error(w, http.StatusBadRequest, "items.quantity must be greater than 0")
+			response.WriteOrError(w, nil, &apperror.ValidationError{Fields: map[string]string{"items.quantity": "must be greater than 0"}})
 			return
 		}
 		items = append(items, services.OrderItemInput{
@@ -291,12 +103,15 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	var createdByID *string
+	createdByID := (*string)(nil)
 	if isStaff && staffID != "" {
 		createdByID = &staffID
 	}
 
-	order, err := h.orderSvc.Create(r.Context(), services.CreateOrderInput{
+	ip := auth.ClientIP(r)
+	ctx := audit.ContextFromRequest(r, staffID)
+
+	order, err := h.orderSvc.Create(ctx, services.CreateOrderInput{
 		CustomerName:  body.CustomerName,
 		CustomerPhone: body.CustomerPhone,
 		CustomerEmail: nilIfEmpty(body.CustomerEmail),
@@ -309,29 +124,18 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CreatedByID:   createdByID,
 	})
 	if err != nil {
-		if errors.Is(err, services.ErrProductNotFound) ||
-			errors.Is(err, services.ErrProductUnavailable) ||
-			errors.Is(err, services.ErrFlavorRequired) ||
-			errors.Is(err, services.ErrFlavorNotAllowed) ||
-			errors.Is(err, services.ErrAddonNotAllowed) ||
-			errors.Is(err, services.ErrToppingRequired) ||
-			errors.Is(err, services.ErrJaleaRequired) {
-			writeAppError(w, err, "Failed to create order")
-			return
-		}
-		log.Error().Err(err).Msg("Failed to create order")
-		response.Error(w, http.StatusInternalServerError, "Failed to create order")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
-	trackingAccess, tokenErr := h.orderSvc.IssueTrackingAccess(r.Context(), order.OrderNumber)
-	if tokenErr != nil {
-		log.Error().Err(tokenErr).Str("order_number", order.OrderNumber).Msg("failed to issue tracking token")
-		response.Error(w, http.StatusInternalServerError, "Failed to create tracking token")
+	trackingAccess, err := h.orderSvc.IssueTrackingAccess(r.Context(), order.OrderNumber)
+	if err != nil {
+		log.Error().Err(err).Str("order_number", order.OrderNumber).Msg("failed to issue tracking token")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
-	response.JSON(w, http.StatusCreated, map[string]interface{}{
+	response.JSON(w, http.StatusCreated, map[string]any{
 		"order_number":        order.OrderNumber,
 		"status":              order.Status,
 		"total":               order.TotalAmount,
@@ -341,73 +145,22 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func clientIPFromRequest(r *http.Request) string {
-	if cfIP := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cfIP != "" {
-		return cfIP
-	}
-
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			if ip := strings.TrimSpace(parts[0]); ip != "" {
-				return ip
-			}
-		}
-	}
-
-	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-		return realIP
-	}
-
-	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
-	if err == nil && host != "" {
-		return host
-	}
-	return strings.TrimSpace(r.RemoteAddr)
-}
-
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
+	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
 
-	page := 1
-	limit := 50
-
-	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
-		parsed, err := strconv.Atoi(pageStr)
-		if err != nil || parsed <= 0 {
-			response.Error(w, http.StatusBadRequest, "page must be a positive integer")
-			return
-		}
-		page = parsed
-	}
-
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		parsed, err := strconv.Atoi(limitStr)
-		if err != nil || parsed <= 0 {
-			response.Error(w, http.StatusBadRequest, "limit must be a positive integer")
-			return
-		}
-		if parsed > 100 {
-			parsed = 100
-		}
-		limit = parsed
-	}
-
-	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, page, limit)
+	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, params.Page, params.PerPage)
 	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch orders")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"orders": orders,
-		"pagination": map[string]interface{}{
-			"page":       page,
-			"limit":      limit,
-			"total":      total,
-			"totalPages": (total + limit - 1) / limit,
-		},
-	})
+	responses := make([]services.OrderResponse, len(orders))
+	for i, o := range orders {
+		responses[i] = h.mapper.Map(o)
+	}
+
+	response.JSON(w, http.StatusOK, response.NewPaginated(responses, params.Page, params.PerPage, total))
 }
 
 func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -419,17 +172,19 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	order, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
 	if err != nil {
-		if ent.IsNotFound(err) {
+		if errors.Is(err, apperror.ErrNotFound) {
 			err = services.ErrOrderNotFound
 		}
 		writeAppError(w, err, "Failed to fetch order")
 		return
 	}
-	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), order))
+
+	resp := h.mapper.Map(order)
+	response.JSON(w, http.StatusOK, resp)
 }
 
 func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
-	if !h.rateLimiter.CheckTrackingIP(clientIPFromRequest(r)) {
+	if !h.rateLimiter.CheckTrackingIP(auth.ClientIP(r)) {
 		response.Error(w, http.StatusTooManyRequests, "too many tracking attempts, try later")
 		return
 	}
@@ -442,7 +197,7 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !isTrackOrderNumberValid(orderNumber) {
+	if !validator.IsTrackOrderNumberValid(orderNumber) {
 		response.Error(w, http.StatusBadRequest, "invalid order_number format")
 		return
 	}
@@ -456,54 +211,43 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 	if err := h.tracker.Verify(r.Context(), order.OrderNumber, trackingToken, time.Now()); err != nil {
 		if errors.Is(err, services.ErrInvalidTrackingToken) || errors.Is(err, services.ErrExpiredTrackingToken) {
 			log.Warn().
-				Str("ip", clientIPFromRequest(r)).
+				Str("ip", auth.ClientIP(r)).
 				Str("order_number", orderNumber).
-				Str("token_prefix", maskTrackingToken(trackingToken)).
+				Str("token_prefix", services.MaskTrackingToken(trackingToken)).
 				Err(err).
 				Msg("public tracking verification failed")
-			// Return 404 rather than 401/403 to avoid revealing whether the order number exists.
 			response.Error(w, http.StatusNotFound, "Order not found")
 			return
 		}
-
-		log.Error().
-			Str("ip", clientIPFromRequest(r)).
-			Str("order_number", orderNumber).
-			Err(err).
-			Msg("public tracking verification backend error")
+		log.Error().Str("ip", auth.ClientIP(r)).Str("order_number", orderNumber).Err(err).Msg("public tracking verification backend error")
 		response.Error(w, http.StatusInternalServerError, "Failed to verify tracking token")
 		return
 	}
 
-	publicItems := make([]map[string]interface{}, 0, len(order.Edges.Items))
-	for _, item := range order.Edges.Items {
-		if item == nil {
-			continue
-		}
-
-		publicItem := map[string]interface{}{
+	publicItems := make([]map[string]any, 0, len(order.Items))
+	for _, item := range order.Items {
+		publicItem := map[string]any{
 			"product_name": item.ProductName,
 			"quantity":     item.Quantity,
 			"unit_price":   item.UnitPrice,
 			"subtotal":     item.Subtotal,
 		}
-
 		if item.Customizations != nil {
 			publicItem["customizations"] = item.Customizations
 		}
-
 		publicItems = append(publicItems, publicItem)
 	}
 
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"order_number":  order.OrderNumber,
-		"customer_name": order.CustomerName,
-		"status":        order.Status,
-		"updated_at":    order.UpdatedAt,
-		"created_at":    order.CreatedAt,
-		"total_amount":  order.TotalAmount,
-		"order_type":    order.OrderType,
-		"items":         publicItems,
+	response.JSON(w, http.StatusOK, map[string]any{
+		"order_number":       order.OrderNumber,
+		"customer_name":      order.CustomerName,
+		"status":             order.Status,
+		"updated_at":         order.UpdatedAt,
+		"created_at":         order.CreatedAt,
+		"total_amount":       order.TotalAmount,
+		"order_type":         order.OrderType,
+		"status_timestamps":  order.StatusTimestamps,
+		"items":              publicItems,
 	})
 }
 
@@ -527,13 +271,13 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		allowOverride = true
 	}
 
-	updated, err := h.orderSvc.Approve(r.Context(), id, reviewerID, allowOverride)
+	updated, err := h.orderSvc.Approve(audit.ContextFromRequest(r, reviewerID), id, reviewerID, allowOverride)
 	if err != nil {
 		writeAppError(w, err, "Failed to approve order")
 		return
 	}
 
-	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), updated))
+	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
 func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
@@ -561,13 +305,13 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		reviewerID = auth.RecordID(record)
 	}
 
-	updated, err := h.orderSvc.Reject(r.Context(), id, body.Reason, reviewerID)
+	updated, err := h.orderSvc.Reject(audit.ContextFromRequest(r, reviewerID), id, body.Reason, reviewerID)
 	if err != nil {
 		writeAppError(w, err, "Failed to reject order")
 		return
 	}
 
-	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), updated))
+	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
 func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
@@ -590,13 +334,33 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.orderSvc.UpdateStatus(r.Context(), id, body.Status)
+	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			response.Error(w, http.StatusNotFound, "Order not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		return
+	}
+
+	if existing.Status == "cancelada" || existing.Status == "entregada" {
+		response.Error(w, http.StatusConflict, "No se puede cambiar el estado de una orden cancelada o entregada")
+		return
+	}
+
+	actorID := ""
+	if record, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(record)
+	}
+
+	updated, err := h.orderSvc.UpdateStatus(audit.ContextFromRequest(r, actorID), id, body.Status)
 	if err != nil {
 		writeAppError(w, err, "Failed to update status")
 		return
 	}
 
-	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), updated))
+	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
 func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -606,7 +370,21 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body updateOrderBody
+	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			response.Error(w, http.StatusNotFound, "Order not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		return
+	}
+	if !h.orderSvc.IsOrderEditable(existing.Status) {
+		response.Error(w, http.StatusConflict, "No se puede editar una orden que ya fue aceptada, rechazada, entregada o cancelada")
+		return
+	}
+
+	var body dto.UpdateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -618,12 +396,8 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if errs := validator.ValidateOrderDetails(
-		body.CustomerName,
-		body.CustomerPhone,
-		body.PaymentMethod,
-		body.OrderType,
-		body.TableNumber,
-		true,
+		body.CustomerName, body.CustomerPhone, body.PaymentMethod, body.OrderType,
+		body.TableNumber, true,
 	); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
@@ -652,7 +426,12 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	updated, err := h.orderSvc.Update(r.Context(), id, services.UpdateOrderInput{
+	actorID := ""
+	if record, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(record)
+	}
+
+	updated, err := h.orderSvc.Update(audit.ContextFromRequest(r, actorID), id, services.UpdateOrderInput{
 		CustomerName:  body.CustomerName,
 		CustomerPhone: body.CustomerPhone,
 		CustomerEmail: nilIfEmpty(body.CustomerEmail),
@@ -667,7 +446,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), updated))
+	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
 func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
@@ -687,19 +466,23 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 
 	var normalized *string
 	if body.Notes != nil {
-		trimmed := strings.TrimSpace(*body.Notes)
-		if trimmed != "" {
+		if trimmed := strings.TrimSpace(*body.Notes); trimmed != "" {
 			normalized = &trimmed
 		}
 	}
 
-	updated, err := h.orderSvc.UpdateNotes(r.Context(), id, normalized)
+	actorID := ""
+	if record, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(record)
+	}
+
+	updated, err := h.orderSvc.UpdateNotes(audit.ContextFromRequest(r, actorID), id, normalized)
 	if err != nil {
 		writeAppError(w, err, "Failed to update notes")
 		return
 	}
 
-	response.JSON(w, http.StatusOK, h.mapOrderResponse(r.Context(), updated))
+	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
 func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -709,31 +492,29 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.orderSvc.Delete(r.Context(), id); err != nil {
+	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, apperror.ErrNotFound) {
+			response.Error(w, http.StatusNotFound, "Order not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		return
+	}
+	if !h.orderSvc.IsOrderEditable(existing.Status) {
+		response.Error(w, http.StatusConflict, "No se puede eliminar una orden que ya fue aceptada, rechazada, entregada o cancelada")
+		return
+	}
+
+	actorID := ""
+	if record, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(record)
+	}
+
+	if err := h.orderSvc.Delete(audit.ContextFromRequest(r, actorID), id); err != nil {
 		writeAppError(w, err, "Failed to delete order")
 		return
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Order deleted"})
-}
-
-func nilIfEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-// maskTrackingToken returns only the first 8 chars of a token for safe logging.
-func maskTrackingToken(token string) string {
-	trimmed := strings.TrimSpace(token)
-	if len(trimmed) <= 8 {
-		return trimmed
-	}
-	return trimmed[:8]
-}
-
-func isTrackOrderNumberValid(orderNumber string) bool {
-	orderRe := regexp.MustCompile(`^ORD-\d{8}-\d{4}$`)
-	return orderRe.MatchString(orderNumber)
 }

@@ -83,6 +83,10 @@ func (Order) Fields() []ent.Field {
 
 		field.Bool("is_archived").Default(false),
 
+		// Tracks when each status was first reached: {"recibida":"2026-06-21T...", ...}
+		field.JSON("status_timestamps", map[string]time.Time{}).
+			Optional(),
+
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),
@@ -103,5 +107,8 @@ func (Order) Indexes() []ent.Index {
 		index.Fields("status"),
 		index.Fields("customer_phone"),
 		index.Fields("created_at"),
+		// Composite index for the common list query: filter by status,
+		// order by created_at descending.
+		index.Fields("status", "created_at"),
 	}
 }

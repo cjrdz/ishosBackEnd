@@ -561,7 +561,7 @@ func (_g *CategoryGroupBy) sqlScan(ctx context.Context, root *CategoryQuery, v a
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -603,6 +603,6 @@ func (_s *CategorySelect) sqlScan(ctx context.Context, root *CategoryQuery, v an
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

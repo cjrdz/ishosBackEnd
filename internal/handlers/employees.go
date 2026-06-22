@@ -21,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
@@ -29,11 +30,12 @@ import (
 // EmployeeHandler manages employee records in the PocketBase "employees"
 // auth collection via the PBAuth Go API wrapper.
 type EmployeeHandler struct {
-	pb *auth.PBAuth
+	pb       *auth.PBAuth
+	auditSvc audit.Service
 }
 
-func NewEmployeeHandler(pb *auth.PBAuth) *EmployeeHandler {
-	return &EmployeeHandler{pb: pb}
+func NewEmployeeHandler(pb *auth.PBAuth, auditSvc audit.Service) *EmployeeHandler {
+	return &EmployeeHandler{pb: pb, auditSvc: auditSvc}
 }
 
 // List fetches all employee/admin records from the PocketBase auth collection.
@@ -42,8 +44,7 @@ func NewEmployeeHandler(pb *auth.PBAuth) *EmployeeHandler {
 func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 	records, err := h.pb.ListEmployees()
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to list employees")
-		response.Error(w, http.StatusInternalServerError, "Failed to list employees")
+		response.WriteOrError(w, nil, err)
 		return
 	}
 
@@ -59,7 +60,7 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	response.JSON(w, http.StatusOK, employees)
+	response.JSON(w, http.StatusOK, response.NewPaginated(employees, 1, len(employees), len(employees)))
 }
 
 // Create registers a new employee in the PocketBase "employees" auth collection.
@@ -96,6 +97,17 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to create employee")
 		return
 	}
+
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeAdded, actorID, "employee:" + auth.RecordID(record), map[string]any{
+		"email": record.Email(),
+		"name":  record.GetString("name"),
+		"role":  auth.RoleFromRecord(record),
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, map[string]any{
 		"id":      auth.RecordID(record),
@@ -149,6 +161,17 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeUpdated, actorID, "employee:" + id, map[string]any{
+		"email": record.Email(),
+		"name":  record.GetString("name"),
+		"role":  auth.RoleFromRecord(record),
+	}, ip)
+
 	response.JSON(w, http.StatusOK, map[string]any{
 		"id":    auth.RecordID(record),
 		"email": record.Email(),
@@ -176,6 +199,15 @@ func (h *EmployeeHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeRemoved, actorID, "employee:" + id, map[string]any{
+		"action_detail": "deactivated",
+	}, ip)
+
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "Employee deactivated. They can no longer log in.",
 	})
@@ -196,6 +228,15 @@ func (h *EmployeeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete employee")
 		return
 	}
+
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeRemoved, actorID, "employee:" + id, map[string]any{
+		"action_detail": "deleted",
+	}, ip)
 
 	response.JSON(w, http.StatusOK, map[string]string{
 		"message": "Employee deleted permanently.",

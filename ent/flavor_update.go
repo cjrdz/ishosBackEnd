@@ -12,8 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent/stockmovement"
 	"github.com/google/uuid"
 )
 
@@ -99,19 +100,34 @@ func (_u *FlavorUpdate) SetUpdatedAt(v time.Time) *FlavorUpdate {
 	return _u
 }
 
-// AddProductIDs adds the "products" edge to the Product entity by IDs.
-func (_u *FlavorUpdate) AddProductIDs(ids ...uuid.UUID) *FlavorUpdate {
-	_u.mutation.AddProductIDs(ids...)
+// AddInventoryItemIDs adds the "inventory_item" edge to the InventoryItem entity by IDs.
+func (_u *FlavorUpdate) AddInventoryItemIDs(ids ...uuid.UUID) *FlavorUpdate {
+	_u.mutation.AddInventoryItemIDs(ids...)
 	return _u
 }
 
-// AddProducts adds the "products" edges to the Product entity.
-func (_u *FlavorUpdate) AddProducts(v ...*Product) *FlavorUpdate {
+// AddInventoryItem adds the "inventory_item" edges to the InventoryItem entity.
+func (_u *FlavorUpdate) AddInventoryItem(v ...*InventoryItem) *FlavorUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.AddProductIDs(ids...)
+	return _u.AddInventoryItemIDs(ids...)
+}
+
+// AddFlavorStockMovementIDs adds the "flavor_stock_movements" edge to the StockMovement entity by IDs.
+func (_u *FlavorUpdate) AddFlavorStockMovementIDs(ids ...uuid.UUID) *FlavorUpdate {
+	_u.mutation.AddFlavorStockMovementIDs(ids...)
+	return _u
+}
+
+// AddFlavorStockMovements adds the "flavor_stock_movements" edges to the StockMovement entity.
+func (_u *FlavorUpdate) AddFlavorStockMovements(v ...*StockMovement) *FlavorUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddFlavorStockMovementIDs(ids...)
 }
 
 // Mutation returns the FlavorMutation object of the builder.
@@ -119,25 +135,46 @@ func (_u *FlavorUpdate) Mutation() *FlavorMutation {
 	return _u.mutation
 }
 
-// ClearProducts clears all "products" edges to the Product entity.
-func (_u *FlavorUpdate) ClearProducts() *FlavorUpdate {
-	_u.mutation.ClearProducts()
+// ClearInventoryItem clears all "inventory_item" edges to the InventoryItem entity.
+func (_u *FlavorUpdate) ClearInventoryItem() *FlavorUpdate {
+	_u.mutation.ClearInventoryItem()
 	return _u
 }
 
-// RemoveProductIDs removes the "products" edge to Product entities by IDs.
-func (_u *FlavorUpdate) RemoveProductIDs(ids ...uuid.UUID) *FlavorUpdate {
-	_u.mutation.RemoveProductIDs(ids...)
+// RemoveInventoryItemIDs removes the "inventory_item" edge to InventoryItem entities by IDs.
+func (_u *FlavorUpdate) RemoveInventoryItemIDs(ids ...uuid.UUID) *FlavorUpdate {
+	_u.mutation.RemoveInventoryItemIDs(ids...)
 	return _u
 }
 
-// RemoveProducts removes "products" edges to Product entities.
-func (_u *FlavorUpdate) RemoveProducts(v ...*Product) *FlavorUpdate {
+// RemoveInventoryItem removes "inventory_item" edges to InventoryItem entities.
+func (_u *FlavorUpdate) RemoveInventoryItem(v ...*InventoryItem) *FlavorUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.RemoveProductIDs(ids...)
+	return _u.RemoveInventoryItemIDs(ids...)
+}
+
+// ClearFlavorStockMovements clears all "flavor_stock_movements" edges to the StockMovement entity.
+func (_u *FlavorUpdate) ClearFlavorStockMovements() *FlavorUpdate {
+	_u.mutation.ClearFlavorStockMovements()
+	return _u
+}
+
+// RemoveFlavorStockMovementIDs removes the "flavor_stock_movements" edge to StockMovement entities by IDs.
+func (_u *FlavorUpdate) RemoveFlavorStockMovementIDs(ids ...uuid.UUID) *FlavorUpdate {
+	_u.mutation.RemoveFlavorStockMovementIDs(ids...)
+	return _u
+}
+
+// RemoveFlavorStockMovements removes "flavor_stock_movements" edges to StockMovement entities.
+func (_u *FlavorUpdate) RemoveFlavorStockMovements(v ...*StockMovement) *FlavorUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveFlavorStockMovementIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -216,28 +253,28 @@ func (_u *FlavorUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(flavor.FieldUpdatedAt, field.TypeTime, value)
 	}
-	if _u.mutation.ProductsCleared() {
+	if _u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.RemovedProductsIDs(); len(nodes) > 0 && !_u.mutation.ProductsCleared() {
+	if nodes := _u.mutation.RemovedInventoryItemIDs(); len(nodes) > 0 && !_u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -245,15 +282,60 @@ func (_u *FlavorUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.ProductsIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.InventoryItemIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.FlavorStockMovementsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedFlavorStockMovementsIDs(); len(nodes) > 0 && !_u.mutation.FlavorStockMovementsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FlavorStockMovementsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -350,19 +432,34 @@ func (_u *FlavorUpdateOne) SetUpdatedAt(v time.Time) *FlavorUpdateOne {
 	return _u
 }
 
-// AddProductIDs adds the "products" edge to the Product entity by IDs.
-func (_u *FlavorUpdateOne) AddProductIDs(ids ...uuid.UUID) *FlavorUpdateOne {
-	_u.mutation.AddProductIDs(ids...)
+// AddInventoryItemIDs adds the "inventory_item" edge to the InventoryItem entity by IDs.
+func (_u *FlavorUpdateOne) AddInventoryItemIDs(ids ...uuid.UUID) *FlavorUpdateOne {
+	_u.mutation.AddInventoryItemIDs(ids...)
 	return _u
 }
 
-// AddProducts adds the "products" edges to the Product entity.
-func (_u *FlavorUpdateOne) AddProducts(v ...*Product) *FlavorUpdateOne {
+// AddInventoryItem adds the "inventory_item" edges to the InventoryItem entity.
+func (_u *FlavorUpdateOne) AddInventoryItem(v ...*InventoryItem) *FlavorUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.AddProductIDs(ids...)
+	return _u.AddInventoryItemIDs(ids...)
+}
+
+// AddFlavorStockMovementIDs adds the "flavor_stock_movements" edge to the StockMovement entity by IDs.
+func (_u *FlavorUpdateOne) AddFlavorStockMovementIDs(ids ...uuid.UUID) *FlavorUpdateOne {
+	_u.mutation.AddFlavorStockMovementIDs(ids...)
+	return _u
+}
+
+// AddFlavorStockMovements adds the "flavor_stock_movements" edges to the StockMovement entity.
+func (_u *FlavorUpdateOne) AddFlavorStockMovements(v ...*StockMovement) *FlavorUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddFlavorStockMovementIDs(ids...)
 }
 
 // Mutation returns the FlavorMutation object of the builder.
@@ -370,25 +467,46 @@ func (_u *FlavorUpdateOne) Mutation() *FlavorMutation {
 	return _u.mutation
 }
 
-// ClearProducts clears all "products" edges to the Product entity.
-func (_u *FlavorUpdateOne) ClearProducts() *FlavorUpdateOne {
-	_u.mutation.ClearProducts()
+// ClearInventoryItem clears all "inventory_item" edges to the InventoryItem entity.
+func (_u *FlavorUpdateOne) ClearInventoryItem() *FlavorUpdateOne {
+	_u.mutation.ClearInventoryItem()
 	return _u
 }
 
-// RemoveProductIDs removes the "products" edge to Product entities by IDs.
-func (_u *FlavorUpdateOne) RemoveProductIDs(ids ...uuid.UUID) *FlavorUpdateOne {
-	_u.mutation.RemoveProductIDs(ids...)
+// RemoveInventoryItemIDs removes the "inventory_item" edge to InventoryItem entities by IDs.
+func (_u *FlavorUpdateOne) RemoveInventoryItemIDs(ids ...uuid.UUID) *FlavorUpdateOne {
+	_u.mutation.RemoveInventoryItemIDs(ids...)
 	return _u
 }
 
-// RemoveProducts removes "products" edges to Product entities.
-func (_u *FlavorUpdateOne) RemoveProducts(v ...*Product) *FlavorUpdateOne {
+// RemoveInventoryItem removes "inventory_item" edges to InventoryItem entities.
+func (_u *FlavorUpdateOne) RemoveInventoryItem(v ...*InventoryItem) *FlavorUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _u.RemoveProductIDs(ids...)
+	return _u.RemoveInventoryItemIDs(ids...)
+}
+
+// ClearFlavorStockMovements clears all "flavor_stock_movements" edges to the StockMovement entity.
+func (_u *FlavorUpdateOne) ClearFlavorStockMovements() *FlavorUpdateOne {
+	_u.mutation.ClearFlavorStockMovements()
+	return _u
+}
+
+// RemoveFlavorStockMovementIDs removes the "flavor_stock_movements" edge to StockMovement entities by IDs.
+func (_u *FlavorUpdateOne) RemoveFlavorStockMovementIDs(ids ...uuid.UUID) *FlavorUpdateOne {
+	_u.mutation.RemoveFlavorStockMovementIDs(ids...)
+	return _u
+}
+
+// RemoveFlavorStockMovements removes "flavor_stock_movements" edges to StockMovement entities.
+func (_u *FlavorUpdateOne) RemoveFlavorStockMovements(v ...*StockMovement) *FlavorUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveFlavorStockMovementIDs(ids...)
 }
 
 // Where appends a list predicates to the FlavorUpdate builder.
@@ -497,28 +615,28 @@ func (_u *FlavorUpdateOne) sqlSave(ctx context.Context) (_node *Flavor, err erro
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(flavor.FieldUpdatedAt, field.TypeTime, value)
 	}
-	if _u.mutation.ProductsCleared() {
+	if _u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.RemovedProductsIDs(); len(nodes) > 0 && !_u.mutation.ProductsCleared() {
+	if nodes := _u.mutation.RemovedInventoryItemIDs(); len(nodes) > 0 && !_u.mutation.InventoryItemCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -526,15 +644,60 @@ func (_u *FlavorUpdateOne) sqlSave(ctx context.Context) (_node *Flavor, err erro
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
 	}
-	if nodes := _u.mutation.ProductsIDs(); len(nodes) > 0 {
+	if nodes := _u.mutation.InventoryItemIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.FlavorStockMovementsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedFlavorStockMovementsIDs(); len(nodes) > 0 && !_u.mutation.FlavorStockMovementsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FlavorStockMovementsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

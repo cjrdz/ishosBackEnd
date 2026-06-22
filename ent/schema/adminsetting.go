@@ -32,7 +32,7 @@ func (AdminSetting) Fields() []ent.Field {
 			}),
 		field.JSON("value", map[string]any{}).
 			Default(map[string]any{}),
-		field.UUID("changed_by", uuid.UUID{}).Nillable().Optional(),
+		field.String("changed_by").Nillable().Optional(),
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable(),

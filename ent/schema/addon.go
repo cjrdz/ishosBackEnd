@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"entgo.io/ent"
-	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 	"github.com/google/uuid"
@@ -42,10 +41,7 @@ func (Addon) Fields() []ent.Field {
 }
 
 func (Addon) Edges() []ent.Edge {
-	return []ent.Edge{
-		// Addon can be linked to many products
-		edge.To("products", Product.Type),
-	}
+	return nil
 }
 
 func (Addon) Indexes() []ent.Index {

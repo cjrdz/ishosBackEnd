@@ -14,13 +14,19 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/adminsetting"
+	"github.com/cjrdz/ishosBackEnd/ent/auditlog"
 	"github.com/cjrdz/ishosBackEnd/ent/category"
+	"github.com/cjrdz/ishosBackEnd/ent/containertype"
 	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
+	"github.com/cjrdz/ishosBackEnd/ent/ordertrackingtoken"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/cjrdz/ishosBackEnd/ent/ratelimit"
+	"github.com/cjrdz/ishosBackEnd/ent/revokedtoken"
+	"github.com/cjrdz/ishosBackEnd/ent/stockmovement"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -81,15 +87,21 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			addon.Table:        addon.ValidColumn,
-			adminsetting.Table: adminsetting.ValidColumn,
-			category.Table:     category.ValidColumn,
-			customer.Table:     customer.ValidColumn,
-			flavor.Table:       flavor.ValidColumn,
-			order.Table:        order.ValidColumn,
-			orderitem.Table:    orderitem.ValidColumn,
-			product.Table:      product.ValidColumn,
-			ratelimit.Table:    ratelimit.ValidColumn,
+			addon.Table:              addon.ValidColumn,
+			adminsetting.Table:       adminsetting.ValidColumn,
+			auditlog.Table:           auditlog.ValidColumn,
+			category.Table:           category.ValidColumn,
+			containertype.Table:      containertype.ValidColumn,
+			customer.Table:           customer.ValidColumn,
+			flavor.Table:             flavor.ValidColumn,
+			inventoryitem.Table:      inventoryitem.ValidColumn,
+			order.Table:              order.ValidColumn,
+			orderitem.Table:          orderitem.ValidColumn,
+			ordertrackingtoken.Table: ordertrackingtoken.ValidColumn,
+			product.Table:            product.ValidColumn,
+			ratelimit.Table:          ratelimit.ValidColumn,
+			revokedtoken.Table:       revokedtoken.ValidColumn,
+			stockmovement.Table:      stockmovement.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -12,8 +12,14 @@ type Addon func(*sql.Selector)
 // AdminSetting is the predicate function for adminsetting builders.
 type AdminSetting func(*sql.Selector)
 
+// AuditLog is the predicate function for auditlog builders.
+type AuditLog func(*sql.Selector)
+
 // Category is the predicate function for category builders.
 type Category func(*sql.Selector)
+
+// ContainerType is the predicate function for containertype builders.
+type ContainerType func(*sql.Selector)
 
 // Customer is the predicate function for customer builders.
 type Customer func(*sql.Selector)
@@ -21,14 +27,26 @@ type Customer func(*sql.Selector)
 // Flavor is the predicate function for flavor builders.
 type Flavor func(*sql.Selector)
 
+// InventoryItem is the predicate function for inventoryitem builders.
+type InventoryItem func(*sql.Selector)
+
 // Order is the predicate function for order builders.
 type Order func(*sql.Selector)
 
 // OrderItem is the predicate function for orderitem builders.
 type OrderItem func(*sql.Selector)
 
+// OrderTrackingToken is the predicate function for ordertrackingtoken builders.
+type OrderTrackingToken func(*sql.Selector)
+
 // Product is the predicate function for product builders.
 type Product func(*sql.Selector)
 
 // RateLimit is the predicate function for ratelimit builders.
 type RateLimit func(*sql.Selector)
+
+// RevokedToken is the predicate function for revokedtoken builders.
+type RevokedToken func(*sql.Selector)
+
+// StockMovement is the predicate function for stockmovement builders.
+type StockMovement func(*sql.Selector)

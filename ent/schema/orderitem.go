@@ -19,6 +19,11 @@ func (OrderItem) Fields() []ent.Field {
 			Immutable(),
 		// Snapshot of product name in case it changes later
 		field.String("product_name").MaxLen(200),
+		// Denormalized product ID so list queries don't need to load the product edge.
+		// Optional during migration; backfilled from the product edge on startup.
+		field.UUID("snapshot_product_id", uuid.UUID{}).
+			Optional().
+			Nillable(),
 		field.Int("quantity").Positive(),
 		field.Float("unit_price"),
 		field.Float("subtotal"),

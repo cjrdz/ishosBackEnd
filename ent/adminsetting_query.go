@@ -481,7 +481,7 @@ func (_g *AdminSettingGroupBy) sqlScan(ctx context.Context, root *AdminSettingQu
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -523,6 +523,6 @@ func (_s *AdminSettingSelect) sqlScan(ctx context.Context, root *AdminSettingQue
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

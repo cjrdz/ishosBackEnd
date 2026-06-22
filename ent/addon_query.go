@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -14,19 +13,16 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/google/uuid"
 )
 
 // AddonQuery is the builder for querying Addon entities.
 type AddonQuery struct {
 	config
-	ctx          *QueryContext
-	order        []addon.OrderOption
-	inters       []Interceptor
-	predicates   []predicate.Addon
-	withProducts *ProductQuery
-	withFKs      bool
+	ctx        *QueryContext
+	order      []addon.OrderOption
+	inters     []Interceptor
+	predicates []predicate.Addon
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -61,28 +57,6 @@ func (_q *AddonQuery) Unique(unique bool) *AddonQuery {
 func (_q *AddonQuery) Order(o ...addon.OrderOption) *AddonQuery {
 	_q.order = append(_q.order, o...)
 	return _q
-}
-
-// QueryProducts chains the current query on the "products" edge.
-func (_q *AddonQuery) QueryProducts() *ProductQuery {
-	query := (&ProductClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(addon.Table, addon.FieldID, selector),
-			sqlgraph.To(product.Table, product.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, addon.ProductsTable, addon.ProductsColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
 }
 
 // First returns the first Addon entity from the query.
@@ -272,27 +246,15 @@ func (_q *AddonQuery) Clone() *AddonQuery {
 		return nil
 	}
 	return &AddonQuery{
-		config:       _q.config,
-		ctx:          _q.ctx.Clone(),
-		order:        append([]addon.OrderOption{}, _q.order...),
-		inters:       append([]Interceptor{}, _q.inters...),
-		predicates:   append([]predicate.Addon{}, _q.predicates...),
-		withProducts: _q.withProducts.Clone(),
+		config:     _q.config,
+		ctx:        _q.ctx.Clone(),
+		order:      append([]addon.OrderOption{}, _q.order...),
+		inters:     append([]Interceptor{}, _q.inters...),
+		predicates: append([]predicate.Addon{}, _q.predicates...),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
-}
-
-// WithProducts tells the query-builder to eager-load the nodes that are connected to
-// the "products" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *AddonQuery) WithProducts(opts ...func(*ProductQuery)) *AddonQuery {
-	query := (&ProductClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withProducts = query
-	return _q
 }
 
 // GroupBy is used to group vertices by one or more fields/columns.
@@ -371,23 +333,15 @@ func (_q *AddonQuery) prepareQuery(ctx context.Context) error {
 
 func (_q *AddonQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Addon, error) {
 	var (
-		nodes       = []*Addon{}
-		withFKs     = _q.withFKs
-		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
-			_q.withProducts != nil,
-		}
+		nodes = []*Addon{}
+		_spec = _q.querySpec()
 	)
-	if withFKs {
-		_spec.Node.Columns = append(_spec.Node.Columns, addon.ForeignKeys...)
-	}
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*Addon).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
 		node := &Addon{config: _q.config}
 		nodes = append(nodes, node)
-		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
 	}
 	for i := range hooks {
@@ -399,46 +353,7 @@ func (_q *AddonQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Addon,
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
-	if query := _q.withProducts; query != nil {
-		if err := _q.loadProducts(ctx, query, nodes,
-			func(n *Addon) { n.Edges.Products = []*Product{} },
-			func(n *Addon, e *Product) { n.Edges.Products = append(n.Edges.Products, e) }); err != nil {
-			return nil, err
-		}
-	}
 	return nodes, nil
-}
-
-func (_q *AddonQuery) loadProducts(ctx context.Context, query *ProductQuery, nodes []*Addon, init func(*Addon), assign func(*Addon, *Product)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[uuid.UUID]*Addon)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	query.withFKs = true
-	query.Where(predicate.Product(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(addon.ProductsColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.addon_products
-		if fk == nil {
-			return fmt.Errorf(`foreign-key "addon_products" is nil for node %v`, n.ID)
-		}
-		node, ok := nodeids[*fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "addon_products" returned %v for node %v`, *fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
 }
 
 func (_q *AddonQuery) sqlCount(ctx context.Context) (int, error) {
@@ -566,7 +481,7 @@ func (_g *AddonGroupBy) sqlScan(ctx context.Context, root *AddonQuery, v any) er
 	if err := _g.build.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }
 
@@ -608,6 +523,6 @@ func (_s *AddonSelect) sqlScan(ctx context.Context, root *AddonQuery, v any) err
 	if err := _s.driver.Query(ctx, query, args, rows); err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 	return sql.ScanSlice(rows, v)
 }

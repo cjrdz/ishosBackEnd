@@ -10,6 +10,7 @@ import (
 )
 
 // Logger logs request/response information for each HTTP request.
+// Includes request_id from context for request tracing.
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
@@ -18,6 +19,7 @@ func Logger(next http.Handler) http.Handler {
 		next.ServeHTTP(ww, r)
 
 		log.Info().
+			Str("request_id", RequestID(r.Context())).
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Int("status", ww.Status()).

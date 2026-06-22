@@ -24,7 +24,7 @@ type AdminSetting struct {
 	// Value holds the value of the "value" field.
 	Value map[string]interface{} `json:"value,omitempty"`
 	// ChangedBy holds the value of the "changed_by" field.
-	ChangedBy *uuid.UUID `json:"changed_by,omitempty"`
+	ChangedBy *string `json:"changed_by,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -37,11 +37,9 @@ func (*AdminSetting) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case adminsetting.FieldChangedBy:
-			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case adminsetting.FieldValue:
 			values[i] = new([]byte)
-		case adminsetting.FieldKey:
+		case adminsetting.FieldKey, adminsetting.FieldChangedBy:
 			values[i] = new(sql.NullString)
 		case adminsetting.FieldCreatedAt, adminsetting.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -83,11 +81,11 @@ func (_m *AdminSetting) assignValues(columns []string, values []any) error {
 				}
 			}
 		case adminsetting.FieldChangedBy:
-			if value, ok := values[i].(*sql.NullScanner); !ok {
+			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field changed_by", values[i])
 			} else if value.Valid {
-				_m.ChangedBy = new(uuid.UUID)
-				*_m.ChangedBy = *value.S.(*uuid.UUID)
+				_m.ChangedBy = new(string)
+				*_m.ChangedBy = value.String
 			}
 		case adminsetting.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -145,7 +143,7 @@ func (_m *AdminSetting) String() string {
 	builder.WriteString(", ")
 	if v := _m.ChangedBy; v != nil {
 		builder.WriteString("changed_by=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
+		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")

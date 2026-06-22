@@ -13,8 +13,6 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/addon"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
-	"github.com/google/uuid"
 )
 
 // AddonUpdate is the builder for updating Addon entities.
@@ -120,45 +118,9 @@ func (_u *AddonUpdate) SetUpdatedAt(v time.Time) *AddonUpdate {
 	return _u
 }
 
-// AddProductIDs adds the "products" edge to the Product entity by IDs.
-func (_u *AddonUpdate) AddProductIDs(ids ...uuid.UUID) *AddonUpdate {
-	_u.mutation.AddProductIDs(ids...)
-	return _u
-}
-
-// AddProducts adds the "products" edges to the Product entity.
-func (_u *AddonUpdate) AddProducts(v ...*Product) *AddonUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddProductIDs(ids...)
-}
-
 // Mutation returns the AddonMutation object of the builder.
 func (_u *AddonUpdate) Mutation() *AddonMutation {
 	return _u.mutation
-}
-
-// ClearProducts clears all "products" edges to the Product entity.
-func (_u *AddonUpdate) ClearProducts() *AddonUpdate {
-	_u.mutation.ClearProducts()
-	return _u
-}
-
-// RemoveProductIDs removes the "products" edge to Product entities by IDs.
-func (_u *AddonUpdate) RemoveProductIDs(ids ...uuid.UUID) *AddonUpdate {
-	_u.mutation.RemoveProductIDs(ids...)
-	return _u
-}
-
-// RemoveProducts removes "products" edges to Product entities.
-func (_u *AddonUpdate) RemoveProducts(v ...*Product) *AddonUpdate {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveProductIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -247,51 +209,6 @@ func (_u *AddonUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(addon.FieldUpdatedAt, field.TypeTime, value)
-	}
-	if _u.mutation.ProductsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedProductsIDs(); len(nodes) > 0 && !_u.mutation.ProductsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.ProductsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -403,45 +320,9 @@ func (_u *AddonUpdateOne) SetUpdatedAt(v time.Time) *AddonUpdateOne {
 	return _u
 }
 
-// AddProductIDs adds the "products" edge to the Product entity by IDs.
-func (_u *AddonUpdateOne) AddProductIDs(ids ...uuid.UUID) *AddonUpdateOne {
-	_u.mutation.AddProductIDs(ids...)
-	return _u
-}
-
-// AddProducts adds the "products" edges to the Product entity.
-func (_u *AddonUpdateOne) AddProducts(v ...*Product) *AddonUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddProductIDs(ids...)
-}
-
 // Mutation returns the AddonMutation object of the builder.
 func (_u *AddonUpdateOne) Mutation() *AddonMutation {
 	return _u.mutation
-}
-
-// ClearProducts clears all "products" edges to the Product entity.
-func (_u *AddonUpdateOne) ClearProducts() *AddonUpdateOne {
-	_u.mutation.ClearProducts()
-	return _u
-}
-
-// RemoveProductIDs removes the "products" edge to Product entities by IDs.
-func (_u *AddonUpdateOne) RemoveProductIDs(ids ...uuid.UUID) *AddonUpdateOne {
-	_u.mutation.RemoveProductIDs(ids...)
-	return _u
-}
-
-// RemoveProducts removes "products" edges to Product entities.
-func (_u *AddonUpdateOne) RemoveProducts(v ...*Product) *AddonUpdateOne {
-	ids := make([]uuid.UUID, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveProductIDs(ids...)
 }
 
 // Where appends a list predicates to the AddonUpdate builder.
@@ -560,51 +441,6 @@ func (_u *AddonUpdateOne) sqlSave(ctx context.Context) (_node *Addon, err error)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(addon.FieldUpdatedAt, field.TypeTime, value)
-	}
-	if _u.mutation.ProductsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedProductsIDs(); len(nodes) > 0 && !_u.mutation.ProductsCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.ProductsIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   addon.ProductsTable,
-			Columns: []string{addon.ProductsColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Addon{config: _u.config}
 	_spec.Assign = _node.assignValues

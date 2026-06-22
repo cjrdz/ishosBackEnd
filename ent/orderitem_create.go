@@ -28,6 +28,20 @@ func (_c *OrderItemCreate) SetProductName(v string) *OrderItemCreate {
 	return _c
 }
 
+// SetSnapshotProductID sets the "snapshot_product_id" field.
+func (_c *OrderItemCreate) SetSnapshotProductID(v uuid.UUID) *OrderItemCreate {
+	_c.mutation.SetSnapshotProductID(v)
+	return _c
+}
+
+// SetNillableSnapshotProductID sets the "snapshot_product_id" field if the given value is not nil.
+func (_c *OrderItemCreate) SetNillableSnapshotProductID(v *uuid.UUID) *OrderItemCreate {
+	if v != nil {
+		_c.SetSnapshotProductID(*v)
+	}
+	return _c
+}
+
 // SetQuantity sets the "quantity" field.
 func (_c *OrderItemCreate) SetQuantity(v int) *OrderItemCreate {
 	_c.mutation.SetQuantity(v)
@@ -197,6 +211,10 @@ func (_c *OrderItemCreate) createSpec() (*OrderItem, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ProductName(); ok {
 		_spec.SetField(orderitem.FieldProductName, field.TypeString, value)
 		_node.ProductName = value
+	}
+	if value, ok := _c.mutation.SnapshotProductID(); ok {
+		_spec.SetField(orderitem.FieldSnapshotProductID, field.TypeUUID, value)
+		_node.SnapshotProductID = &value
 	}
 	if value, ok := _c.mutation.Quantity(); ok {
 		_spec.SetField(orderitem.FieldQuantity, field.TypeInt, value)

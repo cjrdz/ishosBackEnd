@@ -11,7 +11,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
+	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
+	"github.com/cjrdz/ishosBackEnd/ent/stockmovement"
 	"github.com/google/uuid"
 )
 
@@ -112,19 +113,34 @@ func (_c *FlavorCreate) SetNillableID(v *uuid.UUID) *FlavorCreate {
 	return _c
 }
 
-// AddProductIDs adds the "products" edge to the Product entity by IDs.
-func (_c *FlavorCreate) AddProductIDs(ids ...uuid.UUID) *FlavorCreate {
-	_c.mutation.AddProductIDs(ids...)
+// AddInventoryItemIDs adds the "inventory_item" edge to the InventoryItem entity by IDs.
+func (_c *FlavorCreate) AddInventoryItemIDs(ids ...uuid.UUID) *FlavorCreate {
+	_c.mutation.AddInventoryItemIDs(ids...)
 	return _c
 }
 
-// AddProducts adds the "products" edges to the Product entity.
-func (_c *FlavorCreate) AddProducts(v ...*Product) *FlavorCreate {
+// AddInventoryItem adds the "inventory_item" edges to the InventoryItem entity.
+func (_c *FlavorCreate) AddInventoryItem(v ...*InventoryItem) *FlavorCreate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
 	}
-	return _c.AddProductIDs(ids...)
+	return _c.AddInventoryItemIDs(ids...)
+}
+
+// AddFlavorStockMovementIDs adds the "flavor_stock_movements" edge to the StockMovement entity by IDs.
+func (_c *FlavorCreate) AddFlavorStockMovementIDs(ids ...uuid.UUID) *FlavorCreate {
+	_c.mutation.AddFlavorStockMovementIDs(ids...)
+	return _c
+}
+
+// AddFlavorStockMovements adds the "flavor_stock_movements" edges to the StockMovement entity.
+func (_c *FlavorCreate) AddFlavorStockMovements(v ...*StockMovement) *FlavorCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddFlavorStockMovementIDs(ids...)
 }
 
 // Mutation returns the FlavorMutation object of the builder.
@@ -272,15 +288,31 @@ func (_c *FlavorCreate) createSpec() (*Flavor, *sqlgraph.CreateSpec) {
 		_spec.SetField(flavor.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
 	}
-	if nodes := _c.mutation.ProductsIDs(); len(nodes) > 0 {
+	if nodes := _c.mutation.InventoryItemIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   flavor.ProductsTable,
-			Columns: []string{flavor.ProductsColumn},
+			Table:   flavor.InventoryItemTable,
+			Columns: []string{flavor.InventoryItemColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(product.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(inventoryitem.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.FlavorStockMovementsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   flavor.FlavorStockMovementsTable,
+			Columns: []string{flavor.FlavorStockMovementsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(stockmovement.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

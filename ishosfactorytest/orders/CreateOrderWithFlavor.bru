@@ -1,0 +1,39 @@
+meta {
+  name: CreateOrderWithFlavor
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:8080/api/v1/orders
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "customer_name": "Test Customer With Flavor",
+    "customer_phone": "+50688889999",
+    "payment_method": "efectivo",
+    "order_type": "takeaway",
+    "notes": "Order with flavor selection",
+    "items": [
+      {
+        "product_id": "{{productId}}",
+        "quantity": 1,
+        "customizations": {
+          "flavor_id": "{{flavorId}}"
+        }
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

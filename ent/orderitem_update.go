@@ -44,6 +44,26 @@ func (_u *OrderItemUpdate) SetNillableProductName(v *string) *OrderItemUpdate {
 	return _u
 }
 
+// SetSnapshotProductID sets the "snapshot_product_id" field.
+func (_u *OrderItemUpdate) SetSnapshotProductID(v uuid.UUID) *OrderItemUpdate {
+	_u.mutation.SetSnapshotProductID(v)
+	return _u
+}
+
+// SetNillableSnapshotProductID sets the "snapshot_product_id" field if the given value is not nil.
+func (_u *OrderItemUpdate) SetNillableSnapshotProductID(v *uuid.UUID) *OrderItemUpdate {
+	if v != nil {
+		_u.SetSnapshotProductID(*v)
+	}
+	return _u
+}
+
+// ClearSnapshotProductID clears the value of the "snapshot_product_id" field.
+func (_u *OrderItemUpdate) ClearSnapshotProductID() *OrderItemUpdate {
+	_u.mutation.ClearSnapshotProductID()
+	return _u
+}
+
 // SetQuantity sets the "quantity" field.
 func (_u *OrderItemUpdate) SetQuantity(v int) *OrderItemUpdate {
 	_u.mutation.ResetQuantity()
@@ -221,6 +241,12 @@ func (_u *OrderItemUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(orderitem.FieldProductName, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.SnapshotProductID(); ok {
+		_spec.SetField(orderitem.FieldSnapshotProductID, field.TypeUUID, value)
+	}
+	if _u.mutation.SnapshotProductIDCleared() {
+		_spec.ClearField(orderitem.FieldSnapshotProductID, field.TypeUUID)
+	}
 	if value, ok := _u.mutation.Quantity(); ok {
 		_spec.SetField(orderitem.FieldQuantity, field.TypeInt, value)
 	}
@@ -334,6 +360,26 @@ func (_u *OrderItemUpdateOne) SetNillableProductName(v *string) *OrderItemUpdate
 	if v != nil {
 		_u.SetProductName(*v)
 	}
+	return _u
+}
+
+// SetSnapshotProductID sets the "snapshot_product_id" field.
+func (_u *OrderItemUpdateOne) SetSnapshotProductID(v uuid.UUID) *OrderItemUpdateOne {
+	_u.mutation.SetSnapshotProductID(v)
+	return _u
+}
+
+// SetNillableSnapshotProductID sets the "snapshot_product_id" field if the given value is not nil.
+func (_u *OrderItemUpdateOne) SetNillableSnapshotProductID(v *uuid.UUID) *OrderItemUpdateOne {
+	if v != nil {
+		_u.SetSnapshotProductID(*v)
+	}
+	return _u
+}
+
+// ClearSnapshotProductID clears the value of the "snapshot_product_id" field.
+func (_u *OrderItemUpdateOne) ClearSnapshotProductID() *OrderItemUpdateOne {
+	_u.mutation.ClearSnapshotProductID()
 	return _u
 }
 
@@ -543,6 +589,12 @@ func (_u *OrderItemUpdateOne) sqlSave(ctx context.Context) (_node *OrderItem, er
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(orderitem.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.SnapshotProductID(); ok {
+		_spec.SetField(orderitem.FieldSnapshotProductID, field.TypeUUID, value)
+	}
+	if _u.mutation.SnapshotProductIDCleared() {
+		_spec.ClearField(orderitem.FieldSnapshotProductID, field.TypeUUID)
 	}
 	if value, ok := _u.mutation.Quantity(); ok {
 		_spec.SetField(orderitem.FieldQuantity, field.TypeInt, value)

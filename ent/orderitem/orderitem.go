@@ -15,6 +15,8 @@ const (
 	FieldID = "id"
 	// FieldProductName holds the string denoting the product_name field in the database.
 	FieldProductName = "product_name"
+	// FieldSnapshotProductID holds the string denoting the snapshot_product_id field in the database.
+	FieldSnapshotProductID = "snapshot_product_id"
 	// FieldQuantity holds the string denoting the quantity field in the database.
 	FieldQuantity = "quantity"
 	// FieldUnitPrice holds the string denoting the unit_price field in the database.
@@ -49,6 +51,7 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldProductName,
+	FieldSnapshotProductID,
 	FieldQuantity,
 	FieldUnitPrice,
 	FieldSubtotal,
@@ -97,6 +100,11 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByProductName orders the results by the product_name field.
 func ByProductName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProductName, opts...).ToFunc()
+}
+
+// BySnapshotProductID orders the results by the snapshot_product_id field.
+func BySnapshotProductID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSnapshotProductID, opts...).ToFunc()
 }
 
 // ByQuantity orders the results by the quantity field.

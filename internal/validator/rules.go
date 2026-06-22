@@ -319,6 +319,12 @@ func ValidateRejectReason(reason string) ValidationErrors {
 	return errs
 }
 
+// IsTrackOrderNumberValid checks whether an order number matches the expected ORD-YYYYMMDD-NNNN format.
+func IsTrackOrderNumberValid(orderNumber string) bool {
+	orderRe := regexp.MustCompile(`^ORD-\d{8}-\d{4}$`)
+	return orderRe.MatchString(orderNumber)
+}
+
 func isStrongPassword(password string) bool {
 	if utf8.RuneCountInString(password) < 12 {
 		return false

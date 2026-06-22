@@ -43,6 +43,11 @@ func (c *TTLCache) Set(key string, value interface{}) {
 	c.m.Store(key, entry{value: value, expiresAt: time.Now().Add(c.ttl)})
 }
 
+// Delete removes a single key from the cache.
+func (c *TTLCache) Delete(key string) {
+	c.m.Delete(key)
+}
+
 // InvalidateAll removes every entry, forcing the next read to re-fetch.
 func (c *TTLCache) InvalidateAll() {
 	c.m.Range(func(key, _ interface{}) bool {

@@ -105,7 +105,7 @@ func (h *UploadHandler) ListImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]interface{}{
+	response.JSON(w, http.StatusOK, map[string]any{
 		"images": images,
 	})
 }

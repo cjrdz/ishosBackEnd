@@ -31,30 +31,8 @@ type Addon struct {
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
-	// Edges holds the relations/edges for other nodes in the graph.
-	// The values are being populated by the AddonQuery when eager-loading is set.
-	Edges          AddonEdges `json:"edges"`
-	product_addons *uuid.UUID
-	selectValues   sql.SelectValues
-}
-
-// AddonEdges holds the relations/edges for other nodes in the graph.
-type AddonEdges struct {
-	// Products holds the value of the products edge.
-	Products []*Product `json:"products,omitempty"`
-	// loadedTypes holds the information for reporting if a
-	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
-}
-
-// ProductsOrErr returns the Products value or an error if the edge
-// was not loaded in eager-loading.
-func (e AddonEdges) ProductsOrErr() ([]*Product, error) {
-	if e.loadedTypes[0] {
-		return e.Products, nil
-	}
-	return nil, &NotLoadedError{edge: "products"}
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -74,8 +52,6 @@ func (*Addon) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullTime)
 		case addon.FieldID:
 			values[i] = new(uuid.UUID)
-		case addon.ForeignKeys[0]: // product_addons
-			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		default:
 			values[i] = new(sql.UnknownType)
 		}
@@ -139,13 +115,6 @@ func (_m *Addon) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpdatedAt = value.Time
 			}
-		case addon.ForeignKeys[0]:
-			if value, ok := values[i].(*sql.NullScanner); !ok {
-				return fmt.Errorf("unexpected type %T for field product_addons", values[i])
-			} else if value.Valid {
-				_m.product_addons = new(uuid.UUID)
-				*_m.product_addons = *value.S.(*uuid.UUID)
-			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -157,11 +126,6 @@ func (_m *Addon) assignValues(columns []string, values []any) error {
 // This includes values selected through modifiers, order, etc.
 func (_m *Addon) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
-}
-
-// QueryProducts queries the "products" edge of the Addon entity.
-func (_m *Addon) QueryProducts() *ProductQuery {
-	return NewAddonClient(_m.config).QueryProducts(_m)
 }
 
 // Update returns a builder for updating this Addon.

@@ -29,6 +29,12 @@ const (
 	FieldExcludeGlobalFlavors = "exclude_global_flavors"
 	// FieldExcludeGlobalAddons holds the string denoting the exclude_global_addons field in the database.
 	FieldExcludeGlobalAddons = "exclude_global_addons"
+	// FieldBallBased holds the string denoting the ball_based field in the database.
+	FieldBallBased = "ball_based"
+	// FieldBallQuantity holds the string denoting the ball_quantity field in the database.
+	FieldBallQuantity = "ball_quantity"
+	// FieldAllowsMixedFlavors holds the string denoting the allows_mixed_flavors field in the database.
+	FieldAllowsMixedFlavors = "allows_mixed_flavors"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -37,10 +43,8 @@ const (
 	EdgeCategory = "category"
 	// EdgeOrderItems holds the string denoting the order_items edge name in mutations.
 	EdgeOrderItems = "order_items"
-	// EdgeFlavors holds the string denoting the flavors edge name in mutations.
-	EdgeFlavors = "flavors"
-	// EdgeAddons holds the string denoting the addons edge name in mutations.
-	EdgeAddons = "addons"
+	// EdgeInventoryItem holds the string denoting the inventory_item edge name in mutations.
+	EdgeInventoryItem = "inventory_item"
 	// Table holds the table name of the product in the database.
 	Table = "products"
 	// CategoryTable is the table that holds the category relation/edge.
@@ -57,20 +61,13 @@ const (
 	OrderItemsInverseTable = "order_items"
 	// OrderItemsColumn is the table column denoting the order_items relation/edge.
 	OrderItemsColumn = "product_order_items"
-	// FlavorsTable is the table that holds the flavors relation/edge.
-	FlavorsTable = "flavors"
-	// FlavorsInverseTable is the table name for the Flavor entity.
-	// It exists in this package in order to avoid circular dependency with the "flavor" package.
-	FlavorsInverseTable = "flavors"
-	// FlavorsColumn is the table column denoting the flavors relation/edge.
-	FlavorsColumn = "product_flavors"
-	// AddonsTable is the table that holds the addons relation/edge.
-	AddonsTable = "addons"
-	// AddonsInverseTable is the table name for the Addon entity.
-	// It exists in this package in order to avoid circular dependency with the "addon" package.
-	AddonsInverseTable = "addons"
-	// AddonsColumn is the table column denoting the addons relation/edge.
-	AddonsColumn = "product_addons"
+	// InventoryItemTable is the table that holds the inventory_item relation/edge.
+	InventoryItemTable = "inventory_items"
+	// InventoryItemInverseTable is the table name for the InventoryItem entity.
+	// It exists in this package in order to avoid circular dependency with the "inventoryitem" package.
+	InventoryItemInverseTable = "inventory_items"
+	// InventoryItemColumn is the table column denoting the inventory_item relation/edge.
+	InventoryItemColumn = "product_id"
 )
 
 // Columns holds all SQL columns for product fields.
@@ -83,6 +80,9 @@ var Columns = []string{
 	FieldIsAvailable,
 	FieldExcludeGlobalFlavors,
 	FieldExcludeGlobalAddons,
+	FieldBallBased,
+	FieldBallQuantity,
+	FieldAllowsMixedFlavors,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -90,9 +90,7 @@ var Columns = []string{
 // ForeignKeys holds the SQL foreign-keys that are owned by the "products"
 // table and are not defined as standalone fields in the schema.
 var ForeignKeys = []string{
-	"addon_products",
 	"category_products",
-	"flavor_products",
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -121,6 +119,12 @@ var (
 	DefaultExcludeGlobalFlavors bool
 	// DefaultExcludeGlobalAddons holds the default value on creation for the "exclude_global_addons" field.
 	DefaultExcludeGlobalAddons bool
+	// DefaultBallBased holds the default value on creation for the "ball_based" field.
+	DefaultBallBased bool
+	// DefaultBallQuantity holds the default value on creation for the "ball_quantity" field.
+	DefaultBallQuantity int
+	// DefaultAllowsMixedFlavors holds the default value on creation for the "allows_mixed_flavors" field.
+	DefaultAllowsMixedFlavors bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -174,6 +178,21 @@ func ByExcludeGlobalAddons(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExcludeGlobalAddons, opts...).ToFunc()
 }
 
+// ByBallBased orders the results by the ball_based field.
+func ByBallBased(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBallBased, opts...).ToFunc()
+}
+
+// ByBallQuantity orders the results by the ball_quantity field.
+func ByBallQuantity(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBallQuantity, opts...).ToFunc()
+}
+
+// ByAllowsMixedFlavors orders the results by the allows_mixed_flavors field.
+func ByAllowsMixedFlavors(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowsMixedFlavors, opts...).ToFunc()
+}
+
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
@@ -205,31 +224,17 @@ func ByOrderItems(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// ByFlavorsCount orders the results by flavors count.
-func ByFlavorsCount(opts ...sql.OrderTermOption) OrderOption {
+// ByInventoryItemCount orders the results by inventory_item count.
+func ByInventoryItemCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newFlavorsStep(), opts...)
+		sqlgraph.OrderByNeighborsCount(s, newInventoryItemStep(), opts...)
 	}
 }
 
-// ByFlavors orders the results by flavors terms.
-func ByFlavors(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+// ByInventoryItem orders the results by inventory_item terms.
+func ByInventoryItem(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newFlavorsStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
-// ByAddonsCount orders the results by addons count.
-func ByAddonsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newAddonsStep(), opts...)
-	}
-}
-
-// ByAddons orders the results by addons terms.
-func ByAddons(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newAddonsStep(), append([]sql.OrderTerm{term}, terms...)...)
+		sqlgraph.OrderByNeighborTerms(s, newInventoryItemStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 func newCategoryStep() *sqlgraph.Step {
@@ -246,17 +251,10 @@ func newOrderItemsStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, OrderItemsTable, OrderItemsColumn),
 	)
 }
-func newFlavorsStep() *sqlgraph.Step {
+func newInventoryItemStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(FlavorsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, FlavorsTable, FlavorsColumn),
-	)
-}
-func newAddonsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(AddonsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, AddonsTable, AddonsColumn),
+		sqlgraph.To(InventoryItemInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, InventoryItemTable, InventoryItemColumn),
 	)
 }
