@@ -73,7 +73,7 @@ type UpdateOrderInput struct {
 	Items         []OrderItemInput
 }
 
-func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string, auditSvc audit.Service) *OrderService {
+func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerRepo CustomerRepository, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string, auditSvc audit.Service) *OrderService {
 	return &OrderService{
 		orderRepo:      orderRepo,
 		tracker:        tracker,
@@ -82,7 +82,7 @@ func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, inventory
 		enrichment:     NewOrderEnrichmentService(),
 		query:          NewOrderQueryService(orderRepo),
 		tracking:       NewOrderTrackingService(tracker, orderRepo, publicStoreURL),
-		command:        NewOrderCommandService(orderRepo, orderStore, inventory, dispatcher, tracker, auditSvc),
+		command:        NewOrderCommandService(orderRepo, orderStore, customerRepo, inventory, dispatcher, tracker, auditSvc),
 	}
 }
 

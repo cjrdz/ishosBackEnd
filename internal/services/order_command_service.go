@@ -4,12 +4,15 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	orderDomain "github.com/cjrdz/ishosBackEnd/internal/domain/order"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
@@ -19,38 +22,48 @@ import (
 
 // OrderCommandService handles all state mutations for orders.
 type OrderCommandService struct {
-	orderRepo  OrderRepository
-	orderStore OrderStore
-	inventory  *InventoryService
-	dispatcher *events.Dispatcher
-	tracker    *TrackingTokenService
-	auditSvc   audit.Service
+	orderRepo    OrderRepository
+	orderStore   OrderStore
+	customerRepo CustomerRepository
+	inventory    *InventoryService
+	dispatcher   *events.Dispatcher
+	tracker      *TrackingTokenService
+	auditSvc     audit.Service
 }
 
 // NewOrderCommandService creates a new command service.
 func NewOrderCommandService(
 	orderRepo OrderRepository,
 	orderStore OrderStore,
+	customerRepo CustomerRepository,
 	inventory *InventoryService,
 	dispatcher *events.Dispatcher,
 	tracker *TrackingTokenService,
 	auditSvc audit.Service,
 ) *OrderCommandService {
 	return &OrderCommandService{
-		orderRepo:  orderRepo,
-		orderStore: orderStore,
-		inventory:  inventory,
-		dispatcher: dispatcher,
-		tracker:    tracker,
-		auditSvc:   auditSvc,
+		orderRepo:    orderRepo,
+		orderStore:   orderStore,
+		customerRepo: customerRepo,
+		inventory:    inventory,
+		dispatcher:   dispatcher,
+		tracker:      tracker,
+		auditSvc:     auditSvc,
 	}
 }
 
 // Create creates a new order with items in a transaction.
-// Enriches customizations, validates products, and publishes creation event.
+// Enriches customizations, validates products, links the order to a customer
+// record, and publishes the creation event.
 func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput) (dto.Order, error) {
+	customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
+	if err != nil {
+		return dto.Order{}, err
+	}
+
 	createdOrder, err := s.orderStore.CreateOrder(ctx, repository.StoreOrderInput{
 		OrderNumber:   GenerateOrderNumber(),
+		CustomerID:    customerID,
 		CustomerName:  input.CustomerName,
 		CustomerPhone: input.CustomerPhone,
 		CustomerEmail: input.CustomerEmail,
@@ -241,8 +254,15 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 }
 
 // Update updates an order's metadata and items in a transaction.
+// When the customer phone changes, the order is re-linked to the matching
+// customer record (creating one if necessary).
 func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input UpdateOrderInput) (dto.Order, error) {
-	return s.orderStore.UpdateOrder(ctx, id, repository.StoreUpdateOrderInput{
+	existing, err := s.orderRepo.FindByID(ctx, id)
+	if err != nil {
+		return dto.Order{}, err
+	}
+
+	storeInput := repository.StoreUpdateOrderInput{
 		CustomerName:  input.CustomerName,
 		CustomerPhone: input.CustomerPhone,
 		CustomerEmail: input.CustomerEmail,
@@ -251,7 +271,17 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		TableNumber:   input.TableNumber,
 		Notes:         input.Notes,
 		Items:         toStoreOrderItemInputs(input.Items),
-	})
+	}
+
+	if input.CustomerPhone != existing.CustomerPhone {
+		customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
+		if err != nil {
+			return dto.Order{}, err
+		}
+		storeInput.CustomerID = customerID
+	}
+
+	return s.orderStore.UpdateOrder(ctx, id, storeInput)
 }
 
 // UpdateNotes updates an order's notes field.
@@ -276,6 +306,41 @@ func (s *OrderCommandService) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 
 	return s.orderRepo.Delete(ctx, id)
+}
+
+// resolveCustomerByPhone returns the customer ID for the given phone, creating a
+// new customer record when one does not already exist. It handles the small race
+// window where two concurrent orders for the same phone could both attempt to create
+// the customer by retrying the lookup on a unique-constraint violation.
+func (s *OrderCommandService) resolveCustomerByPhone(ctx context.Context, phone, name string, email *string) (*uuid.UUID, error) {
+	phone = strings.TrimSpace(phone)
+	name = strings.TrimSpace(name)
+
+	customer, err := s.customerRepo.FindByPhone(ctx, phone)
+	if err == nil {
+		return &customer.ID, nil
+	}
+	if !errors.Is(err, apperror.ErrNotFound) {
+		return nil, err
+	}
+
+	created, createErr := s.customerRepo.Create(ctx, repository.CreateCustomerInput{
+		Name:     name,
+		UserType: "user",
+		Phone:    phone,
+		Email:    email,
+		Status:   "active",
+	})
+	if createErr == nil {
+		return &created.ID, nil
+	}
+
+	// Unique violation: another request created the customer first; look it up again.
+	customer, err = s.customerRepo.FindByPhone(ctx, phone)
+	if err == nil {
+		return &customer.ID, nil
+	}
+	return nil, createErr
 }
 
 // GenerateOrderNumber generates a unique order number using timestamp and random digit.

@@ -15,6 +15,7 @@ type Order struct {
 	ID                uuid.UUID
 	OrderNumber       string
 	Status            OrderStatus
+	CustomerID        uuid.UUID
 	CustomerName      string
 	CustomerPhone     string
 	CustomerEmail     string

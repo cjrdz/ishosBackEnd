@@ -250,12 +250,21 @@ var (
 		{Name: "status_timestamps", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "customer_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// OrdersTable holds the schema information for the "orders" table.
 	OrdersTable = &schema.Table{
 		Name:       "orders",
 		Columns:    OrdersColumns,
 		PrimaryKey: []*schema.Column{OrdersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "orders_customers_customer",
+				Columns:    []*schema.Column{OrdersColumns[21]},
+				RefColumns: []*schema.Column{CustomersColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "order_status",
@@ -266,6 +275,11 @@ var (
 				Name:    "order_customer_phone",
 				Unique:  false,
 				Columns: []*schema.Column{OrdersColumns[3]},
+			},
+			{
+				Name:    "order_customer_id",
+				Unique:  false,
+				Columns: []*schema.Column{OrdersColumns[21]},
 			},
 			{
 				Name:    "order_created_at",
@@ -514,6 +528,7 @@ var (
 func init() {
 	InventoryItemsTable.ForeignKeys[0].RefTable = FlavorsTable
 	InventoryItemsTable.ForeignKeys[1].RefTable = ProductsTable
+	OrdersTable.ForeignKeys[0].RefTable = CustomersTable
 	OrderItemsTable.ForeignKeys[0].RefTable = OrdersTable
 	OrderItemsTable.ForeignKeys[1].RefTable = ProductsTable
 	ProductsTable.ForeignKeys[0].RefTable = CategoriesTable

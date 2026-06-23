@@ -28,6 +28,7 @@ func (r *OrderRepository) Create(ctx context.Context, input CreateOrderInput) (d
 
 	create := r.db.Order.Create().
 		SetOrderNumber(input.OrderNumber).
+		SetNillableCustomerID(input.CustomerID).
 		SetCustomerName(input.CustomerName).
 		SetCustomerPhone(input.CustomerPhone).
 		SetNillableCustomerEmail(input.CustomerEmail).
@@ -411,6 +412,7 @@ func toDTOOrderItems(items []*ent.OrderItem) []dto.OrderItem {
 
 type CreateOrderInput struct {
 	OrderNumber     string
+	CustomerID      *uuid.UUID
 	CustomerName    string
 	CustomerPhone   string
 	CustomerEmail   *string
@@ -459,6 +461,7 @@ func toDTOOrder(order *ent.Order) dto.Order {
 	return dto.Order{
 		ID:               order.ID,
 		OrderNumber:      order.OrderNumber,
+		CustomerID:       order.CustomerID,
 		CustomerName:     order.CustomerName,
 		CustomerPhone:    order.CustomerPhone,
 		CustomerEmail:    order.CustomerEmail,

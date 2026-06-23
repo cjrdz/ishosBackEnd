@@ -13,14 +13,15 @@ import (
 )
 
 type customerRepoStub struct {
-	listCalls     int
-	listFn        func(ctx context.Context, status, search string) ([]dto.Customer, error)
-	listPaginated func(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
-	findByID      func(ctx context.Context, id uuid.UUID) (dto.Customer, error)
-	createFn      func(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
-	updateFn      func(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
-	deleteFn      func(ctx context.Context, id uuid.UUID) error
-	listOrders    func(ctx context.Context, phone string, limit int) ([]dto.Order, error)
+	listCalls         int
+	listFn            func(ctx context.Context, status, search string) ([]dto.Customer, error)
+	listPaginated     func(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
+	findByID          func(ctx context.Context, id uuid.UUID) (dto.Customer, error)
+	findByPhone       func(ctx context.Context, phone string) (dto.Customer, error)
+	createFn          func(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
+	updateFn          func(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
+	deleteFn          func(ctx context.Context, id uuid.UUID) error
+	listOrdersByID    func(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error)
 }
 
 func (s *customerRepoStub) List(ctx context.Context, status, search string) ([]dto.Customer, error) {
@@ -41,6 +42,13 @@ func (s *customerRepoStub) ListPaginated(ctx context.Context, status, search str
 func (s *customerRepoStub) FindByID(ctx context.Context, id uuid.UUID) (dto.Customer, error) {
 	if s.findByID != nil {
 		return s.findByID(ctx, id)
+	}
+	return dto.Customer{}, nil
+}
+
+func (s *customerRepoStub) FindByPhone(ctx context.Context, phone string) (dto.Customer, error) {
+	if s.findByPhone != nil {
+		return s.findByPhone(ctx, phone)
 	}
 	return dto.Customer{}, nil
 }
@@ -66,9 +74,9 @@ func (s *customerRepoStub) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *customerRepoStub) ListOrdersByPhone(ctx context.Context, phone string, limit int) ([]dto.Order, error) {
-	if s.listOrders != nil {
-		return s.listOrders(ctx, phone, limit)
+func (s *customerRepoStub) ListOrdersByCustomerID(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error) {
+	if s.listOrdersByID != nil {
+		return s.listOrdersByID(ctx, customerID, limit)
 	}
 	return nil, nil
 }
@@ -107,20 +115,24 @@ func TestCustomerServiceGetByID_NotFound(t *testing.T) {
 }
 
 func TestCustomerServiceOrdersByCustomer(t *testing.T) {
+	customerID := uuid.New()
 	repo := &customerRepoStub{
-		findByID: func(_ context.Context, _ uuid.UUID) (dto.Customer, error) {
-			return dto.Customer{Phone: "555-1234"}, nil
+		findByID: func(_ context.Context, id uuid.UUID) (dto.Customer, error) {
+			if id != customerID {
+				t.Fatalf("expected customer ID %q, got %q", customerID, id)
+			}
+			return dto.Customer{ID: customerID, Phone: "555-1234"}, nil
 		},
-		listOrders: func(_ context.Context, phone string, limit int) ([]dto.Order, error) {
-			if phone != "555-1234" {
-				t.Fatalf("expected phone %q, got %q", "555-1234", phone)
+		listOrdersByID: func(_ context.Context, id uuid.UUID, limit int) ([]dto.Order, error) {
+			if id != customerID {
+				t.Fatalf("expected customer ID %q, got %q", customerID, id)
 			}
 			return []dto.Order{{OrderNumber: "ORD-001"}}, nil
 		},
 	}
 	svc := NewCustomerService(repo)
 
-	orders, err := svc.OrdersByCustomer(context.Background(), uuid.New(), 10)
+	orders, err := svc.OrdersByCustomer(context.Background(), customerID, 10)
 	if err != nil {
 		t.Fatalf("OrdersByCustomer error = %v", err)
 	}

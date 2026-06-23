@@ -110,6 +110,16 @@ func (h *UserHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
+	h.createOrUpsert(r, w, http.StatusCreated, false)
+}
+
+// Upsert creates a customer if the phone does not exist, or updates the
+// existing customer. Used when saving a customer from an order.
+func (h *UserHandler) Upsert(w http.ResponseWriter, r *http.Request) {
+	h.createOrUpsert(r, w, http.StatusOK, true)
+}
+
+func (h *UserHandler) createOrUpsert(r *http.Request, w http.ResponseWriter, statusCode int, upsert bool) {
 	var body struct {
 		Name     string `json:"name"`
 		UserType string `json:"user_type"`
@@ -133,20 +143,28 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		email = &body.Email
 	}
 
-	created, err := h.customerSvc.Create(r.Context(), repository.CreateCustomerInput{
+	input := repository.CreateCustomerInput{
 		Name:     body.Name,
 		UserType: body.UserType,
 		Phone:    body.Phone,
 		Email:    email,
 		Status:   body.Status,
-	})
+	}
+
+	var result dto.Customer
+	var err error
+	if upsert {
+		result, err = h.customerSvc.UpsertByPhone(r.Context(), input)
+	} else {
+		result, err = h.customerSvc.Create(r.Context(), input)
+	}
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create user")
 		response.Error(w, http.StatusInternalServerError, "No se pudo crear usuario")
 		return
 	}
 
-	response.JSON(w, http.StatusCreated, toUserResponse(created))
+	response.JSON(w, statusCode, toUserResponse(result))
 }
 
 func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {

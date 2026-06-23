@@ -2,6 +2,8 @@
 package order
 
 import (
+	"github.com/google/uuid"
+
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
@@ -24,6 +26,7 @@ func FromDTOOrder(dtoOrder *dto.Order) (*Order, error) {
 		CustomerName:     dtoOrder.CustomerName,
 		CustomerPhone:    dtoOrder.CustomerPhone,
 		CustomerEmail:    stringVal(dtoOrder.CustomerEmail),
+		CustomerID:       uuidVal(dtoOrder.CustomerID),
 		PaymentMethod:    dtoOrder.PaymentMethod,
 		PaymentStatus:    dtoOrder.PaymentStatus,
 		OrderType:        dtoOrder.OrderType,
@@ -66,4 +69,12 @@ func stringVal(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// uuidVal safely converts *uuid.UUID to uuid.UUID, returning uuid.Nil if nil.
+func uuidVal(u *uuid.UUID) uuid.UUID {
+	if u == nil {
+		return uuid.Nil
+	}
+	return *u
 }

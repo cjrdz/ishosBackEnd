@@ -5,6 +5,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -30,6 +32,7 @@ type OrderHandler struct {
 	mapper         *services.OrderResponseMapper
 	settingsSvc    *services.AdminSettingService
 	publicStoreURL string
+	responseCache  *cache.TTLCache
 }
 
 func NewOrderHandler(
@@ -47,7 +50,12 @@ func NewOrderHandler(
 		mapper:         mapper,
 		settingsSvc:    settingsSvc,
 		publicStoreURL: publicStoreURL,
+		responseCache:  cache.New(5 * time.Second),
 	}
+}
+
+func (h *OrderHandler) invalidateListCache() {
+	h.responseCache.InvalidateAll()
 }
 
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -128,6 +136,8 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
+
 	trackingAccess, err := h.orderSvc.IssueTrackingAccess(r.Context(), order.OrderNumber)
 	if err != nil {
 		log.Error().Err(err).Str("order_number", order.OrderNumber).Msg("failed to issue tracking token")
@@ -147,7 +157,14 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
+	lite := r.URL.Query().Get("lite") == "true"
 	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
+	cacheKey := fmt.Sprintf("orders:%s:%t:%d:%d", status, lite, params.Page, params.PerPage)
+
+	if cached, ok := h.responseCache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, cached)
+		return
+	}
 
 	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, params.Page, params.PerPage)
 	if err != nil {
@@ -155,12 +172,26 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if lite {
+		responses := make([]services.OrderLiteResponse, len(orders))
+		for i, o := range orders {
+			responses[i] = h.mapper.MapLite(o)
+		}
+		paginated := response.NewPaginated(responses, params.Page, params.PerPage, total)
+		h.responseCache.Set(cacheKey, paginated)
+		response.JSON(w, http.StatusOK, paginated)
+		return
+	}
+
+	// Preload employee cache in one query to avoid N+1 PocketBase lookups.
+	h.mapper.PreloadEmployees()
 	responses := make([]services.OrderResponse, len(orders))
 	for i, o := range orders {
 		responses[i] = h.mapper.Map(o)
 	}
-
-	response.JSON(w, http.StatusOK, response.NewPaginated(responses, params.Page, params.PerPage, total))
+	paginated := response.NewPaginated(responses, params.Page, params.PerPage, total)
+	h.responseCache.Set(cacheKey, paginated)
+	response.JSON(w, http.StatusOK, paginated)
 }
 
 func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -277,6 +308,7 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -311,6 +343,7 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -360,6 +393,7 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -446,6 +480,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -482,6 +517,7 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -516,5 +552,6 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Order deleted"})
 }

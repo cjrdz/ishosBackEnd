@@ -5,6 +5,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
@@ -28,6 +30,7 @@ type ProductHandler struct {
 	cfg              *config.Config
 	productService   services.ProductServiceInterface
 	inventoryService *services.InventoryService
+	responseCache    *cache.TTLCache
 }
 
 func NewProductHandler(svc services.ProductServiceInterface, cfg *config.Config, inventoryService *services.InventoryService) *ProductHandler {
@@ -35,6 +38,7 @@ func NewProductHandler(svc services.ProductServiceInterface, cfg *config.Config,
 		cfg:              cfg,
 		productService:   svc,
 		inventoryService: inventoryService,
+		responseCache:    cache.New(5 * time.Minute),
 	}
 }
 
@@ -58,6 +62,10 @@ type productResponse struct {
 	Flavors              []flavorResponse `json:"flavors"`
 	Addons               []addonResponse  `json:"addons"`
 	CreatedAt            time.Time        `json:"created_at"`
+}
+
+func (h *ProductHandler) invalidateListCache() {
+	h.responseCache.InvalidateAll()
 }
 
 func (h *ProductHandler) buildImageURL(path *string) *string {
@@ -137,8 +145,17 @@ func (h *ProductHandler) toProductResponse(p dto.Product) productResponse {
 
 // List returns all products.
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
+	category := r.URL.Query().Get("category")
+	includeAll := r.URL.Query().Get("all") == "true"
+	cacheKey := fmt.Sprintf("products:%s:%t", category, includeAll)
+
+	if cached, ok := h.responseCache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, cached)
+		return
+	}
+
 	ctx := r.Context()
-	products, err := h.productService.List(ctx, r.URL.Query().Get("category"), r.URL.Query().Get("all") == "true")
+	products, err := h.productService.List(ctx, category, includeAll)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -152,7 +169,10 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, p := range products {
 		result[i] = h.toProductResponse(p)
 	}
-	response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
+
+	paginated := response.NewPaginated(result, 1, len(result), len(result))
+	h.responseCache.Set(cacheKey, paginated)
+	response.JSON(w, http.StatusOK, paginated)
 }
 
 // Get returns a single product by ID.
@@ -204,6 +224,7 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	p, err := h.productService.Create(r.Context(), repository.CreateProductInput{
 		Name:                 body.Name,
 		Description:          body.Description,
@@ -279,6 +300,7 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	p, err := h.productService.Update(r.Context(), id, repository.UpdateProductInput{
 		Name:                 body.Name,
 		Description:          body.Description,
@@ -311,6 +333,7 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.invalidateListCache()
 	if err := h.productService.Delete(r.Context(), id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Product not found")
@@ -335,6 +358,7 @@ func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	h.invalidateListCache()
 	updated, err := h.productService.ToggleAvailability(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {

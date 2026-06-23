@@ -26,6 +26,11 @@ func (Order) Fields() []ent.Field {
 			Unique(),
 
 		// Customer info — no account needed, just contact details
+		// customer_id links to the canonical customer record; the denormalized
+		// name/phone/email fields preserve the values at the time the order was placed.
+		field.UUID("customer_id", uuid.UUID{}).
+			Optional().
+			Nillable(),
 		field.String("customer_name").MaxLen(200),
 		field.String("customer_phone").MaxLen(20),
 		field.String("customer_email").Optional().Nillable(),
@@ -99,6 +104,9 @@ func (Order) Fields() []ent.Field {
 func (Order) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("items", OrderItem.Type),
+		edge.To("customer", Customer.Type).
+			Field("customer_id").
+			Unique(),
 	}
 }
 
@@ -106,6 +114,7 @@ func (Order) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("status"),
 		index.Fields("customer_phone"),
+		index.Fields("customer_id"),
 		index.Fields("created_at"),
 		// Composite index for the common list query: filter by status,
 		// order by created_at descending.

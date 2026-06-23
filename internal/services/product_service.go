@@ -19,7 +19,7 @@ type ProductService struct {
 }
 
 func NewProductService(repo ProductRepository) *ProductService {
-	return &ProductService{repo: repo, cache: cache.New(45 * time.Second)}
+	return &ProductService{repo: repo, cache: cache.New(5 * time.Minute)}
 }
 
 func (s *ProductService) List(ctx context.Context, categorySlug string, includeAll bool) ([]dto.Product, error) {

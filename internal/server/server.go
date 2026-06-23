@@ -126,6 +126,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	orderSvc := services.NewOrderService(
 		orderRepo,
 		orderStore,
+		customerRepo,
 		inventoryService,
 		trackingTokenService,
 		orderDispatcher,
@@ -140,6 +141,16 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	employeeHandler := handlers.NewEmployeeHandler(pb, auditSvc)
 	categoryHandler := handlers.NewCategoryHandler(categorySvc)
 	productHandler := handlers.NewProductHandler(productSvc, cfg, inventoryService)
+	// Pre-warm the product list cache so the first admin login request is fast.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := productSvc.List(ctx, "", true); err != nil {
+			log.Warn().Err(err).Msg("Failed to pre-warm product cache")
+		} else {
+			log.Debug().Msg("Product cache pre-warmed")
+		}
+	}()
 	flavorHandler := handlers.NewFlavorHandler(flavorSvc)
 	addonHandler := handlers.NewAddonHandler(addonSvc)
 	uploadHandler := handlers.NewUploadHandler(cfg)
@@ -255,6 +266,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.Get("/users/{id}", userHandler.Get)
 			protected.With(appmiddleware.RequireAdmin).Get("/users/{id}/orders", userHandler.Orders)
 			protected.With(appmiddleware.RequireAdmin).Post("/users", userHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Post("/users/upsert", userHandler.Upsert)
 			protected.With(appmiddleware.RequireAdmin).Patch("/users/{id}", userHandler.Update)
 			protected.With(appmiddleware.RequireAdmin).Delete("/users/{id}", userHandler.Delete)
 

@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
@@ -21,11 +22,12 @@ import (
 // OrderQuery is the builder for querying Order entities.
 type OrderQuery struct {
 	config
-	ctx        *QueryContext
-	order      []order.OrderOption
-	inters     []Interceptor
-	predicates []predicate.Order
-	withItems  *OrderItemQuery
+	ctx          *QueryContext
+	order        []order.OrderOption
+	inters       []Interceptor
+	predicates   []predicate.Order
+	withItems    *OrderItemQuery
+	withCustomer *CustomerQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -77,6 +79,28 @@ func (_q *OrderQuery) QueryItems() *OrderItemQuery {
 			sqlgraph.From(order.Table, order.FieldID, selector),
 			sqlgraph.To(orderitem.Table, orderitem.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, order.ItemsTable, order.ItemsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCustomer chains the current query on the "customer" edge.
+func (_q *OrderQuery) QueryCustomer() *CustomerQuery {
+	query := (&CustomerClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(order.Table, order.FieldID, selector),
+			sqlgraph.To(customer.Table, customer.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, order.CustomerTable, order.CustomerColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -271,12 +295,13 @@ func (_q *OrderQuery) Clone() *OrderQuery {
 		return nil
 	}
 	return &OrderQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]order.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.Order{}, _q.predicates...),
-		withItems:  _q.withItems.Clone(),
+		config:       _q.config,
+		ctx:          _q.ctx.Clone(),
+		order:        append([]order.OrderOption{}, _q.order...),
+		inters:       append([]Interceptor{}, _q.inters...),
+		predicates:   append([]predicate.Order{}, _q.predicates...),
+		withItems:    _q.withItems.Clone(),
+		withCustomer: _q.withCustomer.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -291,6 +316,17 @@ func (_q *OrderQuery) WithItems(opts ...func(*OrderItemQuery)) *OrderQuery {
 		opt(query)
 	}
 	_q.withItems = query
+	return _q
+}
+
+// WithCustomer tells the query-builder to eager-load the nodes that are connected to
+// the "customer" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *OrderQuery) WithCustomer(opts ...func(*CustomerQuery)) *OrderQuery {
+	query := (&CustomerClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCustomer = query
 	return _q
 }
 
@@ -372,8 +408,9 @@ func (_q *OrderQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Order,
 	var (
 		nodes       = []*Order{}
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			_q.withItems != nil,
+			_q.withCustomer != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -398,6 +435,12 @@ func (_q *OrderQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Order,
 		if err := _q.loadItems(ctx, query, nodes,
 			func(n *Order) { n.Edges.Items = []*OrderItem{} },
 			func(n *Order, e *OrderItem) { n.Edges.Items = append(n.Edges.Items, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCustomer; query != nil {
+		if err := _q.loadCustomer(ctx, query, nodes, nil,
+			func(n *Order, e *Customer) { n.Edges.Customer = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -435,6 +478,38 @@ func (_q *OrderQuery) loadItems(ctx context.Context, query *OrderItemQuery, node
 	}
 	return nil
 }
+func (_q *OrderQuery) loadCustomer(ctx context.Context, query *CustomerQuery, nodes []*Order, init func(*Order), assign func(*Order, *Customer)) error {
+	ids := make([]uuid.UUID, 0, len(nodes))
+	nodeids := make(map[uuid.UUID][]*Order)
+	for i := range nodes {
+		if nodes[i].CustomerID == nil {
+			continue
+		}
+		fk := *nodes[i].CustomerID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(customer.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "customer_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *OrderQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -460,6 +535,9 @@ func (_q *OrderQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != order.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
+		}
+		if _q.withCustomer != nil {
+			_spec.Node.AddColumnOnce(order.FieldCustomerID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

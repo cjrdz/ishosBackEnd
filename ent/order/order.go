@@ -18,6 +18,8 @@ const (
 	FieldID = "id"
 	// FieldOrderNumber holds the string denoting the order_number field in the database.
 	FieldOrderNumber = "order_number"
+	// FieldCustomerID holds the string denoting the customer_id field in the database.
+	FieldCustomerID = "customer_id"
 	// FieldCustomerName holds the string denoting the customer_name field in the database.
 	FieldCustomerName = "customer_name"
 	// FieldCustomerPhone holds the string denoting the customer_phone field in the database.
@@ -58,6 +60,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeItems holds the string denoting the items edge name in mutations.
 	EdgeItems = "items"
+	// EdgeCustomer holds the string denoting the customer edge name in mutations.
+	EdgeCustomer = "customer"
 	// Table holds the table name of the order in the database.
 	Table = "orders"
 	// ItemsTable is the table that holds the items relation/edge.
@@ -67,12 +71,20 @@ const (
 	ItemsInverseTable = "order_items"
 	// ItemsColumn is the table column denoting the items relation/edge.
 	ItemsColumn = "order_items"
+	// CustomerTable is the table that holds the customer relation/edge.
+	CustomerTable = "orders"
+	// CustomerInverseTable is the table name for the Customer entity.
+	// It exists in this package in order to avoid circular dependency with the "customer" package.
+	CustomerInverseTable = "customers"
+	// CustomerColumn is the table column denoting the customer relation/edge.
+	CustomerColumn = "customer_id"
 )
 
 // Columns holds all SQL columns for order fields.
 var Columns = []string{
 	FieldID,
 	FieldOrderNumber,
+	FieldCustomerID,
 	FieldCustomerName,
 	FieldCustomerPhone,
 	FieldCustomerEmail,
@@ -246,6 +258,11 @@ func ByOrderNumber(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOrderNumber, opts...).ToFunc()
 }
 
+// ByCustomerID orders the results by the customer_id field.
+func ByCustomerID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCustomerID, opts...).ToFunc()
+}
+
 // ByCustomerName orders the results by the customer_name field.
 func ByCustomerName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCustomerName, opts...).ToFunc()
@@ -349,10 +366,24 @@ func ByItems(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newItemsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByCustomerField orders the results by customer field.
+func ByCustomerField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCustomerStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newItemsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ItemsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, ItemsTable, ItemsColumn),
+	)
+}
+func newCustomerStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CustomerInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, CustomerTable, CustomerColumn),
 	)
 }

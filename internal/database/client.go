@@ -31,7 +31,19 @@ func OpenClient(databaseURL string) (*ent.Client, *stdsql.DB, error) {
 	rawDB.SetConnMaxLifetime(30 * time.Minute)
 	driver := entsql.OpenDB(dialect.Postgres, rawDB)
 
-	return ent.NewClient(ent.Driver(driver)), rawDB, nil
+	client := ent.NewClient(ent.Driver(driver))
+
+	// Warm up the connection pool so the first real request doesn't pay
+	// connection-establishment cost.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := rawDB.PingContext(ctx); err != nil {
+		_ = client.Close()
+		_ = rawDB.Close()
+		return nil, nil, fmt.Errorf("ping database: %w", err)
+	}
+
+	return client, rawDB, nil
 }
 
 func EnsureSchema(ctx context.Context, client *ent.Client, rawDB *stdsql.DB) error {
@@ -48,6 +60,14 @@ func EnsureSchema(ctx context.Context, client *ent.Client, rawDB *stdsql.DB) err
 	}
 
 	if err := backfillOrderItemSnapshotProductID(ctx, rawDB); err != nil {
+		return err
+	}
+
+	if err := ensureOrderItemIndexes(ctx, rawDB); err != nil {
+		return err
+	}
+
+	if err := backfillOrderCustomerID(ctx, rawDB); err != nil {
 		return err
 	}
 
@@ -98,6 +118,67 @@ WHERE snapshot_product_id IS NULL
 		if rowsErr == nil && rows > 0 {
 			// Best-effort logging via stdlib log since zerolog isn't wired here.
 			fmt.Printf("backfilled %d order_items.snapshot_product_id rows\n", rows)
+		}
+	}
+	return nil
+}
+
+// ensureOrderItemIndexes creates indexes on the order_item foreign-key columns
+// if they don't already exist. Without these indexes, WithItems() triggers a
+// full table scan on every order list query.
+func ensureOrderItemIndexes(ctx context.Context, rawDB *stdsql.DB) error {
+	const orderIndex = `CREATE INDEX IF NOT EXISTS orderitem_order_id ON order_items(order_items)`
+	const productIndex = `CREATE INDEX IF NOT EXISTS orderitem_product_id ON order_items(product_order_items)`
+
+	if _, err := rawDB.ExecContext(ctx, orderIndex); err != nil {
+		return fmt.Errorf("create orderitem_order_id index: %w", err)
+	}
+	if _, err := rawDB.ExecContext(ctx, productIndex); err != nil {
+		return fmt.Errorf("create orderitem_product_id index: %w", err)
+	}
+	return nil
+}
+
+// backfillOrderCustomerID links historical orders to canonical customer records.
+// It creates a customer for each distinct phone that does not yet exist, then
+// updates orders.customer_id to point at the matching customer.
+func backfillOrderCustomerID(ctx context.Context, rawDB *stdsql.DB) error {
+	const createMissingCustomers = `
+INSERT INTO customers (id, name, user_type, phone, email, status, created_at, updated_at)
+SELECT gen_random_uuid(),
+       MAX(o.customer_name) AS name,
+       'user' AS user_type,
+       o.customer_phone AS phone,
+       MAX(o.customer_email) AS email,
+       'active' AS status,
+       NOW() AS created_at,
+       NOW() AS updated_at
+FROM orders o
+LEFT JOIN customers c ON c.phone = o.customer_phone
+WHERE o.customer_id IS NULL
+  AND c.id IS NULL
+GROUP BY o.customer_phone
+ON CONFLICT (phone) DO NOTHING`
+
+	if _, err := rawDB.ExecContext(ctx, createMissingCustomers); err != nil {
+		return fmt.Errorf("backfill orders.customer_id (create customers): %w", err)
+	}
+
+	const linkOrders = `
+UPDATE orders o
+SET customer_id = c.id
+FROM customers c
+WHERE o.customer_id IS NULL
+  AND c.phone = o.customer_phone`
+
+	res, err := rawDB.ExecContext(ctx, linkOrders)
+	if err != nil {
+		return fmt.Errorf("backfill orders.customer_id (link orders): %w", err)
+	}
+	if res != nil {
+		rows, rowsErr := res.RowsAffected()
+		if rowsErr == nil && rows > 0 {
+			fmt.Printf("backfilled %d orders.customer_id rows\n", rows)
 		}
 	}
 	return nil

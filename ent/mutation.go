@@ -3638,6 +3638,9 @@ type CustomerMutation struct {
 	created_at    *time.Time
 	updated_at    *time.Time
 	clearedFields map[string]struct{}
+	orders        map[uuid.UUID]struct{}
+	removedorders map[uuid.UUID]struct{}
+	clearedorders bool
 	done          bool
 	oldValue      func(context.Context) (*Customer, error)
 	predicates    []predicate.Customer
@@ -4012,6 +4015,60 @@ func (m *CustomerMutation) ResetUpdatedAt() {
 	m.updated_at = nil
 }
 
+// AddOrderIDs adds the "orders" edge to the Order entity by ids.
+func (m *CustomerMutation) AddOrderIDs(ids ...uuid.UUID) {
+	if m.orders == nil {
+		m.orders = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		m.orders[ids[i]] = struct{}{}
+	}
+}
+
+// ClearOrders clears the "orders" edge to the Order entity.
+func (m *CustomerMutation) ClearOrders() {
+	m.clearedorders = true
+}
+
+// OrdersCleared reports if the "orders" edge to the Order entity was cleared.
+func (m *CustomerMutation) OrdersCleared() bool {
+	return m.clearedorders
+}
+
+// RemoveOrderIDs removes the "orders" edge to the Order entity by IDs.
+func (m *CustomerMutation) RemoveOrderIDs(ids ...uuid.UUID) {
+	if m.removedorders == nil {
+		m.removedorders = make(map[uuid.UUID]struct{})
+	}
+	for i := range ids {
+		delete(m.orders, ids[i])
+		m.removedorders[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedOrders returns the removed IDs of the "orders" edge to the Order entity.
+func (m *CustomerMutation) RemovedOrdersIDs() (ids []uuid.UUID) {
+	for id := range m.removedorders {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// OrdersIDs returns the "orders" edge IDs in the mutation.
+func (m *CustomerMutation) OrdersIDs() (ids []uuid.UUID) {
+	for id := range m.orders {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetOrders resets all changes to the "orders" edge.
+func (m *CustomerMutation) ResetOrders() {
+	m.orders = nil
+	m.clearedorders = false
+	m.removedorders = nil
+}
+
 // Where appends a list predicates to the CustomerMutation builder.
 func (m *CustomerMutation) Where(ps ...predicate.Customer) {
 	m.predicates = append(m.predicates, ps...)
@@ -4256,49 +4313,85 @@ func (m *CustomerMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *CustomerMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.orders != nil {
+		edges = append(edges, customer.EdgeOrders)
+	}
 	return edges
 }
 
 // AddedIDs returns all IDs (to other nodes) that were added for the given edge
 // name in this mutation.
 func (m *CustomerMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case customer.EdgeOrders:
+		ids := make([]ent.Value, 0, len(m.orders))
+		for id := range m.orders {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *CustomerMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.removedorders != nil {
+		edges = append(edges, customer.EdgeOrders)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *CustomerMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case customer.EdgeOrders:
+		ids := make([]ent.Value, 0, len(m.removedorders))
+		for id := range m.removedorders {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *CustomerMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.clearedorders {
+		edges = append(edges, customer.EdgeOrders)
+	}
 	return edges
 }
 
 // EdgeCleared returns a boolean which indicates if the edge with the given name
 // was cleared in this mutation.
 func (m *CustomerMutation) EdgeCleared(name string) bool {
+	switch name {
+	case customer.EdgeOrders:
+		return m.clearedorders
+	}
 	return false
 }
 
 // ClearEdge clears the value of the edge with the given name. It returns an error
 // if that edge is not defined in the schema.
 func (m *CustomerMutation) ClearEdge(name string) error {
+	switch name {
+	}
 	return fmt.Errorf("unknown Customer unique edge %s", name)
 }
 
 // ResetEdge resets all changes to the edge with the given name in this mutation.
 // It returns an error if the edge is not defined in the schema.
 func (m *CustomerMutation) ResetEdge(name string) error {
+	switch name {
+	case customer.EdgeOrders:
+		m.ResetOrders()
+		return nil
+	}
 	return fmt.Errorf("unknown Customer edge %s", name)
 }
 
@@ -6153,6 +6246,8 @@ type OrderMutation struct {
 	items               map[uuid.UUID]struct{}
 	removeditems        map[uuid.UUID]struct{}
 	cleareditems        bool
+	customer            *uuid.UUID
+	clearedcustomer     bool
 	done                bool
 	oldValue            func(context.Context) (*Order, error)
 	predicates          []predicate.Order
@@ -6296,6 +6391,55 @@ func (m *OrderMutation) OldOrderNumber(ctx context.Context) (v string, err error
 // ResetOrderNumber resets all changes to the "order_number" field.
 func (m *OrderMutation) ResetOrderNumber() {
 	m.order_number = nil
+}
+
+// SetCustomerID sets the "customer_id" field.
+func (m *OrderMutation) SetCustomerID(u uuid.UUID) {
+	m.customer = &u
+}
+
+// CustomerID returns the value of the "customer_id" field in the mutation.
+func (m *OrderMutation) CustomerID() (r uuid.UUID, exists bool) {
+	v := m.customer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCustomerID returns the old "customer_id" field's value of the Order entity.
+// If the Order object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrderMutation) OldCustomerID(ctx context.Context) (v *uuid.UUID, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCustomerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCustomerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCustomerID: %w", err)
+	}
+	return oldValue.CustomerID, nil
+}
+
+// ClearCustomerID clears the value of the "customer_id" field.
+func (m *OrderMutation) ClearCustomerID() {
+	m.customer = nil
+	m.clearedFields[order.FieldCustomerID] = struct{}{}
+}
+
+// CustomerIDCleared returns if the "customer_id" field was cleared in this mutation.
+func (m *OrderMutation) CustomerIDCleared() bool {
+	_, ok := m.clearedFields[order.FieldCustomerID]
+	return ok
+}
+
+// ResetCustomerID resets all changes to the "customer_id" field.
+func (m *OrderMutation) ResetCustomerID() {
+	m.customer = nil
+	delete(m.clearedFields, order.FieldCustomerID)
 }
 
 // SetCustomerName sets the "customer_name" field.
@@ -7194,6 +7338,33 @@ func (m *OrderMutation) ResetItems() {
 	m.removeditems = nil
 }
 
+// ClearCustomer clears the "customer" edge to the Customer entity.
+func (m *OrderMutation) ClearCustomer() {
+	m.clearedcustomer = true
+	m.clearedFields[order.FieldCustomerID] = struct{}{}
+}
+
+// CustomerCleared reports if the "customer" edge to the Customer entity was cleared.
+func (m *OrderMutation) CustomerCleared() bool {
+	return m.CustomerIDCleared() || m.clearedcustomer
+}
+
+// CustomerIDs returns the "customer" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CustomerID instead. It exists only for internal usage by the builders.
+func (m *OrderMutation) CustomerIDs() (ids []uuid.UUID) {
+	if id := m.customer; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCustomer resets all changes to the "customer" edge.
+func (m *OrderMutation) ResetCustomer() {
+	m.customer = nil
+	m.clearedcustomer = false
+}
+
 // Where appends a list predicates to the OrderMutation builder.
 func (m *OrderMutation) Where(ps ...predicate.Order) {
 	m.predicates = append(m.predicates, ps...)
@@ -7228,9 +7399,12 @@ func (m *OrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OrderMutation) Fields() []string {
-	fields := make([]string, 0, 20)
+	fields := make([]string, 0, 21)
 	if m.order_number != nil {
 		fields = append(fields, order.FieldOrderNumber)
+	}
+	if m.customer != nil {
+		fields = append(fields, order.FieldCustomerID)
 	}
 	if m.customer_name != nil {
 		fields = append(fields, order.FieldCustomerName)
@@ -7299,6 +7473,8 @@ func (m *OrderMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case order.FieldOrderNumber:
 		return m.OrderNumber()
+	case order.FieldCustomerID:
+		return m.CustomerID()
 	case order.FieldCustomerName:
 		return m.CustomerName()
 	case order.FieldCustomerPhone:
@@ -7348,6 +7524,8 @@ func (m *OrderMutation) OldField(ctx context.Context, name string) (ent.Value, e
 	switch name {
 	case order.FieldOrderNumber:
 		return m.OldOrderNumber(ctx)
+	case order.FieldCustomerID:
+		return m.OldCustomerID(ctx)
 	case order.FieldCustomerName:
 		return m.OldCustomerName(ctx)
 	case order.FieldCustomerPhone:
@@ -7401,6 +7579,13 @@ func (m *OrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetOrderNumber(v)
+		return nil
+	case order.FieldCustomerID:
+		v, ok := value.(uuid.UUID)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCustomerID(v)
 		return nil
 	case order.FieldCustomerName:
 		v, ok := value.(string)
@@ -7592,6 +7777,9 @@ func (m *OrderMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *OrderMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(order.FieldCustomerID) {
+		fields = append(fields, order.FieldCustomerID)
+	}
 	if m.FieldCleared(order.FieldCustomerEmail) {
 		fields = append(fields, order.FieldCustomerEmail)
 	}
@@ -7633,6 +7821,9 @@ func (m *OrderMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *OrderMutation) ClearField(name string) error {
 	switch name {
+	case order.FieldCustomerID:
+		m.ClearCustomerID()
+		return nil
 	case order.FieldCustomerEmail:
 		m.ClearCustomerEmail()
 		return nil
@@ -7670,6 +7861,9 @@ func (m *OrderMutation) ResetField(name string) error {
 	switch name {
 	case order.FieldOrderNumber:
 		m.ResetOrderNumber()
+		return nil
+	case order.FieldCustomerID:
+		m.ResetCustomerID()
 		return nil
 	case order.FieldCustomerName:
 		m.ResetCustomerName()
@@ -7734,9 +7928,12 @@ func (m *OrderMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *OrderMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.items != nil {
 		edges = append(edges, order.EdgeItems)
+	}
+	if m.customer != nil {
+		edges = append(edges, order.EdgeCustomer)
 	}
 	return edges
 }
@@ -7751,13 +7948,17 @@ func (m *OrderMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case order.EdgeCustomer:
+		if id := m.customer; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *OrderMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.removeditems != nil {
 		edges = append(edges, order.EdgeItems)
 	}
@@ -7780,9 +7981,12 @@ func (m *OrderMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *OrderMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.cleareditems {
 		edges = append(edges, order.EdgeItems)
+	}
+	if m.clearedcustomer {
+		edges = append(edges, order.EdgeCustomer)
 	}
 	return edges
 }
@@ -7793,6 +7997,8 @@ func (m *OrderMutation) EdgeCleared(name string) bool {
 	switch name {
 	case order.EdgeItems:
 		return m.cleareditems
+	case order.EdgeCustomer:
+		return m.clearedcustomer
 	}
 	return false
 }
@@ -7801,6 +8007,9 @@ func (m *OrderMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *OrderMutation) ClearEdge(name string) error {
 	switch name {
+	case order.EdgeCustomer:
+		m.ClearCustomer()
+		return nil
 	}
 	return fmt.Errorf("unknown Order unique edge %s", name)
 }
@@ -7811,6 +8020,9 @@ func (m *OrderMutation) ResetEdge(name string) error {
 	switch name {
 	case order.EdgeItems:
 		m.ResetItems()
+		return nil
+	case order.EdgeCustomer:
+		m.ResetCustomer()
 		return nil
 	}
 	return fmt.Errorf("unknown Order edge %s", name)

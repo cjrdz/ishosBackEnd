@@ -83,10 +83,11 @@ type CustomerRepository interface {
 	List(ctx context.Context, status, search string) ([]dto.Customer, error)
 	ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.Customer, error)
+	FindByPhone(ctx context.Context, phone string) (dto.Customer, error)
 	Create(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	ListOrdersByPhone(ctx context.Context, phone string, limit int) ([]dto.Order, error)
+	ListOrdersByCustomerID(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error)
 }
 
 // AdminSettingRepository defines the admin settings data access contract.

@@ -14,15 +14,17 @@ import (
 	"github.com/cjrdz/ishosBackEnd/ent/flavor"
 	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
 type ProductRepository struct {
-	db *ent.Client
+	db    *ent.Client
+	cache *cache.TTLCache
 }
 
 func NewProductRepository(db *ent.Client) *ProductRepository {
-	return &ProductRepository{db: db}
+	return &ProductRepository{db: db, cache: cache.New(30 * time.Second)}
 }
 
 func (r *ProductRepository) FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]dto.Product, error) {
@@ -227,32 +229,42 @@ func (r *ProductRepository) attachEffectiveGlobalOptions(ctx context.Context, pr
 		return nil
 	}
 
-	globalFlavors, err := r.db.Flavor.Query().
-		Where(flavor.IsActiveEQ(true)).
-		Order(ent.Asc(flavor.FieldDisplayOrder)).
-		All(ctx)
-	if err != nil {
-		log.Error().Err(err).Msg("attachEffectiveGlobalOptions: failed to load global flavors")
-		return err
+	var flavorDTOs []dto.Flavor
+	if v, ok := r.cache.Get("global_flavors"); ok {
+		flavorDTOs = v.([]dto.Flavor)
+	} else {
+		globalFlavors, err := r.db.Flavor.Query().
+			Where(flavor.IsActiveEQ(true)).
+			Order(ent.Asc(flavor.FieldDisplayOrder)).
+			All(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("attachEffectiveGlobalOptions: failed to load global flavors")
+			return err
+		}
+		flavorDTOs = make([]dto.Flavor, len(globalFlavors))
+		for i, f := range globalFlavors {
+			flavorDTOs[i] = toFlavorDTO(f)
+		}
+		r.cache.Set("global_flavors", flavorDTOs)
 	}
 
-	globalAddons, err := r.db.Addon.Query().
-		Where(addon.IsActiveEQ(true)).
-		Order(ent.Asc(addon.FieldDisplayOrder)).
-		All(ctx)
-	if err != nil {
-		log.Error().Err(err).Msg("attachEffectiveGlobalOptions: failed to load global addons")
-		return err
-	}
-
-	flavorDTOs := make([]dto.Flavor, len(globalFlavors))
-	for i, f := range globalFlavors {
-		flavorDTOs[i] = toFlavorDTO(f)
-	}
-
-	addonDTOs := make([]dto.Addon, len(globalAddons))
-	for i, a := range globalAddons {
-		addonDTOs[i] = toAddonDTO(a)
+	var addonDTOs []dto.Addon
+	if v, ok := r.cache.Get("global_addons"); ok {
+		addonDTOs = v.([]dto.Addon)
+	} else {
+		globalAddons, err := r.db.Addon.Query().
+			Where(addon.IsActiveEQ(true)).
+			Order(ent.Asc(addon.FieldDisplayOrder)).
+			All(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("attachEffectiveGlobalOptions: failed to load global addons")
+			return err
+		}
+		addonDTOs = make([]dto.Addon, len(globalAddons))
+		for i, a := range globalAddons {
+			addonDTOs[i] = toAddonDTO(a)
+		}
+		r.cache.Set("global_addons", addonDTOs)
 	}
 
 	log.Debug().

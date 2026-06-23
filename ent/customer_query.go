@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -12,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/customer"
+	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
 	"github.com/google/uuid"
 )
@@ -23,6 +25,7 @@ type CustomerQuery struct {
 	order      []customer.OrderOption
 	inters     []Interceptor
 	predicates []predicate.Customer
+	withOrders *OrderQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -57,6 +60,28 @@ func (_q *CustomerQuery) Unique(unique bool) *CustomerQuery {
 func (_q *CustomerQuery) Order(o ...customer.OrderOption) *CustomerQuery {
 	_q.order = append(_q.order, o...)
 	return _q
+}
+
+// QueryOrders chains the current query on the "orders" edge.
+func (_q *CustomerQuery) QueryOrders() *OrderQuery {
+	query := (&OrderClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(customer.Table, customer.FieldID, selector),
+			sqlgraph.To(order.Table, order.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, customer.OrdersTable, customer.OrdersColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
 }
 
 // First returns the first Customer entity from the query.
@@ -251,10 +276,22 @@ func (_q *CustomerQuery) Clone() *CustomerQuery {
 		order:      append([]customer.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
 		predicates: append([]predicate.Customer{}, _q.predicates...),
+		withOrders: _q.withOrders.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
+}
+
+// WithOrders tells the query-builder to eager-load the nodes that are connected to
+// the "orders" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *CustomerQuery) WithOrders(opts ...func(*OrderQuery)) *CustomerQuery {
+	query := (&OrderClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withOrders = query
+	return _q
 }
 
 // GroupBy is used to group vertices by one or more fields/columns.
@@ -333,8 +370,11 @@ func (_q *CustomerQuery) prepareQuery(ctx context.Context) error {
 
 func (_q *CustomerQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Customer, error) {
 	var (
-		nodes = []*Customer{}
-		_spec = _q.querySpec()
+		nodes       = []*Customer{}
+		_spec       = _q.querySpec()
+		loadedTypes = [1]bool{
+			_q.withOrders != nil,
+		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*Customer).scanValues(nil, columns)
@@ -342,6 +382,7 @@ func (_q *CustomerQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Cus
 	_spec.Assign = func(columns []string, values []any) error {
 		node := &Customer{config: _q.config}
 		nodes = append(nodes, node)
+		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
 	}
 	for i := range hooks {
@@ -353,7 +394,48 @@ func (_q *CustomerQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Cus
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
+	if query := _q.withOrders; query != nil {
+		if err := _q.loadOrders(ctx, query, nodes,
+			func(n *Customer) { n.Edges.Orders = []*Order{} },
+			func(n *Customer, e *Order) { n.Edges.Orders = append(n.Edges.Orders, e) }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
+}
+
+func (_q *CustomerQuery) loadOrders(ctx context.Context, query *OrderQuery, nodes []*Customer, init func(*Customer), assign func(*Customer, *Order)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[uuid.UUID]*Customer)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(order.FieldCustomerID)
+	}
+	query.Where(predicate.Order(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(customer.OrdersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.CustomerID
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "customer_id" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "customer_id" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
 }
 
 func (_q *CustomerQuery) sqlCount(ctx context.Context) (int, error) {

@@ -269,27 +269,27 @@ func init() {
 	orderFields := schema.Order{}.Fields()
 	_ = orderFields
 	// orderDescCustomerName is the schema descriptor for customer_name field.
-	orderDescCustomerName := orderFields[2].Descriptor()
+	orderDescCustomerName := orderFields[3].Descriptor()
 	// order.CustomerNameValidator is a validator for the "customer_name" field. It is called by the builders before save.
 	order.CustomerNameValidator = orderDescCustomerName.Validators[0].(func(string) error)
 	// orderDescCustomerPhone is the schema descriptor for customer_phone field.
-	orderDescCustomerPhone := orderFields[3].Descriptor()
+	orderDescCustomerPhone := orderFields[4].Descriptor()
 	// order.CustomerPhoneValidator is a validator for the "customer_phone" field. It is called by the builders before save.
 	order.CustomerPhoneValidator = orderDescCustomerPhone.Validators[0].(func(string) error)
 	// orderDescTableNumber is the schema descriptor for table_number field.
-	orderDescTableNumber := orderFields[11].Descriptor()
+	orderDescTableNumber := orderFields[12].Descriptor()
 	// order.TableNumberValidator is a validator for the "table_number" field. It is called by the builders before save.
 	order.TableNumberValidator = orderDescTableNumber.Validators[0].(func(int) error)
 	// orderDescIsArchived is the schema descriptor for is_archived field.
-	orderDescIsArchived := orderFields[17].Descriptor()
+	orderDescIsArchived := orderFields[18].Descriptor()
 	// order.DefaultIsArchived holds the default value on creation for the is_archived field.
 	order.DefaultIsArchived = orderDescIsArchived.Default.(bool)
 	// orderDescCreatedAt is the schema descriptor for created_at field.
-	orderDescCreatedAt := orderFields[19].Descriptor()
+	orderDescCreatedAt := orderFields[20].Descriptor()
 	// order.DefaultCreatedAt holds the default value on creation for the created_at field.
 	order.DefaultCreatedAt = orderDescCreatedAt.Default.(func() time.Time)
 	// orderDescUpdatedAt is the schema descriptor for updated_at field.
-	orderDescUpdatedAt := orderFields[20].Descriptor()
+	orderDescUpdatedAt := orderFields[21].Descriptor()
 	// order.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	order.DefaultUpdatedAt = orderDescUpdatedAt.Default.(func() time.Time)
 	// order.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

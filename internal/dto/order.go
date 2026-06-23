@@ -9,6 +9,7 @@ import (
 type Order struct {
 	ID               uuid.UUID  `json:"id"`
 	OrderNumber      string     `json:"order_number"`
+	CustomerID       *uuid.UUID `json:"customer_id,omitempty"`
 	CustomerName     string     `json:"customer_name"`
 	CustomerPhone    string     `json:"customer_phone"`
 	CustomerEmail    *string    `json:"customer_email,omitempty"`

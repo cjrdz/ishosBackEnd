@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
@@ -41,6 +42,26 @@ func (_u *OrderUpdate) SetNillableOrderNumber(v *string) *OrderUpdate {
 	if v != nil {
 		_u.SetOrderNumber(*v)
 	}
+	return _u
+}
+
+// SetCustomerID sets the "customer_id" field.
+func (_u *OrderUpdate) SetCustomerID(v uuid.UUID) *OrderUpdate {
+	_u.mutation.SetCustomerID(v)
+	return _u
+}
+
+// SetNillableCustomerID sets the "customer_id" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableCustomerID(v *uuid.UUID) *OrderUpdate {
+	if v != nil {
+		_u.SetCustomerID(*v)
+	}
+	return _u
+}
+
+// ClearCustomerID clears the value of the "customer_id" field.
+func (_u *OrderUpdate) ClearCustomerID() *OrderUpdate {
+	_u.mutation.ClearCustomerID()
 	return _u
 }
 
@@ -363,6 +384,11 @@ func (_u *OrderUpdate) AddItems(v ...*OrderItem) *OrderUpdate {
 	return _u.AddItemIDs(ids...)
 }
 
+// SetCustomer sets the "customer" edge to the Customer entity.
+func (_u *OrderUpdate) SetCustomer(v *Customer) *OrderUpdate {
+	return _u.SetCustomerID(v.ID)
+}
+
 // Mutation returns the OrderMutation object of the builder.
 func (_u *OrderUpdate) Mutation() *OrderMutation {
 	return _u.mutation
@@ -387,6 +413,12 @@ func (_u *OrderUpdate) RemoveItems(v ...*OrderItem) *OrderUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveItemIDs(ids...)
+}
+
+// ClearCustomer clears the "customer" edge to the Customer entity.
+func (_u *OrderUpdate) ClearCustomer() *OrderUpdate {
+	_u.mutation.ClearCustomer()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -612,6 +644,35 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.CustomerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   order.CustomerTable,
+			Columns: []string{order.CustomerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(customer.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CustomerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   order.CustomerTable,
+			Columns: []string{order.CustomerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(customer.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{order.Label}
@@ -643,6 +704,26 @@ func (_u *OrderUpdateOne) SetNillableOrderNumber(v *string) *OrderUpdateOne {
 	if v != nil {
 		_u.SetOrderNumber(*v)
 	}
+	return _u
+}
+
+// SetCustomerID sets the "customer_id" field.
+func (_u *OrderUpdateOne) SetCustomerID(v uuid.UUID) *OrderUpdateOne {
+	_u.mutation.SetCustomerID(v)
+	return _u
+}
+
+// SetNillableCustomerID sets the "customer_id" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableCustomerID(v *uuid.UUID) *OrderUpdateOne {
+	if v != nil {
+		_u.SetCustomerID(*v)
+	}
+	return _u
+}
+
+// ClearCustomerID clears the value of the "customer_id" field.
+func (_u *OrderUpdateOne) ClearCustomerID() *OrderUpdateOne {
+	_u.mutation.ClearCustomerID()
 	return _u
 }
 
@@ -965,6 +1046,11 @@ func (_u *OrderUpdateOne) AddItems(v ...*OrderItem) *OrderUpdateOne {
 	return _u.AddItemIDs(ids...)
 }
 
+// SetCustomer sets the "customer" edge to the Customer entity.
+func (_u *OrderUpdateOne) SetCustomer(v *Customer) *OrderUpdateOne {
+	return _u.SetCustomerID(v.ID)
+}
+
 // Mutation returns the OrderMutation object of the builder.
 func (_u *OrderUpdateOne) Mutation() *OrderMutation {
 	return _u.mutation
@@ -989,6 +1075,12 @@ func (_u *OrderUpdateOne) RemoveItems(v ...*OrderItem) *OrderUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveItemIDs(ids...)
+}
+
+// ClearCustomer clears the "customer" edge to the Customer entity.
+func (_u *OrderUpdateOne) ClearCustomer() *OrderUpdateOne {
+	_u.mutation.ClearCustomer()
+	return _u
 }
 
 // Where appends a list predicates to the OrderUpdate builder.
@@ -1237,6 +1329,35 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(orderitem.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CustomerCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   order.CustomerTable,
+			Columns: []string{order.CustomerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(customer.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CustomerIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   order.CustomerTable,
+			Columns: []string{order.CustomerColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(customer.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

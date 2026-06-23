@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/customer"
+	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/google/uuid"
 )
 
@@ -115,6 +116,21 @@ func (_c *CustomerCreate) SetNillableID(v *uuid.UUID) *CustomerCreate {
 		_c.SetID(*v)
 	}
 	return _c
+}
+
+// AddOrderIDs adds the "orders" edge to the Order entity by IDs.
+func (_c *CustomerCreate) AddOrderIDs(ids ...uuid.UUID) *CustomerCreate {
+	_c.mutation.AddOrderIDs(ids...)
+	return _c
+}
+
+// AddOrders adds the "orders" edges to the Order entity.
+func (_c *CustomerCreate) AddOrders(v ...*Order) *CustomerCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddOrderIDs(ids...)
 }
 
 // Mutation returns the CustomerMutation object of the builder.
@@ -276,6 +292,22 @@ func (_c *CustomerCreate) createSpec() (*Customer, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(customer.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
+	}
+	if nodes := _c.mutation.OrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
 }

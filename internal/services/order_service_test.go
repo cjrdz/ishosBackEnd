@@ -182,7 +182,7 @@ func TestOrderCommandService_Approve_InvalidState(t *testing.T) {
 		return dto.Order{Status: "cancelada"}, nil
 	}}
 	store := &orderStoreStub{}
-	svc := NewOrderCommandService(repo, store, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, nil, nil, nil, nil)
 
 	_, err := svc.Approve(context.Background(), uuid.New(), "staff-1", false)
 	if !errors.Is(err, ErrInvalidOrderState) {
@@ -195,7 +195,7 @@ func TestOrderCommandService_Reject_InvalidState(t *testing.T) {
 		return dto.Order{Status: "entregada"}, nil
 	}}
 	store := &orderStoreStub{}
-	svc := NewOrderCommandService(repo, store, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, nil, nil, nil, nil)
 
 	_, err := svc.Reject(context.Background(), uuid.New(), "out of stock", "staff-1")
 	if !errors.Is(err, ErrInvalidOrderState) {
@@ -208,7 +208,7 @@ func TestOrderCommandService_UpdateStatus_InvalidStatus(t *testing.T) {
 		return dto.Order{Status: "pendiente_revision"}, nil
 	}}
 	store := &orderStoreStub{}
-	svc := NewOrderCommandService(repo, store, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, nil, nil, nil, nil)
 
 	_, err := svc.UpdateStatus(context.Background(), uuid.New(), "not_a_status")
 	if !errors.Is(err, ErrInvalidOrderState) {
@@ -222,7 +222,7 @@ func TestOrderCommandService_Update_DelegatesToStore(t *testing.T) {
 		called = true
 		return dto.Order{OrderNumber: "ORD-UPDATED"}, nil
 	}}
-	svc := NewOrderCommandService(&orderRepoStub{}, store, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, nil, nil, nil, nil)
 
 	order, err := svc.Update(context.Background(), uuid.New(), UpdateOrderInput{
 		CustomerName:  "Jane",
@@ -250,9 +250,118 @@ func TestOrderCommandService_Delete(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewOrderCommandService(repo, &orderStoreStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, &orderStoreStub{}, &customerRepoStub{}, nil, nil, nil, nil)
 
 	if err := svc.Delete(context.Background(), uuid.New()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestOrderCommandService_Create_LinksExistingCustomer(t *testing.T) {
+	customerID := uuid.New()
+	customerRepo := &customerRepoStub{
+		findByPhone: func(_ context.Context, phone string) (dto.Customer, error) {
+			if phone != "5550000" {
+				t.Fatalf("expected phone %q, got %q", "5550000", phone)
+			}
+			return dto.Customer{ID: customerID, Phone: phone}, nil
+		},
+	}
+
+	var capturedCustomerID *uuid.UUID
+	store := &orderStoreStub{createFn: func(_ context.Context, input repository.StoreOrderInput) (dto.Order, error) {
+		capturedCustomerID = input.CustomerID
+		return dto.Order{OrderNumber: "ORD-001"}, nil
+	}}
+
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, nil, nil, nil, nil)
+	_, err := svc.Create(context.Background(), CreateOrderInput{
+		CustomerName:  "Jane",
+		CustomerPhone: "5550000",
+		PaymentMethod: "efectivo",
+		OrderType:     "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedCustomerID == nil || *capturedCustomerID != customerID {
+		t.Fatalf("expected customer ID %q, got %v", customerID, capturedCustomerID)
+	}
+}
+
+func TestOrderCommandService_Create_CreatesCustomerWhenMissing(t *testing.T) {
+	customerRepo := &customerRepoStub{
+		findByPhone: func(_ context.Context, _ string) (dto.Customer, error) {
+			return dto.Customer{}, &apperror.NotFoundError{Resource: "customer"}
+		},
+		createFn: func(_ context.Context, input repository.CreateCustomerInput) (dto.Customer, error) {
+			return dto.Customer{ID: uuid.New(), Phone: input.Phone, Name: input.Name}, nil
+		},
+	}
+
+	var capturedCustomerID *uuid.UUID
+	store := &orderStoreStub{createFn: func(_ context.Context, input repository.StoreOrderInput) (dto.Order, error) {
+		capturedCustomerID = input.CustomerID
+		return dto.Order{OrderNumber: "ORD-002"}, nil
+	}}
+
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, nil, nil, nil, nil)
+	_, err := svc.Create(context.Background(), CreateOrderInput{
+		CustomerName:  "John",
+		CustomerPhone: "5551111",
+		CustomerEmail: strPtr("john@example.com"),
+		PaymentMethod: "efectivo",
+		OrderType:     "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedCustomerID == nil {
+		t.Fatal("expected a customer ID to be linked")
+	}
+}
+
+func TestOrderCommandService_Update_ReLinksWhenPhoneChanges(t *testing.T) {
+	orderID := uuid.New()
+	newCustomerID := uuid.New()
+	repo := &orderRepoStub{
+		findByID: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+			if id != orderID {
+				t.Fatalf("expected order ID %q, got %q", orderID, id)
+			}
+			return dto.Order{ID: orderID, CustomerPhone: "5550000"}, nil
+		},
+	}
+	customerRepo := &customerRepoStub{
+		findByPhone: func(_ context.Context, phone string) (dto.Customer, error) {
+			if phone != "5552222" {
+				t.Fatalf("expected phone %q, got %q", "5552222", phone)
+			}
+			return dto.Customer{ID: newCustomerID, Phone: phone}, nil
+		},
+	}
+
+	var capturedCustomerID *uuid.UUID
+	store := &orderStoreStub{updateFn: func(_ context.Context, _ uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error) {
+		capturedCustomerID = input.CustomerID
+		return dto.Order{OrderNumber: "ORD-UPDATED"}, nil
+	}}
+
+	svc := NewOrderCommandService(repo, store, customerRepo, nil, nil, nil, nil)
+	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
+		CustomerName:  "Jane",
+		CustomerPhone: "5552222",
+		PaymentMethod: "efectivo",
+		OrderType:     "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedCustomerID == nil || *capturedCustomerID != newCustomerID {
+		t.Fatalf("expected customer ID %q, got %v", newCustomerID, capturedCustomerID)
+	}
+}
+
+func strPtr(s string) *string {
+	return &s
 }

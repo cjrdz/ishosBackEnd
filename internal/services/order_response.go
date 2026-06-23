@@ -27,6 +27,7 @@ type OrderItemResponse struct {
 type OrderResponse struct {
 	ID                     uuid.UUID           `json:"id"`
 	OrderNumber            string              `json:"order_number"`
+	CustomerID             *uuid.UUID          `json:"customer_id,omitempty"`
 	CustomerName           string              `json:"customer_name"`
 	CustomerPhone          string              `json:"customer_phone"`
 	CustomerEmail          *string             `json:"customer_email,omitempty"`
@@ -74,9 +75,57 @@ func (m *OrderResponseMapper) Map(order dto.Order) OrderResponse {
 	return m.mapInternal(order, nil)
 }
 
+// OrderLiteResponse is a minimal list-view representation of an order.
+// It omits items, created-by resolution, tracking tokens, and timestamps
+// to keep list responses small and fast.
+type OrderLiteResponse struct {
+	ID            uuid.UUID `json:"id"`
+	OrderNumber   string    `json:"order_number"`
+	CustomerName  string    `json:"customer_name"`
+	Status        string    `json:"status"`
+	TotalAmount   float64   `json:"total_amount"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// MapLite converts a dto.Order to an OrderLiteResponse.
+func (m *OrderResponseMapper) MapLite(order dto.Order) OrderLiteResponse {
+	return OrderLiteResponse{
+		ID:           order.ID,
+		OrderNumber:  order.OrderNumber,
+		CustomerName: order.CustomerName,
+		Status:       order.Status,
+		TotalAmount:  order.TotalAmount,
+		CreatedAt:    order.CreatedAt,
+	}
+}
+
 // MapWithTracking converts a dto.Order to an OrderResponse including tracking access.
 func (m *OrderResponseMapper) MapWithTracking(order dto.Order, access *TrackingAccess) OrderResponse {
 	return m.mapInternal(order, access)
+}
+
+// PreloadEmployees fetches all employees from PocketBase and warms the cache
+// in a single query. Call this before mapping a list of orders to avoid N+1
+// lookups when resolving created_by names.
+func (m *OrderResponseMapper) PreloadEmployees() {
+	if m.pb == nil {
+		return
+	}
+	records, err := m.pb.ListEmployees()
+	if err != nil {
+		return
+	}
+	for _, record := range records {
+		id := auth.RecordID(record)
+		name := strings.TrimSpace(record.GetString("name"))
+		if name == "" {
+			name = record.Email()
+		}
+		m.employeeCache.Set(id, employeeCacheEntry{
+			name: name,
+			role: auth.RoleFromRecord(record),
+		})
+	}
 }
 
 // lookupEmployee returns the cached name/role for an employee, fetching from
@@ -141,6 +190,7 @@ func (m *OrderResponseMapper) mapInternal(order dto.Order, access *TrackingAcces
 	resp := OrderResponse{
 		ID:              order.ID,
 		OrderNumber:     order.OrderNumber,
+		CustomerID:      order.CustomerID,
 		CustomerName:    order.CustomerName,
 		CustomerPhone:   order.CustomerPhone,
 		CustomerEmail:   order.CustomerEmail,

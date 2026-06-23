@@ -61,6 +61,11 @@ func OrderNumber(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldOrderNumber, v))
 }
 
+// CustomerID applies equality check predicate on the "customer_id" field. It's identical to CustomerIDEQ.
+func CustomerID(v uuid.UUID) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldCustomerID, v))
+}
+
 // CustomerName applies equality check predicate on the "customer_name" field. It's identical to CustomerNameEQ.
 func CustomerName(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldCustomerName, v))
@@ -194,6 +199,36 @@ func OrderNumberEqualFold(v string) predicate.Order {
 // OrderNumberContainsFold applies the ContainsFold predicate on the "order_number" field.
 func OrderNumberContainsFold(v string) predicate.Order {
 	return predicate.Order(sql.FieldContainsFold(FieldOrderNumber, v))
+}
+
+// CustomerIDEQ applies the EQ predicate on the "customer_id" field.
+func CustomerIDEQ(v uuid.UUID) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldCustomerID, v))
+}
+
+// CustomerIDNEQ applies the NEQ predicate on the "customer_id" field.
+func CustomerIDNEQ(v uuid.UUID) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldCustomerID, v))
+}
+
+// CustomerIDIn applies the In predicate on the "customer_id" field.
+func CustomerIDIn(vs ...uuid.UUID) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldCustomerID, vs...))
+}
+
+// CustomerIDNotIn applies the NotIn predicate on the "customer_id" field.
+func CustomerIDNotIn(vs ...uuid.UUID) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldCustomerID, vs...))
+}
+
+// CustomerIDIsNil applies the IsNil predicate on the "customer_id" field.
+func CustomerIDIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldCustomerID))
+}
+
+// CustomerIDNotNil applies the NotNil predicate on the "customer_id" field.
+func CustomerIDNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldCustomerID))
 }
 
 // CustomerNameEQ applies the EQ predicate on the "customer_name" field.
@@ -1111,6 +1146,29 @@ func HasItems() predicate.Order {
 func HasItemsWith(preds ...predicate.OrderItem) predicate.Order {
 	return predicate.Order(func(s *sql.Selector) {
 		step := newItemsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCustomer applies the HasEdge predicate on the "customer" edge.
+func HasCustomer() predicate.Order {
+	return predicate.Order(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, CustomerTable, CustomerColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCustomerWith applies the HasEdge predicate on the "customer" edge with a given conditions (other predicates).
+func HasCustomerWith(preds ...predicate.Customer) predicate.Order {
+	return predicate.Order(func(s *sql.Selector) {
+		step := newCustomerStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

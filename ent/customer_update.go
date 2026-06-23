@@ -12,7 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/cjrdz/ishosBackEnd/ent/customer"
+	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/cjrdz/ishosBackEnd/ent/predicate"
+	"github.com/google/uuid"
 )
 
 // CustomerUpdate is the builder for updating Customer entities.
@@ -110,9 +112,45 @@ func (_u *CustomerUpdate) SetUpdatedAt(v time.Time) *CustomerUpdate {
 	return _u
 }
 
+// AddOrderIDs adds the "orders" edge to the Order entity by IDs.
+func (_u *CustomerUpdate) AddOrderIDs(ids ...uuid.UUID) *CustomerUpdate {
+	_u.mutation.AddOrderIDs(ids...)
+	return _u
+}
+
+// AddOrders adds the "orders" edges to the Order entity.
+func (_u *CustomerUpdate) AddOrders(v ...*Order) *CustomerUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddOrderIDs(ids...)
+}
+
 // Mutation returns the CustomerMutation object of the builder.
 func (_u *CustomerUpdate) Mutation() *CustomerMutation {
 	return _u.mutation
+}
+
+// ClearOrders clears all "orders" edges to the Order entity.
+func (_u *CustomerUpdate) ClearOrders() *CustomerUpdate {
+	_u.mutation.ClearOrders()
+	return _u
+}
+
+// RemoveOrderIDs removes the "orders" edge to Order entities by IDs.
+func (_u *CustomerUpdate) RemoveOrderIDs(ids ...uuid.UUID) *CustomerUpdate {
+	_u.mutation.RemoveOrderIDs(ids...)
+	return _u
+}
+
+// RemoveOrders removes "orders" edges to Order entities.
+func (_u *CustomerUpdate) RemoveOrders(v ...*Order) *CustomerUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveOrderIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -208,6 +246,51 @@ func (_u *CustomerUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(customer.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.OrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedOrdersIDs(); len(nodes) > 0 && !_u.mutation.OrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.OrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -311,9 +394,45 @@ func (_u *CustomerUpdateOne) SetUpdatedAt(v time.Time) *CustomerUpdateOne {
 	return _u
 }
 
+// AddOrderIDs adds the "orders" edge to the Order entity by IDs.
+func (_u *CustomerUpdateOne) AddOrderIDs(ids ...uuid.UUID) *CustomerUpdateOne {
+	_u.mutation.AddOrderIDs(ids...)
+	return _u
+}
+
+// AddOrders adds the "orders" edges to the Order entity.
+func (_u *CustomerUpdateOne) AddOrders(v ...*Order) *CustomerUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddOrderIDs(ids...)
+}
+
 // Mutation returns the CustomerMutation object of the builder.
 func (_u *CustomerUpdateOne) Mutation() *CustomerMutation {
 	return _u.mutation
+}
+
+// ClearOrders clears all "orders" edges to the Order entity.
+func (_u *CustomerUpdateOne) ClearOrders() *CustomerUpdateOne {
+	_u.mutation.ClearOrders()
+	return _u
+}
+
+// RemoveOrderIDs removes the "orders" edge to Order entities by IDs.
+func (_u *CustomerUpdateOne) RemoveOrderIDs(ids ...uuid.UUID) *CustomerUpdateOne {
+	_u.mutation.RemoveOrderIDs(ids...)
+	return _u
+}
+
+// RemoveOrders removes "orders" edges to Order entities.
+func (_u *CustomerUpdateOne) RemoveOrders(v ...*Order) *CustomerUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveOrderIDs(ids...)
 }
 
 // Where appends a list predicates to the CustomerUpdate builder.
@@ -439,6 +558,51 @@ func (_u *CustomerUpdateOne) sqlSave(ctx context.Context) (_node *Customer, err 
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(customer.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.OrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedOrdersIDs(); len(nodes) > 0 && !_u.mutation.OrdersCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.OrdersIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   customer.OrdersTable,
+			Columns: []string{customer.OrdersColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(order.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Customer{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,6 +33,47 @@ func init() {
 	revokedTokens.Store(tokenRevocationHolder{backend: nil})
 }
 
+// revocationCheckCache caches IsTokenRevoked results to avoid hitting PostgreSQL
+// on every authenticated request. Tokens are rarely revoked, so negative results
+// dominate. The cache is invalidated immediately when RevokeToken is called.
+type revocationCheckCache struct {
+	mu      sync.RWMutex
+	entries map[string]revocationCacheEntry
+}
+
+type revocationCacheEntry struct {
+	revoked   bool
+	cachedAt  time.Time
+}
+
+var revocationCache = &revocationCheckCache{
+	entries: make(map[string]revocationCacheEntry),
+}
+
+const revocationCacheTTL = 10 * time.Second
+
+func (c *revocationCheckCache) get(hash string) (revoked bool, ok bool) {
+	c.mu.RLock()
+	entry, exists := c.entries[hash]
+	c.mu.RUnlock()
+	if !exists || time.Since(entry.cachedAt) > revocationCacheTTL {
+		return false, false
+	}
+	return entry.revoked, true
+}
+
+func (c *revocationCheckCache) set(hash string, revoked bool) {
+	c.mu.Lock()
+	c.entries[hash] = revocationCacheEntry{revoked: revoked, cachedAt: time.Now()}
+	c.mu.Unlock()
+}
+
+func (c *revocationCheckCache) invalidate(hash string) {
+	c.mu.Lock()
+	delete(c.entries, hash)
+	c.mu.Unlock()
+}
+
 // setTokenRevocationBackend sets the active token revocation backend.
 // Thread-safe; used by InitEntTokenRevocationStore to switch from memory to Ent ORM.
 func setTokenRevocationBackend(backend tokenRevocationBackend) {
@@ -44,6 +86,9 @@ func RevokeToken(token string) {
 	if strings.TrimSpace(token) == "" {
 		return
 	}
+
+	// Immediately update the in-memory cache so subsequent checks fail fast.
+	revocationCache.set(tokenHash(token), true)
 
 	expiresAt := tokenExpiry(token)
 	// token is already expired but may still be in-flight; keep it blocked for 24h to cover clock skew
@@ -66,10 +111,21 @@ func RevokeToken(token string) {
 
 // IsTokenRevoked returns true when the token was explicitly revoked.
 // Called during token validation; fast path returns false for empty tokens.
+// Uses an in-memory cache to avoid a PostgreSQL round-trip on every request.
 // Fail-closed: returns true on store errors.
 func IsTokenRevoked(token string) bool {
 	if strings.TrimSpace(token) == "" {
 		return false
+	}
+
+	hash := tokenHash(token)
+	if hash == "" {
+		return false
+	}
+
+	// Check in-memory cache first.
+	if revoked, ok := revocationCache.get(hash); ok {
+		return revoked
 	}
 
 	now := time.Now()
@@ -86,6 +142,9 @@ func IsTokenRevoked(token string) bool {
 		log.Error().Err(err).Msg("Auth token revocation: failed to check token status, treating as revoked")
 		return true // fail-closed
 	}
+
+	// Cache the result so the next request avoids the DB round-trip.
+	revocationCache.set(hash, revoked)
 	return revoked
 }
 

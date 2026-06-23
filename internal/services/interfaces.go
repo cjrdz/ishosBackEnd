@@ -65,7 +65,9 @@ type CustomerServiceInterface interface {
 	List(ctx context.Context, status, search string) ([]dto.Customer, error)
 	ListPaginated(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
 	GetByID(ctx context.Context, id uuid.UUID) (dto.Customer, error)
+	FindByPhone(ctx context.Context, phone string) (dto.Customer, error)
 	Create(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
+	UpsertByPhone(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	OrdersByCustomer(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error)

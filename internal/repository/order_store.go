@@ -29,6 +29,7 @@ type StoreOrderItemInput struct {
 // StoreOrderInput is the raw data required to create an order transactionally.
 type StoreOrderInput struct {
 	OrderNumber   string
+	CustomerID    *uuid.UUID
 	CustomerName  string
 	CustomerPhone string
 	CustomerEmail *string
@@ -43,6 +44,7 @@ type StoreOrderInput struct {
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
 type StoreUpdateOrderInput struct {
+	CustomerID    *uuid.UUID
 	CustomerName  string
 	CustomerPhone string
 	CustomerEmail *string
@@ -95,6 +97,7 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 	now := time.Now()
 	order, err := tx.Order.Create().
 		SetOrderNumber(input.OrderNumber).
+		SetNillableCustomerID(input.CustomerID).
 		SetCustomerName(input.CustomerName).
 		SetCustomerPhone(input.CustomerPhone).
 		SetNillableCustomerEmail(input.CustomerEmail).
@@ -151,6 +154,10 @@ func (s *OrderStore) UpdateOrder(ctx context.Context, id uuid.UUID, input StoreU
 		SetNillableCustomerEmail(input.CustomerEmail).
 		SetNillableNotes(input.Notes).
 		SetUpdatedAt(time.Now())
+
+	if input.CustomerID != nil {
+		update = update.SetCustomerID(*input.CustomerID)
+	}
 
 	if input.TableNumber == nil {
 		update = update.ClearTableNumber()
@@ -285,6 +292,7 @@ func (s *OrderStore) toDTOOrder(order *ent.Order, snapshots []itemSnapshot) dto.
 	return dto.Order{
 		ID:               order.ID,
 		OrderNumber:      order.OrderNumber,
+		CustomerID:       order.CustomerID,
 		CustomerName:     order.CustomerName,
 		CustomerPhone:    order.CustomerPhone,
 		CustomerEmail:    order.CustomerEmail,

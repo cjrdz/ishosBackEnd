@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/cjrdz/ishosBackEnd/ent/customer"
 	"github.com/cjrdz/ishosBackEnd/ent/order"
 	"github.com/google/uuid"
 )
@@ -21,6 +22,8 @@ type Order struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// OrderNumber holds the value of the "order_number" field.
 	OrderNumber string `json:"order_number,omitempty"`
+	// CustomerID holds the value of the "customer_id" field.
+	CustomerID *uuid.UUID `json:"customer_id,omitempty"`
 	// CustomerName holds the value of the "customer_name" field.
 	CustomerName string `json:"customer_name,omitempty"`
 	// CustomerPhone holds the value of the "customer_phone" field.
@@ -69,9 +72,11 @@ type Order struct {
 type OrderEdges struct {
 	// Items holds the value of the items edge.
 	Items []*OrderItem `json:"items,omitempty"`
+	// Customer holds the value of the customer edge.
+	Customer *Customer `json:"customer,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // ItemsOrErr returns the Items value or an error if the edge
@@ -83,11 +88,24 @@ func (e OrderEdges) ItemsOrErr() ([]*OrderItem, error) {
 	return nil, &NotLoadedError{edge: "items"}
 }
 
+// CustomerOrErr returns the Customer value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e OrderEdges) CustomerOrErr() (*Customer, error) {
+	if e.Customer != nil {
+		return e.Customer, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: customer.Label}
+	}
+	return nil, &NotLoadedError{edge: "customer"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Order) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case order.FieldCustomerID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case order.FieldStatusTimestamps:
 			values[i] = new([]byte)
 		case order.FieldIsArchived:
@@ -128,6 +146,13 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field order_number", values[i])
 			} else if value.Valid {
 				_m.OrderNumber = value.String
+			}
+		case order.FieldCustomerID:
+			if value, ok := values[i].(*sql.NullScanner); !ok {
+				return fmt.Errorf("unexpected type %T for field customer_id", values[i])
+			} else if value.Valid {
+				_m.CustomerID = new(uuid.UUID)
+				*_m.CustomerID = *value.S.(*uuid.UUID)
 			}
 		case order.FieldCustomerName:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -271,6 +296,11 @@ func (_m *Order) QueryItems() *OrderItemQuery {
 	return NewOrderClient(_m.config).QueryItems(_m)
 }
 
+// QueryCustomer queries the "customer" edge of the Order entity.
+func (_m *Order) QueryCustomer() *CustomerQuery {
+	return NewOrderClient(_m.config).QueryCustomer(_m)
+}
+
 // Update returns a builder for updating this Order.
 // Note that you need to call Order.Unwrap() before calling this method if this Order
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -296,6 +326,11 @@ func (_m *Order) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("order_number=")
 	builder.WriteString(_m.OrderNumber)
+	builder.WriteString(", ")
+	if v := _m.CustomerID; v != nil {
+		builder.WriteString("customer_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("customer_name=")
 	builder.WriteString(_m.CustomerName)

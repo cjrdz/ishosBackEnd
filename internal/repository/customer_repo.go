@@ -93,6 +93,19 @@ func (r *CustomerRepository) FindByID(ctx context.Context, id uuid.UUID) (dto.Cu
 	return toCustomerDTO(row), nil
 }
 
+func (r *CustomerRepository) FindByPhone(ctx context.Context, phone string) (dto.Customer, error) {
+	row, err := r.db.Customer.Query().
+		Where(entCustomer.PhoneEQ(phone)).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return dto.Customer{}, &apperror.NotFoundError{Resource: "customer", Cause: err}
+		}
+		return dto.Customer{}, err
+	}
+	return toCustomerDTO(row), nil
+}
+
 func (r *CustomerRepository) Create(ctx context.Context, input CreateCustomerInput) (dto.Customer, error) {
 	create := r.db.Customer.Create().
 		SetName(input.Name).
@@ -152,9 +165,9 @@ func (r *CustomerRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-func (r *CustomerRepository) ListOrdersByPhone(ctx context.Context, phone string, limit int) ([]dto.Order, error) {
+func (r *CustomerRepository) ListOrdersByCustomerID(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error) {
 	q := r.db.Order.Query().
-		Where(entOrder.CustomerPhoneEQ(phone)).
+		Where(entOrder.CustomerIDEQ(customerID)).
 		WithItems(func(oiq *ent.OrderItemQuery) {
 			oiq.WithProduct()
 		}).
