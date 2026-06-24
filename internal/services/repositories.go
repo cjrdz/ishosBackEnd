@@ -97,7 +97,7 @@ type AdminSettingRepository interface {
 }
 
 // OrderStore encapsulates the transactional persistence of orders and their items.
-// It hides Ent transaction orchestration, product validation, and enrichment behind a small interface.
+// It hides Bun transaction orchestration, product validation, and enrichment behind a small interface.
 type OrderStore interface {
 	CreateOrder(ctx context.Context, input repository.StoreOrderInput) (dto.Order, error)
 	UpdateOrder(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error)

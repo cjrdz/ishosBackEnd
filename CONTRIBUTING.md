@@ -25,7 +25,7 @@ git checkout -b feat/something
 Follow patterns in [docs/GUIDE.md](docs/GUIDE.md):
 - Handlers: < 50 LOC, HTTP only
 - Services: Business logic, call repositories
-- Repositories: Ent ORM queries only
+- Repositories: Bun ORM queries only
 
 ### 3. Test
 
@@ -76,16 +76,16 @@ Before submitting:
 ## Rules
 
 **Security:**
-- ✅ Use Ent ORM for all queries
+- ✅ Use Bun ORM for all queries
 - ✅ Log sensitive operations
 - ✅ Validate input
-- ❌ No raw SQL
+- ❌ No raw SQL (use parameterized Bun queries)
 - ❌ No hardcoded secrets
 
 **Architecture:**
 - ✅ Handler: < 50 LOC, HTTP only
 - ✅ Service: Business logic
-- ✅ Repository: Ent ORM only
+- ✅ Repository: Bun ORM only
 - ✅ Domain: Pure business rules (testable without DB)
 
 **Testing:**

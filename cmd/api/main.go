@@ -3,7 +3,7 @@
 // Chi is the HTTP router and server.
 // PocketBase is bootstrapped as a Go library for authentication
 // (token validation, employee management) — it does NOT run its own HTTP server.
-// Ent + PostgreSQL is the ORM/database for business data.
+// Bun + PostgreSQL is the ORM/database for business data.
 //
 // Usage:
 //
@@ -112,7 +112,7 @@ func main() {
 		}
 	}
 
-	// ── Server (Chi router + Ent database) ───────────────────────────────
+	// ── Server (Chi router + Bun database) ───────────────────────────────
 	srv, err := server.New(pb, cfg)
 	if err != nil {
 		_ = pb.Close()

@@ -20,7 +20,7 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
 	cfg := config.Load()
-	_, rawDB, err := database.OpenClient(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
 	}

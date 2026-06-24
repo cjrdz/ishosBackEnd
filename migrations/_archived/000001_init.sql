@@ -1,6 +1,6 @@
 -- 000001_init.sql
 -- Reference migration for IshosFactory backend.
--- Ent auto-migrates on startup, so this file is for documentation
+-- Bun auto-migrates on startup, so this file is for documentation
 -- and manual deployment scenarios only.
 --
 -- Tables: categories, products, orders, order_items, rate_limits

@@ -80,7 +80,7 @@ Role legend:
 
 ## Customer directory
 
-These routes are exposed as `users`, but they are backed by the `Customer` Ent entity.
+These routes are exposed as `users`, but they are backed by the `Customer` model.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
@@ -867,7 +867,7 @@ Response `200 OK`:
 
 ## 13) Users (Customer Directory)
 
-Users are customer records stored in PostgreSQL via Ent ORM (separate from employees, which are in PocketBase).
+Users are customer records stored in PostgreSQL via Bun ORM (separate from employees, which are in PocketBase).
 
 | Operation                     | Method | Path                        |
 | ----------------------------- | ------ | --------------------------- |

@@ -1,6 +1,6 @@
 # IshosFactory Backend
 
-Go + Chi + Ent + PocketBase service. Manages orders, products, employees, customers, and settings.
+Go + Chi + Bun + PocketBase service. Manages orders, products, employees, customers, and settings.
 
 ---
 
@@ -9,7 +9,6 @@ Go + Chi + Ent + PocketBase service. Manages orders, products, employees, custom
 ```bash
 cp .env.example .env
 go mod tidy
-go generate ./ent
 make migrate
 go run ./cmd/api
 ```
@@ -20,12 +19,12 @@ Check health: `curl http://localhost:8080/health`
 
 ## Architecture
 
-Clean 4-layer model with Ent isolated behind the repository boundary:
+Clean 4-layer model with Bun isolated behind the repository boundary:
 
 ```
 Handler   → Parse request, delegate to service
 Service   → Business logic, call repository interface
-Repository → Ent ORM queries, map to DTOs
+Repository → Bun ORM queries, map to DTOs
 Database  → PostgreSQL
 ```
 
@@ -46,7 +45,6 @@ Database  → PostgreSQL
 go run ./cmd/api              # Run server
 go test ./...                 # Run tests
 make migrate                  # Database migration
-go generate ./ent             # Generate Ent code
 make bootstrap-admin          # Create first admin
 ```
 
@@ -59,10 +57,11 @@ internal/
 ├── handlers/     # HTTP layer
 ├── services/     # Business logic
 ├── repository/   # Database access
+├── models/       # Bun-tagged database models
+├── database/     # Connection pool and migrations
 ├── domain/       # Business rules
 └── ...
 
-ent/schema/       # Entity definitions
 docs/             # Documentation
 ```
 
@@ -70,7 +69,7 @@ docs/             # Documentation
 
 ## Security
 
-✅ 100% Ent ORM (no SQL injection)  
+✅ Bun ORM queries (no SQL injection)  
 ✅ Audit logging (all sensitive ops)  
 ✅ Token revocation (secure logout)  
 ✅ Rate limiting (login + endpoints)  
@@ -79,14 +78,14 @@ docs/             # Documentation
 
 ## Rules
 
-- ✅ Use Ent ORM for all queries (isolated in `internal/repository`)
+- ✅ Use Bun ORM for all queries (isolated in `internal/repository`)
 - ✅ Business logic in services
 - ✅ Keep handlers < 50 LOC
-- ✅ Repository methods map Ent types → DTOs
+- ✅ Repository methods map model types → DTOs
 - ✅ Test domain logic without database
 - ❌ No raw SQL
 - ❌ No hardcoded secrets
-- ❌ No `ent` import in `internal/services`, `internal/handlers`, or `internal/domain`
+- ❌ No `internal/models` import in `internal/services`, `internal/handlers`, or `internal/domain`
 
 ---
 

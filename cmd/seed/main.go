@@ -13,20 +13,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
-	"github.com/cjrdz/ishosBackEnd/ent/addon"
-	"github.com/cjrdz/ishosBackEnd/ent/category"
-	"github.com/cjrdz/ishosBackEnd/ent/containertype"
-	"github.com/cjrdz/ishosBackEnd/ent/flavor"
-	"github.com/cjrdz/ishosBackEnd/ent/inventoryitem"
-	"github.com/cjrdz/ishosBackEnd/ent/product"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/database"
+	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
 // seedCategory matches the JSON shape from products_category.json
@@ -179,16 +174,19 @@ func main() {
 	}
 
 	cfg := config.Load()
-	db, rawDB, err := database.OpenClient(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to connect to PostgreSQL")
 		return
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { _ = rawDB.Close() }()
+
+	bunDB := database.OpenBunDB(rawDB)
+	defer func() { _ = bunDB.Close() }()
 
 	ctx := context.Background()
 
-	if err := database.EnsureSchema(ctx, db, rawDB); err != nil {
+	if err := database.EnsureBunSchema(ctx, bunDB); err != nil {
 		log.Error().Err(err).Msg("Failed to verify database schema")
 		return
 	}
@@ -207,43 +205,67 @@ func main() {
 		var seedCategories []seedCategory
 		mustReadJSON(resolvedCategories, &seedCategories)
 
-		// Map old integer IDs to UUID-backed Ent categories.
-		catMap := make(map[int]*ent.Category)
+		categoryRepo := repository.NewCategoryBunRepository(bunDB)
+		productRepo := repository.NewProductBunRepository(bunDB)
+
+		// Map old integer IDs to UUID-backed Bun categories.
+		catMap := make(map[int]models.Category)
 
 		for i, sc := range seedCategories {
-			exists, _ := db.Category.Query().Where(category.SlugEQ(sc.Slug)).Exist(ctx)
-			if exists {
+			existing, findErr := categoryRepo.FindBySlug(ctx, sc.Slug)
+			if findErr == nil {
 				log.Info().Str("slug", sc.Slug).Msg("Category already exists, skipping")
-				existing, queryErr := db.Category.Query().Where(category.SlugEQ(sc.Slug)).Only(ctx)
-				if queryErr == nil {
-					catMap[sc.ID] = existing
+				var desc string
+				if existing.Description != "" {
+					desc = existing.Description
+				}
+				catMap[sc.ID] = models.Category{
+					ID:           existing.ID,
+					Name:         existing.Name,
+					Slug:         existing.Slug,
+					Description:  &desc,
+					ImagePath:    existing.ImagePath,
+					DisplayOrder: existing.DisplayOrder,
+					IsActive:     existing.IsActive,
+					CreatedAt:    existing.CreatedAt,
+					UpdatedAt:    existing.UpdatedAt,
 				}
 				continue
 			}
 
-			now := time.Now()
 			var imgPath *string
 			if sc.Image != "" {
 				imgPath = &sc.Image
 			}
 
-			created, createErr := db.Category.Create().
-				SetName(sc.Name).
-				SetSlug(sc.Slug).
-				SetDescription(sc.Description).
-				SetNillableImagePath(imgPath).
-				SetDisplayOrder(i).
-				SetIsActive(sc.IsActive).
-				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(ctx)
+			created, createErr := categoryRepo.Create(ctx, repository.CreateCategoryInput{
+				Name:         sc.Name,
+				Slug:         sc.Slug,
+				Description:  sc.Description,
+				ImagePath:    imgPath,
+				DisplayOrder: i,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sc.Name).Msg("Failed to create category")
 				continue
 			}
+			if !sc.IsActive {
+				isActive := sc.IsActive
+				if _, updateErr := categoryRepo.Update(ctx, created.ID, repository.UpdateCategoryInput{IsActive: &isActive}); updateErr != nil {
+					log.Error().Err(updateErr).Str("name", sc.Name).Msg("Failed to set category active state")
+				}
+			}
 
 			createdCategories++
-			catMap[sc.ID] = created
+			catMap[sc.ID] = models.Category{
+				ID:           created.ID,
+				Name:         created.Name,
+				Slug:         created.Slug,
+				Description:  &sc.Description,
+				ImagePath:    imgPath,
+				DisplayOrder: i,
+				IsActive:     sc.IsActive,
+			}
 			log.Info().Str("name", sc.Name).Str("id", created.ID.String()).Msg("Category created")
 		}
 
@@ -266,29 +288,28 @@ func main() {
 				continue
 			}
 
-			now := time.Now()
 			var imgPath *string
 			if sp.ImagePath != "" {
 				imgPath = &sp.ImagePath
 			}
 
 			// Check if product exists by name
-			existing, existsErr := db.Product.Query().Where(product.NameEQ(sp.Name)).Only(ctx)
-			if existsErr == nil && existing != nil {
-				// Update existing product
-				update := db.Product.UpdateOneID(existing.ID).
-					SetDescription(sp.Description).
-					SetPrice(price).
-					SetNillableImagePath(imgPath).
-					SetIsAvailable(sp.IsAvailable).
-					SetExcludeGlobalFlavors(sp.ExcludeGlobalFlavors).
-					SetExcludeGlobalAddons(sp.ExcludeGlobalAddons).
-					SetBallBased(sp.BallBased).
-					SetBallQuantity(sp.BallQuantity).
-					SetAllowsMixedFlavors(sp.AllowsMixedFlavors).
-					SetCategoryID(cat.ID).
-					SetUpdatedAt(now)
-				if _, updateErr := update.Save(ctx); updateErr != nil {
+			var existing models.Product
+			existsErr := bunDB.NewSelect().Model(&existing).Where("name = ?", sp.Name).Scan(ctx)
+			if existsErr == nil {
+				update := repository.UpdateProductInput{
+					Description:          &sp.Description,
+					Price:                &price,
+					ImagePath:            imgPath,
+					IsAvailable:          &sp.IsAvailable,
+					ExcludeGlobalFlavors: &sp.ExcludeGlobalFlavors,
+					ExcludeGlobalAddons:  &sp.ExcludeGlobalAddons,
+					BallBased:            &sp.BallBased,
+					BallQuantity:         &sp.BallQuantity,
+					AllowsMixedFlavors:   &sp.AllowsMixedFlavors,
+					CategoryID:           &cat.ID,
+				}
+				if _, updateErr := productRepo.Update(ctx, existing.ID, update); updateErr != nil {
 					log.Error().Err(updateErr).Str("name", sp.Name).Msg("Failed to update product")
 					continue
 				}
@@ -302,21 +323,18 @@ func main() {
 				continue
 			}
 
-			created, createErr := db.Product.Create().
-				SetName(sp.Name).
-				SetDescription(sp.Description).
-				SetPrice(price).
-				SetNillableImagePath(imgPath).
-				SetIsAvailable(sp.IsAvailable).
-				SetExcludeGlobalFlavors(sp.ExcludeGlobalFlavors).
-				SetExcludeGlobalAddons(sp.ExcludeGlobalAddons).
-				SetBallBased(sp.BallBased).
-				SetBallQuantity(sp.BallQuantity).
-				SetAllowsMixedFlavors(sp.AllowsMixedFlavors).
-				SetCategoryID(cat.ID).
-				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(ctx)
+			created, createErr := productRepo.Create(ctx, repository.CreateProductInput{
+				Name:                 sp.Name,
+				Description:          sp.Description,
+				Price:                price,
+				ImagePath:            imgPath,
+				ExcludeGlobalFlavors: sp.ExcludeGlobalFlavors,
+				ExcludeGlobalAddons:  sp.ExcludeGlobalAddons,
+				BallBased:            &sp.BallBased,
+				BallQuantity:         &sp.BallQuantity,
+				AllowsMixedFlavors:   &sp.AllowsMixedFlavors,
+				CategoryID:           cat.ID,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sp.Name).Msg("Failed to create product")
 				continue
@@ -336,27 +354,34 @@ func main() {
 		var seedFlavors []seedFlavor
 		mustReadJSON(resolvedFlavors, &seedFlavors)
 
+		flavorRepo := repository.NewFlavorBunRepository(bunDB)
 		for _, sf := range seedFlavors {
-			exists, _ := db.Flavor.Query().Where(flavor.NameEQ(sf.Name)).Exist(ctx)
-			if exists {
-				log.Info().Str("name", sf.Name).Msg("Flavor already exists, skipping")
-				continue
+			existing, findErr := flavorRepo.FindAll(ctx, false)
+			if findErr == nil {
+				var exists bool
+				for _, f := range existing {
+					if f.Name == sf.Name {
+						exists = true
+						break
+					}
+				}
+				if exists {
+					log.Info().Str("name", sf.Name).Msg("Flavor already exists, skipping")
+					continue
+				}
 			}
 
-			now := time.Now()
 			active := true
 			if sf.IsActive != nil {
 				active = *sf.IsActive
 			}
 
-			created, createErr := db.Flavor.Create().
-				SetName(sf.Name).
-				SetDisplayOrder(sf.DisplayOrder).
-				SetIsSeasonal(sf.IsSeasonal).
-				SetIsActive(active).
-				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(ctx)
+			created, createErr := flavorRepo.Create(ctx, repository.CreateFlavorInput{
+				Name:         sf.Name,
+				DisplayOrder: sf.DisplayOrder,
+				IsSeasonal:   sf.IsSeasonal,
+				IsActive:     active,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sf.Name).Msg("Failed to create flavor")
 				continue
@@ -369,14 +394,23 @@ func main() {
 		var seedAddons []seedAddon
 		mustReadJSON(resolvedAddons, &seedAddons)
 
+		addonRepo := repository.NewAddonBunRepository(bunDB)
 		for _, sa := range seedAddons {
-			exists, _ := db.Addon.Query().Where(addon.NameEQ(sa.Name)).Exist(ctx)
-			if exists {
-				log.Info().Str("name", sa.Name).Msg("Addon already exists, skipping")
-				continue
+			existing, findErr := addonRepo.FindAll(ctx, false)
+			if findErr == nil {
+				var exists bool
+				for _, a := range existing {
+					if a.Name == sa.Name {
+						exists = true
+						break
+					}
+				}
+				if exists {
+					log.Info().Str("name", sa.Name).Msg("Addon already exists, skipping")
+					continue
+				}
 			}
 
-			now := time.Now()
 			active := true
 			if sa.IsActive != nil {
 				active = *sa.IsActive
@@ -386,15 +420,13 @@ func main() {
 				groupName = "extras"
 			}
 
-			created, createErr := db.Addon.Create().
-				SetName(sa.Name).
-				SetPrice(sa.Price).
-				SetGroupName(groupName).
-				SetDisplayOrder(sa.DisplayOrder).
-				SetIsActive(active).
-				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(ctx)
+			created, createErr := addonRepo.Create(ctx, repository.CreateAddonInput{
+				Name:         sa.Name,
+				Price:        sa.Price,
+				GroupName:    groupName,
+				DisplayOrder: sa.DisplayOrder,
+				IsActive:     active,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sa.Name).Msg("Failed to create addon")
 				continue
@@ -413,71 +445,100 @@ func main() {
 		var seedInventoryData seedInventory
 		mustReadJSON(resolvedInventory, &seedInventoryData)
 
+		containerTypeRepo := repository.NewContainerTypeBunRepository(bunDB)
+
 		// Seed container types
 		for _, sct := range seedInventoryData.ContainerTypes {
-			exists, _ := db.ContainerType.Query().Where(containertype.NameEQ(sct.Name)).Exist(ctx)
+			existing, _ := containerTypeRepo.List(ctx)
+			var exists bool
+			for _, ct := range existing {
+				if ct.Name == sct.Name {
+					exists = true
+					break
+				}
+			}
 			if exists {
 				log.Info().Str("name", sct.Name).Msg("Container type already exists, skipping")
 				continue
 			}
 
-			now := time.Now()
-			created, createErr := db.ContainerType.Create().
-				SetName(sct.Name).
-				SetBallsPerContainer(sct.BallsPerContainer).
-				SetIsCustom(sct.IsCustom).
-				SetIsActive(sct.IsActive).
-				SetCreatedAt(now).
-				SetUpdatedAt(now).
-				Save(ctx)
+			created, createErr := containerTypeRepo.Create(ctx, sct.Name, sct.BallsPerContainer, sct.IsCustom)
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sct.Name).Msg("Failed to create container type")
 				continue
+			}
+
+			if !sct.IsActive {
+				isActive := sct.IsActive
+				if _, updateErr := containerTypeRepo.Update(ctx, created.ID, nil, nil, nil, &isActive); updateErr != nil {
+					log.Error().Err(updateErr).Str("name", sct.Name).Msg("Failed to set container type active state")
+				}
 			}
 
 			createdContainerTypes++
 			log.Info().Str("name", sct.Name).Str("id", created.ID.String()).Msg("Container type created")
 		}
 
+		inventoryRepo := repository.NewInventoryBunRepository(bunDB)
+		flavorRepo := repository.NewFlavorBunRepository(bunDB)
+		productRepo := repository.NewProductBunRepository(bunDB)
+
 		// Seed inventory items
 		for _, sii := range seedInventoryData.InventoryItems {
-			exists, _ := db.InventoryItem.Query().Where(inventoryitem.NameEQ(sii.Name)).Exist(ctx)
+			existing, _ := inventoryRepo.List(ctx)
+			var exists bool
+			for _, ii := range existing {
+				if ii.Name == sii.Name {
+					exists = true
+					break
+				}
+			}
 			if exists {
 				log.Info().Str("name", sii.Name).Msg("Inventory item already exists, skipping")
 				continue
 			}
 
-			now := time.Now()
-			create := db.InventoryItem.Create().
-				SetName(sii.Name).
-				SetType(inventoryitem.Type(sii.Type)).
-				SetLowStockThreshold(sii.LowStockThreshold).
-				SetCreatedAt(now).
-				SetUpdatedAt(now)
+			input := repository.CreateInventoryItemInput{
+				Name:              sii.Name,
+				Type:              sii.Type,
+				LowStockThreshold: sii.LowStockThreshold,
+			}
 
 			// For ball-based items: link to matching flavor
 			if sii.Type == "ball_based" {
-				flv, flvErr := db.Flavor.Query().Where(flavor.NameEQ(sii.Name)).Only(ctx)
+				flavors, flvErr := flavorRepo.FindAll(ctx, false)
 				if flvErr == nil {
-					create.SetFlavorID(flv.ID)
-					log.Info().Str("name", sii.Name).Str("flavor_id", flv.ID.String()).Msg("Linked inventory item to flavor")
-				} else {
+					for _, f := range flavors {
+						if f.Name == sii.Name {
+							input.FlavorID = &f.ID
+							log.Info().Str("name", sii.Name).Str("flavor_id", f.ID.String()).Msg("Linked inventory item to flavor")
+							break
+						}
+					}
+				}
+				if input.FlavorID == nil {
 					log.Warn().Str("name", sii.Name).Msg("No matching flavor found for inventory item")
 				}
 			}
 
 			// For unit-based items: link to matching product
 			if sii.Type == "unit_based" {
-				prod, prodErr := db.Product.Query().Where(product.NameEQ(sii.Name)).Only(ctx)
+				products, prodErr := productRepo.FindAll(ctx, "", false)
 				if prodErr == nil {
-					create.SetProductID(prod.ID)
-					log.Info().Str("name", sii.Name).Str("product_id", prod.ID.String()).Msg("Linked inventory item to product")
-				} else {
+					for _, p := range products {
+						if p.Name == sii.Name {
+							input.ProductID = &p.ID
+							log.Info().Str("name", sii.Name).Str("product_id", p.ID.String()).Msg("Linked inventory item to product")
+							break
+						}
+					}
+				}
+				if input.ProductID == nil {
 					log.Warn().Str("name", sii.Name).Msg("No matching product found for inventory item")
 				}
 			}
 
-			created, createErr := create.Save(ctx)
+			created, createErr := inventoryRepo.Create(ctx, input)
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sii.Name).Msg("Failed to create inventory item")
 				continue
@@ -489,45 +550,37 @@ func main() {
 
 		// ── Cleanup orphaned inventory items ─────────────────────────────
 		// Delete items that have neither a flavor nor a product link
-		deletedOrphans, err := db.InventoryItem.Delete().
-			Where(
-				inventoryitem.And(
-					inventoryitem.FlavorIDIsNil(),
-					inventoryitem.ProductIDIsNil(),
-				),
-			).
-			Exec(ctx)
+		res, err := bunDB.NewDelete().Model((*models.InventoryItem)(nil)).Where("flavor_id IS NULL AND product_id IS NULL").Exec(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to delete orphaned inventory items")
-		} else if deletedOrphans > 0 {
-			log.Info().Int("count", deletedOrphans).Msg("Deleted orphaned inventory items")
+		} else if rows, _ := res.RowsAffected(); rows > 0 {
+			log.Info().Int64("count", rows).Msg("Deleted orphaned inventory items")
 		}
 
 		// ── Auto-create unit-based inventory for existing products ───────
-		unitProducts, err := db.Product.Query().
-			Where(product.BallBasedEQ(false)).
-			All(ctx)
-		if err != nil {
+		var unitProducts []models.Product
+		if err := bunDB.NewSelect().Model(&unitProducts).Where("ball_based = ?", false).Scan(ctx); err != nil {
 			log.Error().Err(err).Msg("Failed to fetch unit-based products")
 		} else {
+			existingItems, _ := inventoryRepo.ListByType(ctx, string(models.InventoryItemTypeUnitBased))
+			linkedProductIDs := make(map[uuid.UUID]struct{})
+			for _, ii := range existingItems {
+				if ii.ProductID != nil {
+					linkedProductIDs[*ii.ProductID] = struct{}{}
+				}
+			}
+
 			for _, prod := range unitProducts {
-				exists, _ := db.InventoryItem.Query().
-					Where(inventoryitem.ProductIDEQ(prod.ID)).
-					Exist(ctx)
-				if exists {
+				if _, ok := linkedProductIDs[prod.ID]; ok {
 					continue
 				}
 
-				now := time.Now()
-				_, createErr := db.InventoryItem.Create().
-					SetName(prod.Name).
-					SetType(inventoryitem.TypeUnitBased).
-					SetProductID(prod.ID).
-					SetLowStockThreshold(10).
-					SetCurrentStock(0).
-					SetCreatedAt(now).
-					SetUpdatedAt(now).
-					Save(ctx)
+				_, createErr := inventoryRepo.Create(ctx, repository.CreateInventoryItemInput{
+					Name:              prod.Name,
+					Type:              string(models.InventoryItemTypeUnitBased),
+					ProductID:         &prod.ID,
+					LowStockThreshold: 10,
+				})
 				if createErr != nil {
 					log.Error().Err(createErr).Str("product", prod.Name).Msg("Failed to auto-create inventory item")
 				} else {

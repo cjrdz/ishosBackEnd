@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	stdsql "database/sql"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,7 +15,6 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
@@ -27,46 +27,44 @@ import (
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
-// Server wraps the Chi router, Ent database client, and all handlers.
+// Server wraps the Chi router, database connection, and all handlers.
 type Server struct {
-	db                 *ent.Client
+	db                 *stdsql.DB
 	router             chi.Router
 	cfg                *config.Config
-	trackingTokenStore *repository.TrackingTokenStore
+	trackingTokenStore *repository.TrackingTokenBunStore
 	cleanupCancel      context.CancelFunc
 }
 
 // New creates a new Server instance with all dependencies initialized.
 func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
-	client, rawDB, err := database.OpenClient(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database client: %w", err)
 	}
+	bunDB := database.OpenBunDB(rawDB)
 
-	if err := database.EnsureSchema(context.Background(), client, rawDB); err != nil {
-		_ = client.Close()
+	if err := database.EnsureBunSchema(context.Background(), bunDB); err != nil {
+		_ = rawDB.Close()
 		return nil, fmt.Errorf("failed to migrate database schema: %w", err)
 	}
-	if err := auth.InitEntTokenRevocationStore(client); err != nil {
-		_ = client.Close()
-		return nil, fmt.Errorf("failed to initialize token revocation store: %w", err)
-	}
-	if err := repository.InitTrackingTokenStore(client); err != nil {
-		_ = client.Close()
+	auth.SetTokenRevocationBackend(repository.NewRevokedTokenBunStore(bunDB))
+	if err := repository.InitTrackingTokenStore(bunDB); err != nil {
+		_ = rawDB.Close()
 		return nil, fmt.Errorf("failed to initialize tracking token store: %w", err)
 	}
 	log.Info().Msg("Connected to PostgreSQL database and verified schema")
 
 	// ── Repositories ─────────────────────────────────────────────────────
-	categoryRepo := repository.NewCategoryRepository(client)
-	flavorRepo := repository.NewFlavorRepository(client)
-	addonRepo := repository.NewAddonRepository(client)
-	productRepo := repository.NewProductRepository(client)
-	orderRepo := repository.NewOrderRepository(client)
-	settingsRepo := repository.NewAdminSettingRepository(client)
-	customerRepo := repository.NewCustomerRepository(client)
-	containerTypeRepo := repository.NewContainerTypeRepository(client)
-	inventoryRepo := repository.NewInventoryRepository(client)
+	categoryRepo := repository.NewCategoryBunRepository(bunDB)
+	flavorRepo := repository.NewFlavorBunRepository(bunDB)
+	addonRepo := repository.NewAddonBunRepository(bunDB)
+	productRepo := repository.NewProductBunRepository(bunDB)
+	orderRepo := repository.NewOrderBunRepository(bunDB)
+	settingsRepo := repository.NewAdminSettingBunRepository(bunDB)
+	customerRepo := repository.NewCustomerBunRepository(bunDB)
+	containerTypeRepo := repository.NewContainerTypeBunRepository(bunDB)
+	inventoryRepo := repository.NewInventoryBunRepository(bunDB)
 
 	// ── Services ─────────────────────────────────────────────────────────
 	categorySvc := services.NewCategoryService(categoryRepo)
@@ -77,7 +75,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	settingsSvc := services.NewAdminSettingService(settingsRepo)
 	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo)
-	auditSvc := audit.NewService(client)
+	auditSvc := audit.NewService(repository.NewAuditLogBunRepository(bunDB))
 	authService := auth.NewService(
 		pb,
 		cfg.LoginAttemptsPerMinute,
@@ -93,7 +91,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	}
 
 	// ── Tracking token service (needed by order service) ─────────────────
-	trackingTokenStore := repository.NewTrackingTokenStore(client)
+	trackingTokenStore := repository.NewTrackingTokenBunStore(bunDB)
 	trackingTokenService := services.NewTrackingTokenService(
 		cfg.TrackingTokenSecret,
 		time.Duration(cfg.TrackingTokenTTLHours)*time.Hour,
@@ -122,7 +120,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			whatsapp.SendOrderReady(evt.Phone, evt.OrderNumber, evt.TrackingURL)
 		}
 	})
-	orderStore := repository.NewOrderStore(client, services.NewOrderEnrichmentService())
+	orderStore := repository.NewOrderStore(bunDB, productRepo, services.NewOrderEnrichmentService())
 	orderSvc := services.NewOrderService(
 		orderRepo,
 		orderStore,
@@ -355,7 +353,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	log.Info().Msg("Chi router configured with all routes")
 
 	return &Server{
-		db:                 client,
+		db:                 rawDB,
 		router:             r,
 		cfg:                cfg,
 		trackingTokenStore: trackingTokenStore,
