@@ -1,5 +1,5 @@
 // token_revocation.go — Token revocation wrapper and interface.
-// The backend implementation (Ent ORM) is in token_revocation_ent.go.
+// Backend implementations (e.g. Bun-backed) satisfy TokenRevocationBackend.
 // RevokeToken and IsTokenRevoked are the only public entry points.
 package auth
 
@@ -16,15 +16,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// tokenRevocationBackend defines the interface for token revocation stores.
-type tokenRevocationBackend interface {
-	RevokeToken(ctx context.Context, token string, expiresAt time.Time) error
-	IsTokenRevoked(ctx context.Context, token string, now time.Time) (bool, error)
+// TokenRevocationBackend defines the interface for token revocation stores.
+// Implementations operate on token hashes, not raw tokens.
+type TokenRevocationBackend interface {
+	RevokeToken(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	IsTokenRevoked(ctx context.Context, tokenHash string, now time.Time) (bool, error)
 }
 
 // tokenRevocationHolder wraps the backend so atomic.Value always stores the same concrete type.
 type tokenRevocationHolder struct {
-	backend tokenRevocationBackend
+	backend TokenRevocationBackend
 }
 
 var revokedTokens atomic.Value
@@ -74,9 +75,9 @@ func (c *revocationCheckCache) invalidate(hash string) {
 	c.mu.Unlock()
 }
 
-// setTokenRevocationBackend sets the active token revocation backend.
-// Thread-safe; used by InitEntTokenRevocationStore to switch from memory to Ent ORM.
-func setTokenRevocationBackend(backend tokenRevocationBackend) {
+// SetTokenRevocationBackend sets the active token revocation backend.
+// Thread-safe; used during server wiring to inject the production store.
+func SetTokenRevocationBackend(backend TokenRevocationBackend) {
 	revokedTokens.Store(tokenRevocationHolder{backend: backend})
 }
 
@@ -87,8 +88,10 @@ func RevokeToken(token string) {
 		return
 	}
 
+	hash := tokenHash(token)
+
 	// Immediately update the in-memory cache so subsequent checks fail fast.
-	revocationCache.set(tokenHash(token), true)
+	revocationCache.set(hash, true)
 
 	expiresAt := tokenExpiry(token)
 	// token is already expired but may still be in-flight; keep it blocked for 24h to cover clock skew
@@ -104,7 +107,7 @@ func RevokeToken(token string) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	if err := holder.backend.RevokeToken(ctx, token, expiresAt); err != nil {
+	if err := holder.backend.RevokeToken(ctx, hash, expiresAt); err != nil {
 		log.Error().Err(err).Msg("Auth token revocation: failed to persist token revocation")
 	}
 }
@@ -137,7 +140,7 @@ func IsTokenRevoked(token string) bool {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	revoked, err := holder.backend.IsTokenRevoked(ctx, token, now)
+	revoked, err := holder.backend.IsTokenRevoked(ctx, hash, now)
 	if err != nil {
 		log.Error().Err(err).Msg("Auth token revocation: failed to check token status, treating as revoked")
 		return true // fail-closed

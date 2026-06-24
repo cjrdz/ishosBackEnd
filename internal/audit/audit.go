@@ -15,21 +15,15 @@ package audit
 import (
 	"context"
 	"time"
+
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
-// AuditEntry represents a logged action with actor, resource, and changes.
-type AuditEntry struct {
-	ID        string         // UUID or identifier
-	Action    string         // "order.created", "order.approved", "settings.updated"
-	ActorID   string         // Employee/user who performed the action
-	Resource  string         // "order:12345", "settings:store_hours"
-	Changes   map[string]any // Before/after values for the change
-	IP        string         // Client IP address
-	CreatedAt time.Time      // When the action occurred
-}
+// AuditEntry is an alias to dto.AuditEntry so callers can continue using the audit package name.
+type AuditEntry = dto.AuditEntry
 
-// Service logs audit entries to the database.
-type Service interface {
+// LogRepository is the persistence contract required by audit.Service.
+type LogRepository interface {
 	// Log creates an audit entry for a sensitive action.
 	Log(ctx context.Context, action, actorID, resource string, changes map[string]any, ip string) error
 
@@ -42,9 +36,13 @@ type Service interface {
 	// GetByAction retrieves all entries of a specific action type (e.g., "order.approved").
 	GetByAction(ctx context.Context, action string, limit, offset int) ([]*AuditEntry, error)
 
-	// CleanupOlderThan deletes audit entries older than the given duration.
-	// Useful for retention policies (e.g., delete entries older than 90 days).
+	// CleanupOlderThan deletes audit entries older than the given time.
 	CleanupOlderThan(ctx context.Context, before time.Time) (deletedCount int, err error)
+}
+
+// Service logs audit entries to the database.
+type Service interface {
+	LogRepository
 }
 
 // Critical actions that should always be audited

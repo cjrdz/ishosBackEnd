@@ -1,4 +1,4 @@
-.PHONY: help dev test coverage-focus test-integration migrate seed bootstrap bootstrap-admin build docker-up docker-down clean generate lint format bruno backup-pb deploy
+.PHONY: help dev test coverage-focus test-integration migrate seed bootstrap bootstrap-admin build docker-up docker-down clean lint format bruno backup-pb deploy
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -42,9 +42,6 @@ docker-down: ## Stop Docker Compose
 clean: ## Clean build artifacts and test data
 	rm -rf bin/ coverage.out coverage.html
 	rm -f pb_data/*.db
-
-generate: ## Generate Ent code
-	go generate ./ent
 
 lint: ## Run linters
 	golangci-lint run

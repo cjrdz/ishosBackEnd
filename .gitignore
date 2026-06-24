@@ -46,25 +46,6 @@ Thumbs.db
 /dist/
 /tmp/
 
-# Ent generated code (regenerated via go generate)
-# Uncomment the line below if you prefer NOT to commit generated code:
-# ent/client.go
-# ent/config.go
-# ent/context.go
-# ent/ent.go
-# ent/mutation.go
-# ent/tx.go
-# ent/runtime.go
-# ent/migrate/
-# ent/hook/
-# ent/runtime/
-# ent/predicate/
-# ent/category/
-# ent/product/
-# ent/order/
-# ent/orderitem/
-# ent/ratelimit/
-
 # Debug
 debug
 __debug_bin

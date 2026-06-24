@@ -12,12 +12,12 @@ Handler (parse input, delegate)
     ↓
 Service (business logic)
     ↓
-Repository (Ent ORM queries → DTO)
+Repository (Bun ORM queries → DTO)
     ↓
 PostgreSQL
 ```
 
-**Rules:** Handlers and services must never import `ent`. Repositories must map Ent types to DTOs before returning.
+**Rules:** Handlers and services must never import `internal/models` or database drivers. Repositories must map Bun model types to DTOs before returning.
 
 ---
 
@@ -54,16 +54,16 @@ func (s *OrderService) GetByID(ctx context.Context, id string) (*Order, error) {
 
 ### Repository
 **Location:** `internal/repository/`  
-**Do:** Ent ORM queries ONLY, map Ent types to DTOs  
-**Don't:** Business logic, raw SQL, expose Ent types to callers
+**Do:** Bun ORM queries ONLY, map model types to DTOs  
+**Don't:** Business logic, raw SQL, expose model types to callers
 
 ```go
 func (r *orderRepository) GetByID(ctx context.Context, id uuid.UUID) (dto.Order, error) {
-	entOrder, err := r.client.Order.Get(ctx, id)
-	if err != nil {
+	var order models.Order
+	if err := r.db.NewSelect().Model(&order).Where("id = ?", id).Scan(ctx); err != nil {
 		return dto.Order{}, apperror.NotFoundError{}
 	}
-	return toDTOOrder(entOrder), nil
+	return toDTOOrder(order), nil
 }
 ```
 
@@ -87,17 +87,17 @@ func (o *Order) Approve(reviewer string) error {
 ## Key Rules
 
 🔒 **Security**
-- ✅ Use Ent ORM for ALL queries (automatic SQL injection prevention)
+- ✅ Use Bun ORM for ALL queries (parameterized, SQL injection prevention)
 - ✅ Log sensitive operations (via domain events)
 - ✅ Validate input in handlers
 - ❌ Never use raw SQL or hardcode secrets
 
 🏗️ **Structure**
-- ✅ Handlers < 50 LOC (no Ent imports)
-- ✅ Services have single responsibility (no Ent imports)
-- ✅ Repositories return DTOs (not Ent types)
+- ✅ Handlers < 50 LOC (no database imports)
+- ✅ Services have single responsibility (no database imports)
+- ✅ Repositories return DTOs (not model types)
 - ✅ Business logic goes in domain/ or services/
-- ❌ No `ent` import in `internal/services/`, `internal/handlers/`, or `internal/domain/`
+- ❌ No `internal/models` or DB driver imports in `internal/services/`, `internal/handlers/`, or `internal/domain/`
 
 🧪 **Testing**
 - ✅ Unit tests: Test domain logic without database
@@ -117,8 +117,8 @@ func (o *Order) Approve(reviewer string) error {
 6. Update `docs/API.md`
 
 ### Add a database entity
-1. Create schema: `ent/schema/myentity.go`
-2. Run: `go generate ./ent`
+1. Add model: `internal/models/models.go`
+2. Add table/index/FK in: `internal/database/bun_migrate.go`
 3. Create repository, service, handler
 4. Run: `make migrate`
 
@@ -140,7 +140,6 @@ golangci-lint run ./...       # Lint
 # Database
 make migrate                  # Run migrations
 make seed                     # Seed test data
-go generate ./ent             # Generate Ent code (after schema changes)
 
 # Setup
 make bootstrap-admin          # Create first admin
@@ -152,27 +151,22 @@ make bootstrap-admin          # Create first admin
 
 ```
 cmd/api              # Server entry point
-ent/schema/          # Entity definitions (edit these — do NOT edit generated ent/ files)
 internal/
-├── handlers/        # HTTP layer (no ent imports)
-├── services/        # Business logic (no ent imports)
-├── repository/      # Data access — the ONLY layer that imports ent
-├── domain/          # Pure business rules (no ent imports)
+├── handlers/        # HTTP layer (no database imports)
+├── services/        # Business logic (no database imports)
+├── repository/      # Data access — the ONLY layer that imports internal/models
+├── models/          # Bun-tagged database models
+├── database/        # Connection pool and migrations
+├── domain/          # Pure business rules (no database imports)
 ├── middleware/      # Auth, logging, etc.
 └── ...
 docs/               # Documentation
-README.md           # Quick start
 README.md           # Quick start
 ```
 
 ---
 
 ## Troubleshooting
-
-**Build error: "undefined reference to ent/order"**
-```bash
-go generate ./ent
-```
 
 **Database error**
 ```bash
@@ -183,8 +177,8 @@ docker run -d -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:15
 ```
 
 **Type mismatch: "cannot use X as Y"**
-- Check that repositories return domain types, not Ent types
-- Example: `mapEntOrderToDomain(entOrder)` not `entOrder`
+- Check that repositories return DTOs, not model types
+- Example: `toDTOOrder(order)` not `order`
 
 ---
 

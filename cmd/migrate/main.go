@@ -16,13 +16,14 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
 	cfg := config.Load()
-	client, rawDB, err := database.OpenClient(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = rawDB.Close() }()
 
-	if err := database.EnsureSchema(context.Background(), client, rawDB); err != nil {
+	bunDB := database.OpenBunDB(rawDB)
+	if err := database.EnsureBunSchema(context.Background(), bunDB); err != nil {
 		log.Error().Err(err).Msg("Failed to migrate database schema")
 		return
 	}

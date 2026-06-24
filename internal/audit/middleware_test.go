@@ -3,23 +3,39 @@ package audit
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/sqlitedialect"
 
-	"github.com/cjrdz/ishosBackEnd/ent/enttest"
+	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	orderDomain "github.com/cjrdz/ishosBackEnd/internal/domain/order"
 	_ "github.com/mattn/go-sqlite3"
 )
 
+func newTestAuditBunDB(t *testing.T) *bun.DB {
+	t.Helper()
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_fk=1", t.Name())
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	require.NoError(t, err)
+	bunDB := bun.NewDB(sqlDB, sqlitedialect.New())
+	_, err = bunDB.NewCreateTable().Model((*models.AuditLog)(nil)).Exec(context.Background())
+	require.NoError(t, err)
+	return bunDB
+}
+
 func TestMiddlewareOrderCreated(t *testing.T) {
 	ctx := context.Background()
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	db := newTestAuditBunDB(t)
 
-	svc := NewService(client)
+	repo := repository.NewAuditLogBunRepository(db)
+	svc := NewService(repo)
 	middleware := NewLogMiddleware(svc)
 
 	orderID := uuid.New()
@@ -41,8 +57,8 @@ func TestMiddlewareOrderCreated(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify audit entry was created
-	entries, err := client.AuditLog.Query().All(ctx)
-	require.NoError(t, err)
+	var entries []models.AuditLog
+	require.NoError(t, db.NewSelect().Model(&entries).Scan(ctx))
 	require.Len(t, entries, 1)
 
 	entry := entries[0]
@@ -54,10 +70,10 @@ func TestMiddlewareOrderCreated(t *testing.T) {
 
 func TestMiddlewareOrderApproved(t *testing.T) {
 	ctx := context.Background()
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	db := newTestAuditBunDB(t)
 
-	svc := NewService(client)
+	repo := repository.NewAuditLogBunRepository(db)
+	svc := NewService(repo)
 	middleware := NewLogMiddleware(svc)
 
 	orderID := uuid.New()
@@ -74,8 +90,8 @@ func TestMiddlewareOrderApproved(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify audit entry was created
-	entries, err := client.AuditLog.Query().All(ctx)
-	require.NoError(t, err)
+	var entries []models.AuditLog
+	require.NoError(t, db.NewSelect().Model(&entries).Scan(ctx))
 	require.Len(t, entries, 1)
 
 	entry := entries[0]
@@ -85,10 +101,10 @@ func TestMiddlewareOrderApproved(t *testing.T) {
 
 func TestMiddlewareNilEvent(t *testing.T) {
 	ctx := context.Background()
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	db := newTestAuditBunDB(t)
 
-	svc := NewService(client)
+	repo := repository.NewAuditLogBunRepository(db)
+	svc := NewService(repo)
 	middleware := NewLogMiddleware(svc)
 
 	// Should handle nil event gracefully
@@ -96,7 +112,7 @@ func TestMiddlewareNilEvent(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify no entries were created
-	count, err := client.AuditLog.Query().Count(ctx)
+	count, err := db.NewSelect().Model((*models.AuditLog)(nil)).Count(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
@@ -127,10 +143,10 @@ func TestMiddlewareNilService(t *testing.T) {
 
 func TestMiddlewareMultipleEvents(t *testing.T) {
 	ctx := context.Background()
-	client := enttest.Open(t, "sqlite3", "file:ent?mode=memory&cache=shared&_fk=1")
-	defer client.Close()
+	db := newTestAuditBunDB(t)
 
-	svc := NewService(client)
+	repo := repository.NewAuditLogBunRepository(db)
+	svc := NewService(repo)
 	middleware := NewLogMiddleware(svc)
 
 	orderID := uuid.New()
@@ -170,8 +186,8 @@ func TestMiddlewareMultipleEvents(t *testing.T) {
 	}
 
 	// Verify all 3 entries were created
-	entries, err := client.AuditLog.Query().All(ctx)
-	require.NoError(t, err)
+	var entries []models.AuditLog
+	require.NoError(t, db.NewSelect().Model(&entries).Order("created_at ASC").Scan(ctx))
 	assert.Len(t, entries, 3)
 
 	// Verify order of actions

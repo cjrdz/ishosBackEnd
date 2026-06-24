@@ -1,6 +1,4 @@
-// client.go — Opens the Ent/PostgreSQL client and verifies the schema on startup.
-// OpenClient wires pgx → database/sql → Ent so a single *sql.DB is shared across both layers.
-// EnsureSchema runs Ent auto-migration and guards against any columns that migrations may have missed.
+// client.go — Opens the PostgreSQL connection pool and provides shared backfill helpers.
 package database
 
 import (
@@ -9,18 +7,16 @@ import (
 	"fmt"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
-
-	"github.com/cjrdz/ishosBackEnd/ent"
+	"github.com/uptrace/bun"
 )
 
-func OpenClient(databaseURL string) (*ent.Client, *stdsql.DB, error) {
+// OpenRawDB opens a *sql.DB from a PostgreSQL URL.
+func OpenRawDB(databaseURL string) (*stdsql.DB, error) {
 	pgCfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse database url: %w", err)
+		return nil, fmt.Errorf("parse database url: %w", err)
 	}
 
 	rawDB := stdlib.OpenDB(*pgCfg)
@@ -29,55 +25,34 @@ func OpenClient(databaseURL string) (*ent.Client, *stdsql.DB, error) {
 	rawDB.SetMaxIdleConns(5)
 	rawDB.SetConnMaxIdleTime(5 * time.Minute)
 	rawDB.SetConnMaxLifetime(30 * time.Minute)
-	driver := entsql.OpenDB(dialect.Postgres, rawDB)
-
-	client := ent.NewClient(ent.Driver(driver))
 
 	// Warm up the connection pool so the first real request doesn't pay
 	// connection-establishment cost.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := rawDB.PingContext(ctx); err != nil {
-		_ = client.Close()
 		_ = rawDB.Close()
-		return nil, nil, fmt.Errorf("ping database: %w", err)
+		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	return client, rawDB, nil
+	return rawDB, nil
 }
 
-func EnsureSchema(ctx context.Context, client *ent.Client, rawDB *stdsql.DB) error {
-	if err := client.Schema.Create(ctx); err != nil {
-		return fmt.Errorf("run schema migration: %w", err)
-	}
-
-	if err := verifyAddonGroupColumn(ctx, rawDB); err != nil {
-		return err
-	}
-
-	if err := verifyProductGlobalExclusionColumns(ctx, rawDB); err != nil {
-		return err
-	}
-
-	if err := backfillOrderItemSnapshotProductID(ctx, rawDB); err != nil {
-		return err
-	}
-
-	if err := ensureOrderItemIndexes(ctx, rawDB); err != nil {
-		return err
-	}
-
-	if err := backfillOrderCustomerID(ctx, rawDB); err != nil {
-		return err
-	}
-
-	return nil
+// sqlExecutor is satisfied by both *sql.DB and *bun.DB so backfill helpers can
+// be reused by the migration path.
+type sqlExecutor interface {
+	ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*stdsql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *stdsql.Row
 }
 
-// verifyAddonGroupColumn is a post-migration sanity check: Ent schema.Create does not always
+// ensureBunDB is a compile-time assertion that *bun.DB satisfies sqlExecutor.
+var _ sqlExecutor = (*bun.DB)(nil)
+
+// verifyAddonGroupColumn is a post-migration sanity check: schema creation does not always
 // apply ALTER TABLE additions when the table already exists, so we assert the column is present
 // rather than discovering the missing column at runtime on the first write.
-func verifyAddonGroupColumn(ctx context.Context, rawDB *stdsql.DB) error {
+func verifyAddonGroupColumn(ctx context.Context, db sqlExecutor) error {
 	const query = `
 SELECT EXISTS (
 	SELECT 1
@@ -88,7 +63,7 @@ SELECT EXISTS (
 )`
 
 	var exists bool
-	if err := rawDB.QueryRowContext(ctx, query).Scan(&exists); err != nil {
+	if err := db.QueryRowContext(ctx, query).Scan(&exists); err != nil {
 		return fmt.Errorf("verify addons.group_name column: %w", err)
 	}
 	if !exists {
@@ -102,14 +77,14 @@ SELECT EXISTS (
 // (product_order_items) into the new snapshot_product_id column for rows that
 // haven't been backfilled yet. This lets list queries avoid loading the product
 // edge while keeping detail views working during the transition.
-func backfillOrderItemSnapshotProductID(ctx context.Context, rawDB *stdsql.DB) error {
+func backfillOrderItemSnapshotProductID(ctx context.Context, db sqlExecutor) error {
 	const query = `
 UPDATE order_items
 SET snapshot_product_id = product_order_items
 WHERE snapshot_product_id IS NULL
   AND product_order_items IS NOT NULL`
 
-	res, err := rawDB.ExecContext(ctx, query)
+	res, err := db.ExecContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("backfill order_items.snapshot_product_id: %w", err)
 	}
@@ -124,16 +99,16 @@ WHERE snapshot_product_id IS NULL
 }
 
 // ensureOrderItemIndexes creates indexes on the order_item foreign-key columns
-// if they don't already exist. Without these indexes, WithItems() triggers a
+// if they don't already exist. Without these indexes, item lookups trigger a
 // full table scan on every order list query.
-func ensureOrderItemIndexes(ctx context.Context, rawDB *stdsql.DB) error {
+func ensureOrderItemIndexes(ctx context.Context, db sqlExecutor) error {
 	const orderIndex = `CREATE INDEX IF NOT EXISTS orderitem_order_id ON order_items(order_items)`
 	const productIndex = `CREATE INDEX IF NOT EXISTS orderitem_product_id ON order_items(product_order_items)`
 
-	if _, err := rawDB.ExecContext(ctx, orderIndex); err != nil {
+	if _, err := db.ExecContext(ctx, orderIndex); err != nil {
 		return fmt.Errorf("create orderitem_order_id index: %w", err)
 	}
-	if _, err := rawDB.ExecContext(ctx, productIndex); err != nil {
+	if _, err := db.ExecContext(ctx, productIndex); err != nil {
 		return fmt.Errorf("create orderitem_product_id index: %w", err)
 	}
 	return nil
@@ -142,7 +117,7 @@ func ensureOrderItemIndexes(ctx context.Context, rawDB *stdsql.DB) error {
 // backfillOrderCustomerID links historical orders to canonical customer records.
 // It creates a customer for each distinct phone that does not yet exist, then
 // updates orders.customer_id to point at the matching customer.
-func backfillOrderCustomerID(ctx context.Context, rawDB *stdsql.DB) error {
+func backfillOrderCustomerID(ctx context.Context, db sqlExecutor) error {
 	const createMissingCustomers = `
 INSERT INTO customers (id, name, user_type, phone, email, status, created_at, updated_at)
 SELECT gen_random_uuid(),
@@ -160,7 +135,7 @@ WHERE o.customer_id IS NULL
 GROUP BY o.customer_phone
 ON CONFLICT (phone) DO NOTHING`
 
-	if _, err := rawDB.ExecContext(ctx, createMissingCustomers); err != nil {
+	if _, err := db.ExecContext(ctx, createMissingCustomers); err != nil {
 		return fmt.Errorf("backfill orders.customer_id (create customers): %w", err)
 	}
 
@@ -171,7 +146,7 @@ FROM customers c
 WHERE o.customer_id IS NULL
   AND c.phone = o.customer_phone`
 
-	res, err := rawDB.ExecContext(ctx, linkOrders)
+	res, err := db.ExecContext(ctx, linkOrders)
 	if err != nil {
 		return fmt.Errorf("backfill orders.customer_id (link orders): %w", err)
 	}
@@ -184,7 +159,7 @@ WHERE o.customer_id IS NULL
 	return nil
 }
 
-func verifyProductGlobalExclusionColumns(ctx context.Context, rawDB *stdsql.DB) error {
+func verifyProductGlobalExclusionColumns(ctx context.Context, db sqlExecutor) error {
 	const query = `
 SELECT column_name
 FROM information_schema.columns
@@ -192,7 +167,7 @@ WHERE table_schema = current_schema()
   AND table_name = 'products'
   AND column_name IN ('exclude_global_flavors', 'exclude_global_addons')`
 
-	rows, err := rawDB.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("verify products exclusion columns: %w", err)
 	}

@@ -1,5 +1,5 @@
 // entity.go — Order aggregate root and value objects.
-// Business logic for order domain, separate from database representation (ent.Order).
+// Business logic for order domain, separate from database representation (models.Order).
 package order
 
 import (
@@ -10,7 +10,7 @@ import (
 )
 
 // Order is the aggregate root for order domain logic.
-// It's independent of the database representation (ent.Order).
+// It's independent of the database representation (models.Order).
 type Order struct {
 	ID                uuid.UUID
 	OrderNumber       string

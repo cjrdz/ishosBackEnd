@@ -1,22 +1,22 @@
 // order_store.go — Transactional order persistence seam.
 //
-// OrderStore hides Ent transaction orchestration, product validation, and
+// OrderStore hides transaction orchestration, product validation, and
 // customization enrichment behind a small interface so that services do not
-// need to open transactions or import Ent order/orderitem builders.
+// need to open transactions or import builders.
 package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 
-	"github.com/cjrdz/ishosBackEnd/ent"
-	entOrder "github.com/cjrdz/ishosBackEnd/ent/order"
-	entOrderItem "github.com/cjrdz/ishosBackEnd/ent/orderitem"
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
+	"github.com/cjrdz/ishosBackEnd/internal/models"
 )
 
 // StoreOrderItemInput is the raw order item supplied to OrderStore.
@@ -69,59 +69,59 @@ type productResolver interface {
 
 // OrderStore implements transactional order creation and update.
 type OrderStore struct {
-	db         *ent.Client
-	enrichment EnrichmentService
+	db          *bun.DB
+	productRepo productResolver
+	enrichment  EnrichmentService
 }
 
 // NewOrderStore creates a new transactional order store.
-func NewOrderStore(db *ent.Client, enrichment EnrichmentService) *OrderStore {
-	return &OrderStore{db: db, enrichment: enrichment}
+func NewOrderStore(db *bun.DB, productRepo productResolver, enrichment EnrichmentService) *OrderStore {
+	return &OrderStore{db: db, productRepo: productRepo, enrichment: enrichment}
 }
 
 // CreateOrder creates a new order with its items inside a single transaction.
 // It validates products, enriches customizations, and computes the total amount.
 func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dto.Order, error) {
-	tx, err := s.db.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return dto.Order{}, err
 	}
+	defer tx.Rollback()
 
-	txProductRepo := NewProductRepository(tx.Client())
-
-	total, snapshots, err := s.resolveItems(ctx, txProductRepo, input.Items)
+	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
 	if err != nil {
-		_ = tx.Rollback()
 		return dto.Order{}, err
 	}
 
 	now := time.Now()
-	order, err := tx.Order.Create().
-		SetOrderNumber(input.OrderNumber).
-		SetNillableCustomerID(input.CustomerID).
-		SetCustomerName(input.CustomerName).
-		SetCustomerPhone(input.CustomerPhone).
-		SetNillableCustomerEmail(input.CustomerEmail).
-		SetNillableCustomerIP(input.CustomerIP).
-		SetTotalAmount(total).
-		SetStatus(entOrder.StatusPendienteRevision).
-		SetPaymentMethod(entOrder.PaymentMethod(input.PaymentMethod)).
-		SetOrderType(entOrder.OrderType(input.OrderType)).
-		SetNillableTableNumber(input.TableNumber).
-		SetNillableNotes(input.Notes).
-		SetNillableCreatedByUserID(input.CreatedByID).
-		SetStatusTimestamps(map[string]time.Time{
-			string(entOrder.StatusPendienteRevision): now,
-		}).
-		SetCreatedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
-	if err != nil {
-		_ = tx.Rollback()
+	order := models.Order{
+		ID:            uuid.New(),
+		OrderNumber:   input.OrderNumber,
+		CustomerID:    input.CustomerID,
+		CustomerName:  input.CustomerName,
+		CustomerPhone: input.CustomerPhone,
+		CustomerEmail: input.CustomerEmail,
+		CustomerIP:    input.CustomerIP,
+		TotalAmount:   total,
+		Status:        models.OrderStatusPendienteRevision,
+		PaymentMethod: models.OrderPaymentMethod(input.PaymentMethod),
+		PaymentStatus: models.OrderPaymentStatusPendiente,
+		OrderType:     models.OrderType(input.OrderType),
+		TableNumber:   input.TableNumber,
+		Notes:         input.Notes,
+		CreatedByUserID: input.CreatedByID,
+		StatusTimestamps: map[string]time.Time{
+			string(models.OrderStatusPendienteRevision): now,
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	if _, err := tx.NewInsert().Model(&order).Exec(ctx); err != nil {
 		return dto.Order{}, err
 	}
 
 	if err := s.createItems(ctx, tx, order.ID, snapshots); err != nil {
-		_ = tx.Rollback()
 		return dto.Order{}, err
 	}
 
@@ -135,69 +135,55 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 // UpdateOrder updates an order and replaces its items inside a single transaction.
 // When Items is empty, only the order metadata is updated and existing items are kept.
 func (s *OrderStore) UpdateOrder(ctx context.Context, id uuid.UUID, input StoreUpdateOrderInput) (dto.Order, error) {
-	tx, err := s.db.Tx(ctx)
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return dto.Order{}, err
 	}
+	defer tx.Rollback()
 
-	existingOrder, err := tx.Order.Get(ctx, id)
-	if err != nil {
-		_ = tx.Rollback()
-		return dto.Order{}, err
+	var existingOrder models.Order
+	if err := tx.NewSelect().Model(&existingOrder).Where("id = ?", id).For("UPDATE").Scan(ctx); err != nil {
+		return dto.Order{}, translateOrderError(err)
 	}
 
-	update := tx.Order.UpdateOneID(id).
-		SetCustomerName(input.CustomerName).
-		SetCustomerPhone(input.CustomerPhone).
-		SetPaymentMethod(entOrder.PaymentMethod(input.PaymentMethod)).
-		SetOrderType(entOrder.OrderType(input.OrderType)).
-		SetNillableCustomerEmail(input.CustomerEmail).
-		SetNillableNotes(input.Notes).
-		SetUpdatedAt(time.Now())
-
+	now := time.Now()
+	existingOrder.CustomerName = input.CustomerName
+	existingOrder.CustomerPhone = input.CustomerPhone
+	existingOrder.CustomerEmail = input.CustomerEmail
+	existingOrder.PaymentMethod = models.OrderPaymentMethod(input.PaymentMethod)
+	existingOrder.OrderType = models.OrderType(input.OrderType)
+	existingOrder.TableNumber = input.TableNumber
+	existingOrder.Notes = input.Notes
+	existingOrder.UpdatedAt = now
 	if input.CustomerID != nil {
-		update = update.SetCustomerID(*input.CustomerID)
-	}
-
-	if input.TableNumber == nil {
-		update = update.ClearTableNumber()
-	} else {
-		update = update.SetTableNumber(*input.TableNumber)
+		existingOrder.CustomerID = input.CustomerID
 	}
 
 	if len(input.Items) == 0 {
-		updated, err := update.Save(ctx)
-		if err != nil {
-			_ = tx.Rollback()
+		if _, err := tx.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
 			return dto.Order{}, err
 		}
 		if err := tx.Commit(); err != nil {
 			return dto.Order{}, err
 		}
-		return s.toDTOOrder(updated, nil), nil
+		return s.toDTOOrder(existingOrder, nil), nil
 	}
 
-	txProductRepo := NewProductRepository(tx.Client())
-
-	total, snapshots, err := s.resolveItems(ctx, txProductRepo, input.Items)
+	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
 	if err != nil {
-		_ = tx.Rollback()
+		return dto.Order{}, err
+	}
+	existingOrder.TotalAmount = total
+
+	if _, err := tx.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
 		return dto.Order{}, err
 	}
 
-	updated, err := update.SetTotalAmount(total).Save(ctx)
-	if err != nil {
-		_ = tx.Rollback()
-		return dto.Order{}, err
-	}
-
-	if _, err := tx.OrderItem.Delete().Where(entOrderItem.HasOrderWith(entOrder.IDEQ(existingOrder.ID))).Exec(ctx); err != nil {
-		_ = tx.Rollback()
+	if _, err := tx.NewDelete().Model((*models.OrderItem)(nil)).Where("order_items = ?", existingOrder.ID).Exec(ctx); err != nil {
 		return dto.Order{}, err
 	}
 
 	if err := s.createItems(ctx, tx, existingOrder.ID, snapshots); err != nil {
-		_ = tx.Rollback()
 		return dto.Order{}, err
 	}
 
@@ -205,7 +191,7 @@ func (s *OrderStore) UpdateOrder(ctx context.Context, id uuid.UUID, input StoreU
 		return dto.Order{}, err
 	}
 
-	return s.toDTOOrder(updated, snapshots), nil
+	return s.toDTOOrder(existingOrder, snapshots), nil
 }
 
 // itemSnapshot holds resolved item data ready for persistence.
@@ -249,32 +235,28 @@ func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolv
 }
 
 // createItems persists resolved item snapshots against an open transaction.
-func (s *OrderStore) createItems(ctx context.Context, tx *ent.Tx, orderID uuid.UUID, snapshots []itemSnapshot) error {
+func (s *OrderStore) createItems(ctx context.Context, tx bun.Tx, orderID uuid.UUID, snapshots []itemSnapshot) error {
 	for _, item := range snapshots {
-		create := tx.OrderItem.Create().
-			SetOrderID(orderID).
-			SetProductID(item.product.ID).
-			SetSnapshotProductID(item.product.ID).
-			SetProductName(item.product.Name).
-			SetQuantity(item.quantity).
-			SetUnitPrice(item.unitPrice).
-			SetSubtotal(item.unitPrice * float64(item.quantity))
-		if item.customizations != nil {
-			create = create.SetCustomizations(item.customizations)
+		model := models.OrderItem{
+			ID:                uuid.New(),
+			OrderID:           orderID,
+			ProductID:         item.product.ID,
+			SnapshotProductID: &item.product.ID,
+			ProductName:       item.product.Name,
+			Quantity:          item.quantity,
+			UnitPrice:         item.unitPrice,
+			Subtotal:          item.unitPrice * float64(item.quantity),
+			Customizations:    item.customizations,
 		}
-		if _, err := create.Save(ctx); err != nil {
+		if _, err := tx.NewInsert().Model(&model).Exec(ctx); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// toDTOOrder builds a dto.Order from a persisted ent.Order and resolved snapshots.
-func (s *OrderStore) toDTOOrder(order *ent.Order, snapshots []itemSnapshot) dto.Order {
-	if order == nil {
-		return dto.Order{}
-	}
-
+// toDTOOrder builds a dto.Order from a persisted models.Order and resolved snapshots.
+func (s *OrderStore) toDTOOrder(order models.Order, snapshots []itemSnapshot) dto.Order {
 	items := make([]dto.OrderItem, 0, len(snapshots))
 	for _, snap := range snapshots {
 		items = append(items, dto.OrderItem{

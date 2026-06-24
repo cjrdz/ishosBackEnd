@@ -35,13 +35,13 @@ jobs:
       - name: Build
         run: go build ./...
 
-      - name: Enforce Ent isolation
+      - name: Enforce database isolation
         run: |
           set -euo pipefail
           go list -f '{{$pkg := .ImportPath}}{{range .Imports}}{{$pkg}} {{.}}
           {{end}}{{range .TestImports}}{{$pkg}} {{.}}
-          {{end}}' ./internal/services/... ./internal/handlers/... ./internal/domain/... | grep 'github.com/cjrdz/ishosBackEnd/ent' && {
-            echo "ERROR: Forbidden ent import detected in application layer." >&2
+          {{end}}' ./internal/services/... ./internal/handlers/... ./internal/domain/... | grep -E 'github.com/cjrdz/ishosBackEnd/ent|github.com/cjrdz/ishosBackEnd/internal/models|github.com/uptrace/bun' && {
+            echo "ERROR: Forbidden database import detected in application layer." >&2
             exit 1
           } || true
 
