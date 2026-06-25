@@ -85,7 +85,7 @@ jobs:
 
       - name: Repository integration tests
         env:
-          DATABASE_URL: postgres://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/ishosFactory?sslmode=disable
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: go test -race -count=1 ./internal/repository/...
 
   lint:
