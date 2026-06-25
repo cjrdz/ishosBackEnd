@@ -81,6 +81,7 @@ docs/                  # Documentation
 ✅ HttpOnly cookie auth (no JS-accessible tokens)
 ✅ SameSite=Lax CSRF protection
 ✅ Atomic stock transactions (status + inventory committed together)
+✅ Idempotent order creation (client-supplied key prevents duplicate orders)
 
 ---
 
@@ -91,7 +92,6 @@ docs/                  # Documentation
 - ✅ Keep handlers < 50 LOC
 - ✅ Repository methods map model types → DTOs
 - ✅ Test domain logic without database
-- ✅ Stock-affecting transitions use `OrderStore.UpdateStatusWithStockAdjustment` (atomic)
 - ❌ No raw SQL
 - ❌ No hardcoded secrets
 - ❌ No `internal/models` import in `internal/services`, `internal/handlers`, or `internal/domain`

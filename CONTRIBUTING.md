@@ -78,6 +78,7 @@ Before submitting:
 - [ ] No hardcoded secrets
 - [ ] No `_, _ =` on error returns from inventory or order store calls
 - [ ] Stock-affecting mutations are atomic (use `OrderStore` transactional methods)
+- [ ] Idempotency keys are inserted inside the same transaction as the order (never as a separate follow-up write)
 - [ ] Commit message format correct
 
 ---
@@ -99,6 +100,7 @@ Before submitting:
 - ✅ Repository: Bun ORM only, return DTOs (not model types)
 - ✅ Domain: Pure business rules (testable without DB)
 - ✅ Order service uses facade pattern (command/query/tracking/enrichment split)
+- ✅ Idempotency keys are inserted inside the order-creation transaction
 
 **Testing:**
 - ✅ Unit tests: Domain logic and service routing (no DB needed)

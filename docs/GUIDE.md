@@ -88,7 +88,8 @@ Some operations span multiple tables or domains and must be atomic. `OrderStore`
 
 | Method | When to use |
 | --- | --- |
-| `CreateOrder` | Create order + items (validates products, computes total) |
+| `CreateOrder` | Create order + items (validates products, computes total); optionally accepts `IdempotencyKey` to prevent duplicate submissions |
+| `FindOrderByIdempotencyKey` | Look up an order previously created for a client-supplied idempotency key |
 | `UpdateOrder` | Update order metadata + replace items (no stock change) |
 | `UpdateOrderWithStockAdjustment` | Update order + items **and** restore/deduct stock atomically |
 | `UpdateStatus` | Change order status (no stock change) |
@@ -97,6 +98,41 @@ Some operations span multiple tables or domains and must be atomic. `OrderStore`
 The stock-adjustment methods open a single Bun transaction, perform the order mutation, then call `InventoryBunRepository` (constructed with the transaction's `bun.Tx`) to adjust stock. If either step fails, both roll back.
 
 `InventoryBunRepository` accepts `bun.IDB` (either `*bun.DB` or `bun.Tx`) so it can run standalone or inside an existing transaction via its `withTx` helper.
+
+#### Idempotent order creation
+
+`POST /api/v1/orders` accepts an optional `Idempotency-Key` header (UUID) to
+guard against duplicate submissions caused by double-clicks, network retries, or
+back-button resubmits.
+
+**How it works:**
+
+1. The client generates a UUID **once** per logical order attempt (when the
+   checkout form renders) and sends it as `Idempotency-Key` on every submit.
+2. The handler (`OrderHandler.Create`) parses the header and passes it through
+   to `OrderCommandService.Create`.
+3. Before creating, the service checks whether a prior order exists for that
+   key via `OrderStore.FindOrderByIdempotencyKey`. If yes, the existing order
+   is returned immediately — no duplicate is created.
+4. During creation, the key is inserted into the `idempotency_keys` table
+   **inside the same transaction** as the order. This atomicity means:
+   - If two requests race with the same key, only one transaction commits.
+   - The loser's transaction (including its order row) is rolled back by the
+     `defer tx.Rollback()` in `OrderStore.CreateOrder`.
+   - The service catches the unique-violation error and fetches the winning
+     order instead of surfacing a conflict.
+5. The key is scoped to a single logical order. After a successful order the
+   frontend must clear the key; a new cart generates a new key.
+
+**Race-safe across replicas:** The dedupe constraint lives in PostgreSQL, not
+in-process memory, so it works correctly under horizontal scaling (Railway,
+Render, Fly.io).
+
+**Optional:** The key is optional. If the client omits `Idempotency-Key`, the
+behavior is identical to before this feature was added — no deduplication.
+
+See `internal/repository/order_store.go` → `CreateOrder` and
+`internal/services/order_command_service.go` → `Create`.
 
 ### Domain
 **Location:** `internal/domain/`  
@@ -132,6 +168,7 @@ func (o *Order) Approve(reviewer string) error {
 - ✅ Request types in `internal/handlers/requests/`, response types in `internal/dto/`
 - ✅ Business logic goes in domain/ or services/
 - ✅ Stock-affecting order mutations use `OrderStore` transactional methods (atomic)
+- ✅ Idempotency keys are inserted inside the order-creation transaction (never as a separate write)
 - ❌ No `internal/models` or DB driver imports in `internal/services/`, `internal/handlers/`, or `internal/domain/`
 
 🧪 **Testing**
@@ -165,6 +202,17 @@ func (o *Order) Approve(reviewer string) error {
 3. Get role: `role := auth.RoleFromContext(r.Context())`
 
 No token management is needed on the frontend — the `auth_token` cookie is set by login and sent automatically by the browser.
+
+### Modify order to include idempotency key
+
+Wire the key through all four layers:
+
+1. **Handler** — read `Idempotency-Key` header, parse as UUID, pass to service.
+2. **Service** — check for existing order before creating, catch unique-violation on race, fetch winner.
+3. **Repository** — add `IdempotencyKey` field to `StoreOrderInput`, insert key row in the same transaction as the order.
+4. **Database** — add `(*models.IdempotencyKey)(nil)` to the table list and `idempotencykey_created_at` to the index list in `internal/database/bun_migrate.go`.
+
+The key must **never** be inserted outside the order-creation transaction, otherwise a race loser could leave an orphaned order row.
 
 ### Modify order status with stock impact
 Use `OrderStore.UpdateStatusWithStockAdjustment` — never call `orderRepo.UpdateStatus` and `inventory.DeductForOrder` separately, as that leaves the system in an inconsistent state if one fails.

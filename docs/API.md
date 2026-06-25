@@ -191,6 +191,19 @@ These routes are exposed as `users`, but they are backed by the `Customer` model
 
 Rate limited per IP (default: 5/hour) and per phone (default: 20/day).
 
+**Idempotency:** optional `Idempotency-Key` header (UUID). When supplied, a
+second request with the same key returns the original order instead of creating
+a new one. The key is enforced with a database unique constraint inside the
+order-creation transaction, so it works correctly across any number of API
+replicas. Generate the key once when the checkout form is rendered and reuse it
+for all retry/submit attempts; generate a new key only after a successful order
+or a genuine new cart. See `internal/repository/order_store.go` →
+`CreateOrder` and `services/order_command_service.go` → `Create`.
+
+```http
+Idempotency-Key: f47ac10b-58cc-4372-a567-0e02b2c3d479
+```
+
 Body:
 
 ```json
