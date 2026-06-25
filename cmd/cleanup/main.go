@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/rs/zerolog"
@@ -19,10 +20,16 @@ import (
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout})
 
+	if err := run(); err != nil {
+		log.Fatal().Err(err).Msg("Cleanup failed")
+	}
+}
+
+func run() error {
 	cfg := config.Load()
 	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
+		return fmt.Errorf("connect to PostgreSQL: %w", err)
 	}
 	defer func() { _ = rawDB.Close() }()
 
@@ -37,10 +44,11 @@ func main() {
 
 	for _, stmt := range stmts {
 		if _, execErr := rawDB.ExecContext(ctx, stmt); execErr != nil {
-			log.Fatal().Err(execErr).Str("stmt", stmt).Msg("Failed to execute cleanup statement")
+			return fmt.Errorf("execute cleanup statement %q: %w", stmt, execErr)
 		}
 		log.Info().Str("stmt", stmt).Msg("Executed successfully")
 	}
 
 	log.Info().Msg("Cleanup complete: legacy product-link columns removed")
+	return nil
 }

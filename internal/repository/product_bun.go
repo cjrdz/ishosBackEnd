@@ -266,7 +266,7 @@ func (r *ProductBunRepository) loadCategoriesForProducts(ctx context.Context, pr
 	}
 
 	var categories []models.Category
-	if err := r.db.NewSelect().Model(&categories).Where("id IN (?)", bun.In(categoryIDs)).Scan(ctx); err != nil {
+	if err := r.db.NewSelect().Model(&categories).Where("id IN (?)", bun.List(categoryIDs)).Scan(ctx); err != nil {
 		return nil, err
 	}
 
@@ -284,6 +284,7 @@ func (r *ProductBunRepository) loadCategoriesForProducts(ctx context.Context, pr
 	return result, nil
 }
 
+//nolint:gosec // G602 false positive: range loop guarantees valid slice indices.
 func (r *ProductBunRepository) attachEffectiveGlobalOptions(ctx context.Context, products []dto.Product) error {
 	if len(products) == 0 {
 		return nil

@@ -1,6 +1,6 @@
 # IshosFactory Backend
 
-Go + Chi + Bun + PocketBase service. Manages orders, products, employees, customers, and settings.
+Go + Chi + Bun + PocketBase service. Manages orders, products, employees, customers, inventory, and settings.
 
 ---
 
@@ -28,6 +28,8 @@ Repository → Bun ORM queries, map to DTOs
 Database  → PostgreSQL
 ```
 
+**Authentication** is cookie-based: login sets an HttpOnly, Secure, SameSite=Lax `auth_token` cookie. The JWT is never returned in the response body. A `Bearer` header is accepted as a fallback for non-browser clients, but no endpoint issues bearer tokens.
+
 ---
 
 ## Documentation
@@ -35,7 +37,6 @@ Database  → PostgreSQL
 - **[GUIDE.md](docs/GUIDE.md)** ← Start here! Patterns, common tasks, troubleshooting
 - **[API.md](docs/API.md)** — All endpoints
 - **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Production setup
-- **[docs/_archive/](docs/_archive/)** — Deep dives (if needed)
 
 ---
 
@@ -43,10 +44,12 @@ Database  → PostgreSQL
 
 ```bash
 go run ./cmd/api              # Run server
-go test ./...                 # Run tests
+go test ./...                 # Run all tests
 make migrate                  # Database migration
 make bootstrap-admin          # Create first admin
 ```
+
+> Repository integration tests require PostgreSQL. Use `make docker-up` to start a local Postgres, or run them via CI (which provisions a Postgres service container automatically).
 
 ---
 
@@ -54,25 +57,30 @@ make bootstrap-admin          # Create first admin
 
 ```
 internal/
-├── handlers/     # HTTP layer
-├── services/     # Business logic
-├── repository/   # Database access
-├── models/       # Bun-tagged database models
-├── database/     # Connection pool and migrations
-├── domain/       # Business rules
+├── handlers/          # HTTP layer
+│   └── requests/      # Request-parsing DTOs (handler-local)
+├── services/          # Business logic
+├── repository/        # Database access (Bun ORM)
+├── models/            # Bun-tagged database models
+├── database/          # Connection pool and migrations
+├── domain/            # Pure business rules
+├── dto/               # Response DTOs (shared across layers)
 └── ...
 
-docs/             # Documentation
+docs/                  # Documentation
 ```
 
 ---
 
 ## Security
 
-✅ Bun ORM queries (no SQL injection)  
-✅ Audit logging (all sensitive ops)  
-✅ Token revocation (secure logout)  
-✅ Rate limiting (login + endpoints)  
+✅ Bun ORM queries (no SQL injection)
+✅ Audit logging (all sensitive ops)
+✅ Token revocation (secure logout)
+✅ Rate limiting (login + endpoints)
+✅ HttpOnly cookie auth (no JS-accessible tokens)
+✅ SameSite=Lax CSRF protection
+✅ Atomic stock transactions (status + inventory committed together)
 
 ---
 
@@ -83,6 +91,7 @@ docs/             # Documentation
 - ✅ Keep handlers < 50 LOC
 - ✅ Repository methods map model types → DTOs
 - ✅ Test domain logic without database
+- ✅ Stock-affecting transitions use `OrderStore.UpdateStatusWithStockAdjustment` (atomic)
 - ❌ No raw SQL
 - ❌ No hardcoded secrets
 - ❌ No `internal/models` import in `internal/services`, `internal/handlers`, or `internal/domain`

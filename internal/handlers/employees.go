@@ -103,7 +103,7 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(rec)
 	}
 	ip := auth.ClientIP(r)
-	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeAdded, actorID, "employee:" + auth.RecordID(record), map[string]any{
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeAdded, actorID, "employee:"+auth.RecordID(record), map[string]any{
 		"email": record.Email(),
 		"name":  record.GetString("name"),
 		"role":  auth.RoleFromRecord(record),
@@ -166,7 +166,7 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(rec)
 	}
 	ip := auth.ClientIP(r)
-	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeUpdated, actorID, "employee:" + id, map[string]any{
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeUpdated, actorID, "employee:"+id, map[string]any{
 		"email": record.Email(),
 		"name":  record.GetString("name"),
 		"role":  auth.RoleFromRecord(record),
@@ -204,7 +204,7 @@ func (h *EmployeeHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(rec)
 	}
 	ip := auth.ClientIP(r)
-	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeRemoved, actorID, "employee:" + id, map[string]any{
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeRemoved, actorID, "employee:"+id, map[string]any{
 		"action_detail": "deactivated",
 	}, ip)
 
@@ -234,7 +234,7 @@ func (h *EmployeeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(rec)
 	}
 	ip := auth.ClientIP(r)
-	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeRemoved, actorID, "employee:" + id, map[string]any{
+	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeRemoved, actorID, "employee:"+id, map[string]any{
 		"action_detail": "deleted",
 	}, ip)
 

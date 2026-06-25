@@ -248,29 +248,31 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 	jaleaSelection := strings.ToLower(s.extractCustomizationString(raw, "jalea_selection"))
 
 	if hasActiveToppingOptions {
-		if selectedAddonGroups["toppings"] {
+		switch {
+		case selectedAddonGroups["toppings"]:
 			// A specific topping addon was selected; no "none" marker needed.
-		} else if toppingSelection == "none" || toppingSelection == "" {
+		case toppingSelection == "none" || toppingSelection == "":
 			// Explicit "none" or a missing selection both mean "without topping".
 			if enriched == nil {
 				enriched = make(map[string]any)
 			}
 			enriched["topping_selection"] = "none"
-		} else {
+		default:
 			return nil, 0, fmt.Errorf("%w: topping selection is required", ErrToppingRequired)
 		}
 	}
 
 	if hasActiveJaleaOptions {
-		if selectedAddonGroups["jalea"] {
+		switch {
+		case selectedAddonGroups["jalea"]:
 			// A specific jalea addon was selected; no "none" marker needed.
-		} else if jaleaSelection == "none" || jaleaSelection == "" {
+		case jaleaSelection == "none" || jaleaSelection == "":
 			// Explicit "none" or a missing selection both mean "without jalea".
 			if enriched == nil {
 				enriched = make(map[string]any)
 			}
 			enriched["jalea_selection"] = "none"
-		} else {
+		default:
 			return nil, 0, fmt.Errorf("%w: jalea selection is required", ErrJaleaRequired)
 		}
 	}

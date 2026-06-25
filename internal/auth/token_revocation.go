@@ -43,8 +43,8 @@ type revocationCheckCache struct {
 }
 
 type revocationCacheEntry struct {
-	revoked   bool
-	cachedAt  time.Time
+	revoked  bool
+	cachedAt time.Time
 }
 
 var revocationCache = &revocationCheckCache{
@@ -66,12 +66,6 @@ func (c *revocationCheckCache) get(hash string) (revoked bool, ok bool) {
 func (c *revocationCheckCache) set(hash string, revoked bool) {
 	c.mu.Lock()
 	c.entries[hash] = revocationCacheEntry{revoked: revoked, cachedAt: time.Now()}
-	c.mu.Unlock()
-}
-
-func (c *revocationCheckCache) invalidate(hash string) {
-	c.mu.Lock()
-	delete(c.entries, hash)
 	c.mu.Unlock()
 }
 

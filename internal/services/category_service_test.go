@@ -15,7 +15,6 @@ import (
 type categoryRepoStub struct {
 	listCalls              int
 	listFn                 func(ctx context.Context, showAll bool) ([]dto.Category, error)
-	findByID               func(ctx context.Context, id uuid.UUID) (dto.Category, error)
 	findBySlugWithProducts func(ctx context.Context, slug string) (dto.Category, error)
 	createFn               func(ctx context.Context, input repository.CreateCategoryInput) (dto.Category, error)
 	updateFn               func(ctx context.Context, id uuid.UUID, input repository.UpdateCategoryInput) (dto.Category, error)

@@ -125,6 +125,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		orderRepo,
 		orderStore,
 		customerRepo,
+		productRepo,
 		inventoryService,
 		trackingTokenService,
 		orderDispatcher,
@@ -194,7 +195,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			return isOriginAllowed(origin, allowedOrigins)
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Requested-With"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,

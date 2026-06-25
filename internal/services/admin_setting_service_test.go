@@ -9,8 +9,8 @@ import (
 )
 
 type adminSettingRepoStub struct {
-	getByKey      func(ctx context.Context, key string) (dto.AdminSetting, error)
-	upsertByKey   func(ctx context.Context, key string, value map[string]any, changedBy string) (dto.AdminSetting, error)
+	getByKey    func(ctx context.Context, key string) (dto.AdminSetting, error)
+	upsertByKey func(ctx context.Context, key string, value map[string]any, changedBy string) (dto.AdminSetting, error)
 }
 
 func (s *adminSettingRepoStub) GetByKey(ctx context.Context, key string) (dto.AdminSetting, error) {
@@ -60,10 +60,10 @@ func TestAdminSettingServiceGetTokenTTLConfig_ResolvesFromRepo(t *testing.T) {
 		getByKey: func(_ context.Context, _ string) (dto.AdminSetting, error) {
 			return dto.AdminSetting{
 				Value: map[string]any{
-					"auth_cookie_ttl_hours":      10,
-					"auth_token_ttl_hours":       20,
-					"tracking_token_ttl_hours":   30,
-					"inactivity_logout_seconds":  40,
+					"auth_cookie_ttl_hours":     10,
+					"auth_token_ttl_hours":      20,
+					"tracking_token_ttl_hours":  30,
+					"inactivity_logout_seconds": 40,
 				},
 			}, nil
 		},

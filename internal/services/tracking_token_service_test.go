@@ -10,8 +10,8 @@ import (
 )
 
 type trackingTokenStoreStub struct {
-	storeFn         func(ctx context.Context, orderNumber, tokenHash string, expiresAt time.Time) error
-	lookupFn        func(ctx context.Context, orderNumber, tokenHash string) (*dto.TrackingTokenRecord, error)
+	storeFn            func(ctx context.Context, orderNumber, tokenHash string, expiresAt time.Time) error
+	lookupFn           func(ctx context.Context, orderNumber, tokenHash string) (*dto.TrackingTokenRecord, error)
 	revokeAllByOrderFn func(ctx context.Context, orderNumber string) error
 }
 

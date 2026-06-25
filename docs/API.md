@@ -6,7 +6,7 @@ All application endpoints are mounted under `/api/v1`, except `/health`.
 
 ## Common behavior
 
-- Authenticated routes expect `Authorization: Bearer <token>`.
+- Authenticated routes use the HttpOnly `auth_token` cookie set by `POST /api/v1/auth/login`. A non-browser client may alternatively send `Authorization: Bearer <token>`, but no endpoint in this API issues bearer tokens.
 - Errors return JSON with at least an `error` field.
 - JSON request bodies are capped at 1 MiB.
 - Security headers are applied globally.
@@ -88,6 +88,7 @@ These routes are exposed as `users`, but they are backed by the `Customer` model
 | GET | `/api/v1/users/{id}` | Staff | Get customer by ID |
 | GET | `/api/v1/users/{id}/orders` | Admin | Get orders associated with a customer |
 | POST | `/api/v1/users` | Admin | Create customer record |
+| POST | `/api/v1/users/upsert` | Admin | Create or update a customer by phone |
 | PATCH | `/api/v1/users/{id}` | Admin | Update customer record |
 | DELETE | `/api/v1/users/{id}` | Admin | Delete customer record |
 
@@ -122,6 +123,35 @@ These routes are exposed as `users`, but they are backed by the `Customer` model
 | GET | `/api/v1/analytics/top-products` | Admin | Top product breakdown |
 | GET | `/api/v1/export/orders` | Admin | Export orders (CSV or JSON) |
 | DELETE | `/api/v1/export/orders` | Admin | Purge old orders |
+
+## Inventory
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/inventory` | Admin | List inventory items |
+| GET | `/api/v1/inventory/flavors` | Admin | List flavor inventory |
+| GET | `/api/v1/inventory/unit-products` | Admin | List unit-based inventory |
+| POST | `/api/v1/inventory/unit-products` | Admin | Create a unit-based inventory item |
+| GET | `/api/v1/inventory/stats` | Admin | Inventory stats |
+| GET | `/api/v1/inventory/low-stock` | Admin | Low-stock alert |
+| GET | `/api/v1/inventory/{id}` | Admin | Get inventory item by ID |
+| GET | `/api/v1/inventory/{id}/movements` | Admin | Movement history for an item |
+| POST | `/api/v1/inventory/{id}/entries` | Admin | Record container entry (flavor stock) |
+| POST | `/api/v1/inventory/{id}/unit-entries` | Admin | Record unit entry |
+| POST | `/api/v1/inventory/{id}/adjustments` | Admin | Record manual adjustment |
+| POST | `/api/v1/inventory/{id}/products/{productId}` | Admin | Link inventory item to product |
+| DELETE | `/api/v1/inventory/{id}/products/{productId}` | Admin | Unlink inventory item from product |
+| GET | `/api/v1/inventory/flavors/{id}/stock` | Admin | Stock for a specific flavor |
+
+## Container types
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| GET | `/api/v1/container-types` | Admin | List container types |
+| POST | `/api/v1/container-types` | Admin | Create container type |
+| GET | `/api/v1/container-types/{id}` | Admin | Get container type by ID |
+| PATCH | `/api/v1/container-types/{id}` | Admin | Update container type |
+| DELETE | `/api/v1/container-types/{id}` | Admin | Delete container type |
 
 ## Uploads
 
@@ -431,7 +461,7 @@ Body:
 }
 ```
 
-The Chi handler validates credentials via PocketBase's Go API (password hashing, record lookup) and sets an HttpOnly `auth_token` cookie. The JWT is never returned in the response body.
+The Chi handler validates credentials via PocketBase's Go API (password hashing, record lookup) and sets an HttpOnly, Secure, SameSite=Lax `auth_token` cookie. The JWT is **never** returned in the response body. Subsequent requests send the cookie automatically.
 
 Response `200 OK`:
 
@@ -447,11 +477,11 @@ Response `200 OK`:
 }
 ```
 
-The frontend stores the returned `token` and sends it as `Authorization: Bearer <token>` on all protected requests.
+There is no bearer-token issuer in this API. Browser frontends rely on the cookie jar; non-browser clients must manage and send their own token via `Authorization: Bearer <token>` if they wish to use the fallback auth path.
 
 ### GET `/api/v1/auth/session` — Current user
 
-Requires: `Authorization: Bearer <token>`
+Requires: authenticated session (HttpOnly `auth_token` cookie).
 
 Returns the authenticated employee's data from the request context (set by the auth middleware).
 
@@ -470,12 +500,12 @@ Response `200 OK`:
 
 ### POST `/api/v1/auth/logout` — Logout
 
-With token-based auth, the server has no session to destroy. This endpoint returns a confirmation — the frontend should discard the stored token.
+Clears the HttpOnly `auth_token` cookie on the client. The frontend should also drop any locally cached employee data.
 
 
 ### POST `/api/v1/auth/lockout/reset` — Admin unlock
 
-Requires: `Authorization: Bearer <token>` with `admin` role.
+Requires: authenticated admin session (HttpOnly `auth_token` cookie).
 
 Use this endpoint to immediately clear login lockout waits for one employee.
 
@@ -926,9 +956,142 @@ Returns the orders associated with this user's email or phone, linked at order-c
 
 Response `200 OK`: returns an array of order objects.
 
+### POST `/api/v1/users/upsert` — Create or update by phone
+
+Creates a new customer record if the phone does not exist, or updates the matching customer if it does.
+
+Body (same as create):
+
+```json
+{
+  "name": "María García",
+  "email": "maria@example.com",
+  "phone": "+50688887777",
+  "user_type": "user",
+  "status": "active"
+}
+```
+
+Response `200 OK`: returns the existing updated user or `201 Created` for a newly created user.
+
 ---
 
-## 14) Export / Purge
+## 14) Inventory
+
+Admin-only endpoints for stock management.
+
+| Operation | Method | Path |
+| --- | --- | --- |
+| List inventory items | GET | `/api/v1/inventory` |
+| List flavor inventory | GET | `/api/v1/inventory/flavors` |
+| List unit-based inventory | GET | `/api/v1/inventory/unit-products` |
+| Create unit inventory item | POST | `/api/v1/inventory/unit-products` |
+| Inventory stats | GET | `/api/v1/inventory/stats` |
+| Low-stock alert | GET | `/api/v1/inventory/low-stock` |
+| Get inventory item | GET | `/api/v1/inventory/{id}` |
+| Movement history | GET | `/api/v1/inventory/{id}/movements` |
+| Record container entry | POST | `/api/v1/inventory/{id}/entries` |
+| Record unit entry | POST | `/api/v1/inventory/{id}/unit-entries` |
+| Record adjustment | POST | `/api/v1/inventory/{id}/adjustments` |
+| Link to product | POST | `/api/v1/inventory/{id}/products/{productId}` |
+| Unlink from product | DELETE | `/api/v1/inventory/{id}/products/{productId}` |
+| Flavor stock | GET | `/api/v1/inventory/flavors/{id}/stock` |
+
+### POST `/api/v1/inventory/{id}/entries`
+
+Records a container entry for a flavor-based inventory item.
+
+Body:
+
+```json
+{
+  "container_type_id": "uuid",
+  "quantity_containers": 5,
+  "balls_per_container": 30
+}
+```
+
+`balls_per_container` is required only when the container type is custom.
+
+Response `201 Created`: returns the created stock movement.
+
+### POST `/api/v1/inventory/{id}/unit-entries`
+
+Records a unit entry for a unit-based inventory item.
+
+Body:
+
+```json
+{
+  "quantity": 20
+}
+```
+
+Response `201 Created`: returns the created stock movement.
+
+### POST `/api/v1/inventory/{id}/adjustments`
+
+Records a manual stock adjustment.
+
+Body:
+
+```json
+{
+  "quantity": -5,
+  "reason": "Spoilage"
+}
+```
+
+Response `201 Created`: returns the created stock movement.
+
+---
+
+## 15) Container types
+
+Admin-only CRUD for container types used when recording flavor stock entries.
+
+| Operation | Method | Path |
+| --- | --- | --- |
+| List container types | GET | `/api/v1/container-types` |
+| Create container type | POST | `/api/v1/container-types` |
+| Get container type | GET | `/api/v1/container-types/{id}` |
+| Update container type | PATCH | `/api/v1/container-types/{id}` |
+| Delete container type | DELETE | `/api/v1/container-types/{id}` |
+
+### POST `/api/v1/container-types`
+
+Body:
+
+```json
+{
+  "name": "Caja 30 bolas",
+  "balls_per_container": 30,
+  "is_custom": false
+}
+```
+
+Response `201 Created`: returns the created container type.
+
+### PATCH `/api/v1/container-types/{id}`
+
+All fields are optional.
+
+Body:
+
+```json
+{
+  "name": "Caja 30 bolas",
+  "balls_per_container": 30,
+  "is_custom": false,
+  "is_active": true
+}
+```
+
+Response `200 OK`: returns the updated container type.
+
+---
+
+## 16) Export / Purge
 
 Admin-only endpoints for order data management.
 
@@ -985,9 +1148,11 @@ Response `200 OK`:
 ### Setup
 
 1. Open Bruno, create a new collection called **ishosBackend**.
-2. Create an environment called **dev** with variables:
+2. Enable the cookie jar in the collection settings.
+3. Create an environment called **dev** with variable:
    - `BASE_URL` = `http://localhost:8080`
-   - `AUTH_TOKEN` = (filled in after login)
+
+There is no `AUTH_TOKEN` variable — authentication is carried automatically by the HttpOnly `auth_token` cookie returned by login.
 
 ### Testing Auth (do this first)
 
@@ -1006,13 +1171,13 @@ Response `200 OK`:
 ```
 
 - Expected status: `200`
-- Save `$.token` → variable `AUTH_TOKEN`
+- Verify the response body contains `employee` and **no** `token` field.
+- Bruno's cookie jar now holds the `auth_token` cookie.
 
 **2. Get Session**
 
 - Method: `GET`
 - URL: `{{BASE_URL}}/api/v1/auth/session`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
 - Expected status: `200`
 - Verify `role` is `"admin"`
 
@@ -1022,8 +1187,7 @@ Response `200 OK`:
 - URL: `{{BASE_URL}}/api/v1/auth/logout`
 - Expected status: `200`
 
-> For all subsequent **authenticated** requests, add the header:
-> `Authorization: Bearer {{AUTH_TOKEN}}`
+> For all subsequent **authenticated** requests, make sure `auth: inherit` is set so Bruno sends the cookie jar contents. Do **not** add `Authorization: Bearer ...` headers.
 
 ---
 
@@ -1033,7 +1197,7 @@ Response `200 OK`:
 
 - Method: `POST`
 - URL: `{{BASE_URL}}/api/v1/categories`
-- Headers: `Content-Type: application/json`, `Authorization: Bearer {{AUTH_TOKEN}}`
+- Headers: `Content-Type: application/json`
 - Body:
 
 ```json
@@ -1065,7 +1229,7 @@ Response `200 OK`:
 
 - Method: `PATCH`
 - URL: `{{BASE_URL}}/api/v1/categories/{{CATEGORY_ID}}`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1081,7 +1245,7 @@ Response `200 OK`:
 
 - Method: `DELETE`
 - URL: `{{BASE_URL}}/api/v1/categories/{{CATEGORY_ID}}`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Expected status: `200`
 
 ---
@@ -1094,7 +1258,7 @@ Response `200 OK`:
 
 - Method: `POST`
 - URL: `{{BASE_URL}}/api/v1/products`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1132,7 +1296,7 @@ Response `200 OK`:
 
 - Method: `PATCH`
 - URL: `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1149,7 +1313,7 @@ Response `200 OK`:
 
 - Method: `PATCH`
 - URL: `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}/availability`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - No body needed
 - Expected status: `200`
 - Verify `is_available` flipped
@@ -1158,7 +1322,7 @@ Response `200 OK`:
 
 - Method: `DELETE`
 - URL: `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Expected status: `200`
 
 ---
@@ -1197,7 +1361,7 @@ Response `200 OK`:
 
 - Method: `GET`
 - URL: `{{BASE_URL}}/api/v1/orders`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Expected status: `200`
 - Find your order in the list, grab its UUID `id` → save as `ORDER_ID`
 
@@ -1205,7 +1369,7 @@ Response `200 OK`:
 
 - Method: `GET`
 - URL: `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Expected status: `200`
 - Verify items are nested in the response
 
@@ -1213,7 +1377,7 @@ Response `200 OK`:
 
 - Method: `POST`
 - URL: `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/approve`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - No body needed
 - Expected status: `200`
 - Verify `status` = `"recibida"` and `payment_status` = `"confirmado"`
@@ -1222,7 +1386,7 @@ Response `200 OK`:
 
 - Method: `PATCH`
 - URL: `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1237,7 +1401,7 @@ Response `200 OK`:
 
 - Method: `PATCH`
 - URL: `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1253,7 +1417,7 @@ Response `200 OK`:
 
 - Method: `PATCH`
 - URL: `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1268,7 +1432,7 @@ Response `200 OK`:
 
 - Method: `POST`
 - URL: `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/reject`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1288,7 +1452,7 @@ Response `200 OK`:
 
 - Method: `POST`
 - URL: `{{BASE_URL}}/api/v1/employees`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Body:
 
 ```json
@@ -1308,14 +1472,14 @@ Response `200 OK`:
 
 - Method: `GET`
 - URL: `{{BASE_URL}}/api/v1/employees`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Expected status: `200`
 
 **3. Deactivate Employee**
 
 - Method: `POST`
 - URL: `{{BASE_URL}}/api/v1/employees/{{EMPLOYEE_ID}}/deactivate`
-- Headers: `Authorization: Bearer {{AUTH_TOKEN}}`
+
 - Expected status: `200`
 
 ---
@@ -1339,22 +1503,22 @@ Send more than 5 `POST /api/v1/orders` requests within one hour from the same IP
 
 | Step | Action                         | Method | URL                                            | Auth   | Save variable |
 | ---- | ------------------------------ | ------ | ---------------------------------------------- | ------ | ------------- |
-| 1    | Login                          | POST   | `{{BASE_URL}}/api/v1/auth/login`               | No     | `AUTH_TOKEN`  |
-| 2    | Get Session                    | GET    | `{{BASE_URL}}/api/v1/auth/session`             | Bearer | —             |
-| 3    | Create Category                | POST   | `{{BASE_URL}}/api/v1/categories`               | Bearer | `CATEGORY_ID` |
-| 4    | Create Product                 | POST   | `{{BASE_URL}}/api/v1/products`                 | Bearer | `PRODUCT_ID`  |
+| 1    | Login                          | POST   | `{{BASE_URL}}/api/v1/auth/login`               | No     | —             |
+| 2    | Get Session                    | GET    | `{{BASE_URL}}/api/v1/auth/session`             | Cookie | —             |
+| 3    | Create Category                | POST   | `{{BASE_URL}}/api/v1/categories`               | Cookie | `CATEGORY_ID` |
+| 4    | Create Product                 | POST   | `{{BASE_URL}}/api/v1/products`                 | Cookie | `PRODUCT_ID`  |
 | 5    | List Products                  | GET    | `{{BASE_URL}}/api/v1/products`                 | No     | —             |
-| 6    | Update Product price           | PATCH  | `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}`  | Bearer | —             |
+| 6    | Update Product price           | PATCH  | `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}`  | Cookie | —             |
 | 7    | Create Order                   | POST   | `{{BASE_URL}}/api/v1/orders`                   | No     | —             |
-| 8    | List Orders (get UUID)         | GET    | `{{BASE_URL}}/api/v1/orders`                   | Bearer | `ORDER_ID`    |
-| 9    | Approve Order                  | POST   | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/approve` | Bearer | —         |
-| 10   | Status → `en_proceso`          | PATCH  | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`  | Bearer | —         |
-| 11   | Status → `lista`               | PATCH  | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`  | Bearer | —         |
-| 12   | Status → `entregada`           | PATCH  | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`  | Bearer | —         |
-| 13   | Create Employee                | POST   | `{{BASE_URL}}/api/v1/employees`                | Bearer | `EMPLOYEE_ID` |
-| 14   | Deactivate Employee            | POST   | `{{BASE_URL}}/api/v1/employees/{{EMPLOYEE_ID}}/deactivate`| Bearer | —            |
-| 15   | Delete Product                 | DELETE | `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}`  | Bearer | —             |
-| 16   | Delete Category                | DELETE | `{{BASE_URL}}/api/v1/categories/{{CATEGORY_ID}}`| Bearer | —            |
+| 8    | List Orders (get UUID)         | GET    | `{{BASE_URL}}/api/v1/orders`                   | Cookie | `ORDER_ID`    |
+| 9    | Approve Order                  | POST   | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/approve` | Cookie | —         |
+| 10   | Status → `en_proceso`          | PATCH  | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`  | Cookie | —         |
+| 11   | Status → `lista`               | PATCH  | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`  | Cookie | —         |
+| 12   | Status → `entregada`           | PATCH  | `{{BASE_URL}}/api/v1/orders/{{ORDER_ID}}/status`  | Cookie | —         |
+| 13   | Create Employee                | POST   | `{{BASE_URL}}/api/v1/employees`                | Cookie | `EMPLOYEE_ID` |
+| 14   | Deactivate Employee            | POST   | `{{BASE_URL}}/api/v1/employees/{{EMPLOYEE_ID}}/deactivate`| Cookie | —            |
+| 15   | Delete Product                 | DELETE | `{{BASE_URL}}/api/v1/products/{{PRODUCT_ID}}`  | Cookie | —             |
+| 16   | Delete Category                | DELETE | `{{BASE_URL}}/api/v1/categories/{{CATEGORY_ID}}`| Cookie | —            |
 
 For each step, assert the expected HTTP status and verify key fields in the response.
 
@@ -1367,7 +1531,7 @@ For each step, assert the expected HTTP status and verify key fields in the resp
 | `200`  | OK                    | Successful GET, PATCH, DELETE           |
 | `201`  | Created               | Successful POST (resource created)      |
 | `400`  | Bad Request           | Validation error, missing fields        |
-| `401`  | Unauthorized          | No valid Bearer token                   |
+| `401`  | Unauthorized          | Missing or invalid `auth_token` session |
 | `403`  | Forbidden             | Valid token but insufficient role        |
 | `404`  | Not Found             | Resource does not exist                 |
 | `429`  | Too Many Requests     | Rate limit exceeded on order creation   |

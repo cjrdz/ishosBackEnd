@@ -13,14 +13,14 @@ import (
 )
 
 type productRepoStub struct {
-	listCalls int
-	listFn    func(ctx context.Context, categorySlug string, onlyAvailable bool) ([]dto.Product, error)
-	findByID  func(ctx context.Context, id uuid.UUID) (dto.Product, error)
+	listCalls            int
+	listFn               func(ctx context.Context, categorySlug string, onlyAvailable bool) ([]dto.Product, error)
+	findByID             func(ctx context.Context, id uuid.UUID) (dto.Product, error)
 	findByIDWithCategory func(ctx context.Context, id uuid.UUID) (dto.Product, error)
-	createFn  func(ctx context.Context, input repository.CreateProductInput) (dto.Product, error)
-	updateFn  func(ctx context.Context, id uuid.UUID, input repository.UpdateProductInput) (dto.Product, error)
-	deleteFn  func(ctx context.Context, id uuid.UUID) error
-	toggleFn  func(ctx context.Context, id uuid.UUID) (dto.Product, error)
+	createFn             func(ctx context.Context, input repository.CreateProductInput) (dto.Product, error)
+	updateFn             func(ctx context.Context, id uuid.UUID, input repository.UpdateProductInput) (dto.Product, error)
+	deleteFn             func(ctx context.Context, id uuid.UUID) error
+	toggleFn             func(ctx context.Context, id uuid.UUID) (dto.Product, error)
 }
 
 func (s *productRepoStub) FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]dto.Product, error) {

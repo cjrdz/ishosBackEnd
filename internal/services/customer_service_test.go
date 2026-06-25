@@ -13,15 +13,15 @@ import (
 )
 
 type customerRepoStub struct {
-	listCalls         int
-	listFn            func(ctx context.Context, status, search string) ([]dto.Customer, error)
-	listPaginated     func(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
-	findByID          func(ctx context.Context, id uuid.UUID) (dto.Customer, error)
-	findByPhone       func(ctx context.Context, phone string) (dto.Customer, error)
-	createFn          func(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
-	updateFn          func(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
-	deleteFn          func(ctx context.Context, id uuid.UUID) error
-	listOrdersByID    func(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error)
+	listCalls      int
+	listFn         func(ctx context.Context, status, search string) ([]dto.Customer, error)
+	listPaginated  func(ctx context.Context, status, search string, offset, limit int) ([]dto.Customer, int, error)
+	findByID       func(ctx context.Context, id uuid.UUID) (dto.Customer, error)
+	findByPhone    func(ctx context.Context, phone string) (dto.Customer, error)
+	createFn       func(ctx context.Context, input repository.CreateCustomerInput) (dto.Customer, error)
+	updateFn       func(ctx context.Context, id uuid.UUID, input repository.UpdateCustomerInput) (dto.Customer, error)
+	deleteFn       func(ctx context.Context, id uuid.UUID) error
+	listOrdersByID func(ctx context.Context, customerID uuid.UUID, limit int) ([]dto.Order, error)
 }
 
 func (s *customerRepoStub) List(ctx context.Context, status, search string) ([]dto.Customer, error) {

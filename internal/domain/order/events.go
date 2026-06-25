@@ -35,15 +35,15 @@ func (e *BaseDomainEvent) Timestamp() time.Time {
 // OrderCreated event occurs when a new order is created and submitted.
 type OrderCreated struct {
 	BaseDomainEvent
-	OrderNumber     string
-	CustomerName    string
-	CustomerPhone   string
-	CustomerEmail   string
-	PaymentMethod   string
-	OrderType       string
-	TotalAmount     float64
-	ItemCount       int
-	TrackingURL     string
+	OrderNumber   string
+	CustomerName  string
+	CustomerPhone string
+	CustomerEmail string
+	PaymentMethod string
+	OrderType     string
+	TotalAmount   float64
+	ItemCount     int
+	TrackingURL   string
 }
 
 func (e *OrderCreated) EventType() string {

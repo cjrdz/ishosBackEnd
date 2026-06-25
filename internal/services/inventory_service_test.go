@@ -13,18 +13,18 @@ import (
 )
 
 type inventoryRepoStub struct {
-	listFn               func(ctx context.Context) ([]dto.InventoryItem, error)
-	listByTypeFn         func(ctx context.Context, itemType string) ([]dto.InventoryItem, error)
-	listLinkedFn         func(ctx context.Context) ([]dto.InventoryItem, error)
-	findByIDFn           func(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error)
-	findByFlavorIDFn     func(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error)
-	findByProductIDFn    func(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error)
-	createFn             func(ctx context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error)
-	recordAdjustmentFn   func(ctx context.Context, input repository.RecordAdjustmentInput) (dto.StockMovement, error)
-	recordEntryFn        func(ctx context.Context, input repository.RecordEntryInput) (dto.StockMovement, error)
-	recordUnitEntryFn    func(ctx context.Context, input repository.RecordUnitEntryInput) (dto.StockMovement, error)
-	restoreForOrderFn    func(ctx context.Context, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error)
-	deductForOrderFn     func(ctx context.Context, orderID uuid.UUID, deductions []repository.StockDeductionInput, createdByID string) ([]dto.StockMovement, error)
+	listFn             func(ctx context.Context) ([]dto.InventoryItem, error)
+	listByTypeFn       func(ctx context.Context, itemType string) ([]dto.InventoryItem, error)
+	listLinkedFn       func(ctx context.Context) ([]dto.InventoryItem, error)
+	findByIDFn         func(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error)
+	findByFlavorIDFn   func(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error)
+	findByProductIDFn  func(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error)
+	createFn           func(ctx context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error)
+	recordAdjustmentFn func(ctx context.Context, input repository.RecordAdjustmentInput) (dto.StockMovement, error)
+	recordEntryFn      func(ctx context.Context, input repository.RecordEntryInput) (dto.StockMovement, error)
+	recordUnitEntryFn  func(ctx context.Context, input repository.RecordUnitEntryInput) (dto.StockMovement, error)
+	restoreForOrderFn  func(ctx context.Context, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error)
+	deductForOrderFn   func(ctx context.Context, orderID uuid.UUID, deductions []repository.StockDeductionInput, createdByID string) ([]dto.StockMovement, error)
 }
 
 func (s *inventoryRepoStub) List(ctx context.Context) ([]dto.InventoryItem, error) {

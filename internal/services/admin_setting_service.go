@@ -26,7 +26,7 @@ type AdminSettingService struct {
 }
 
 const (
-	ordersEnabledCacheKey = "settings:orders_enabled"
+	ordersEnabledCacheKey  = "settings:orders_enabled"
 	tokenTTLConfigCacheKey = "settings:token_ttl_config"
 	settingsCacheTTL       = 10 * time.Second
 )

@@ -7,11 +7,11 @@ import (
 	"os"
 	"testing"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/cjrdz/ishosBackEnd/internal/database"
 )

@@ -12,39 +12,39 @@ import (
 // Order is the aggregate root for order domain logic.
 // It's independent of the database representation (models.Order).
 type Order struct {
-	ID                uuid.UUID
-	OrderNumber       string
-	Status            OrderStatus
-	CustomerID        uuid.UUID
-	CustomerName      string
-	CustomerPhone     string
-	CustomerEmail     string
-	PaymentMethod     string
-	PaymentStatus     string
-	OrderType         string
-	TableNumber       *int
-	Notes             string
-	RejectionReason   string
-	ReviewedByUserID  string
-	ReviewedAt        *time.Time
-	CreatedByUserID   string
-	IsArchived        bool
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	StatusTimestamps  map[string]time.Time
-	Items             []OrderItem
-	TotalAmount       float64
+	ID               uuid.UUID
+	OrderNumber      string
+	Status           OrderStatus
+	CustomerID       uuid.UUID
+	CustomerName     string
+	CustomerPhone    string
+	CustomerEmail    string
+	PaymentMethod    string
+	PaymentStatus    string
+	OrderType        string
+	TableNumber      *int
+	Notes            string
+	RejectionReason  string
+	ReviewedByUserID string
+	ReviewedAt       *time.Time
+	CreatedByUserID  string
+	IsArchived       bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	StatusTimestamps map[string]time.Time
+	Items            []OrderItem
+	TotalAmount      float64
 }
 
 // OrderItem is a line item in an order.
 type OrderItem struct {
-	ID               uuid.UUID
-	ProductID        uuid.UUID
-	ProductName      string
-	Quantity         int
-	UnitPrice        float64
-	Subtotal         float64
-	Customizations   Customizations
+	ID             uuid.UUID
+	ProductID      uuid.UUID
+	ProductName    string
+	Quantity       int
+	UnitPrice      float64
+	Subtotal       float64
+	Customizations Customizations
 }
 
 // NewOrder creates a new order with default values.

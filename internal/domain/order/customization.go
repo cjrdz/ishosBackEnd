@@ -100,9 +100,9 @@ type CustomizationValidator struct {
 func NewCustomizationValidator() *CustomizationValidator {
 	return &CustomizationValidator{
 		FreeAddonAllowanceByGroup: make(map[string]int),
-		ValidFlavors:             make(map[string]bool),
-		ValidAddons:              make(map[string]bool),
-		AddonPrices:              make(map[string]float64),
+		ValidFlavors:              make(map[string]bool),
+		ValidAddons:               make(map[string]bool),
+		AddonPrices:               make(map[string]float64),
 	}
 }
 

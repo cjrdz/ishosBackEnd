@@ -198,7 +198,7 @@ func (r *CustomerBunRepository) ListOrdersByCustomerID(ctx context.Context, cust
 	itemsByOrder := make(map[uuid.UUID][]models.OrderItem)
 	if len(orderIDs) > 0 {
 		var items []models.OrderItem
-		if err := r.db.NewSelect().Model(&items).Where("order_items IN (?)", bun.In(orderIDs)).Scan(ctx); err != nil {
+		if err := r.db.NewSelect().Model(&items).Where("order_items IN (?)", bun.List(orderIDs)).Scan(ctx); err != nil {
 			return nil, err
 		}
 		for _, item := range items {

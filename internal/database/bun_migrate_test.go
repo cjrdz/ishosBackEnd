@@ -9,8 +9,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEnsureBunSchema(t *testing.T) {
@@ -25,7 +25,7 @@ func TestEnsureBunSchema(t *testing.T) {
 	if err != nil {
 		t.Skipf("cannot open postgres (%v); skipping bun migration smoke test", err)
 	}
-	defer rawDB.Close()
+	defer func() { _ = rawDB.Close() }()
 
 	if err := rawDB.PingContext(ctx); err != nil {
 		t.Skipf("postgres not reachable (%v); skipping bun migration smoke test", err)

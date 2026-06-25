@@ -29,20 +29,20 @@ func NewOrderBunRepository(db *bun.DB) *OrderBunRepository {
 func (r *OrderBunRepository) Create(ctx context.Context, input CreateOrderInput) (dto.Order, error) {
 	now := time.Now()
 	order := models.Order{
-		ID:            uuid.New(),
-		OrderNumber:   input.OrderNumber,
-		CustomerID:    input.CustomerID,
-		CustomerName:  input.CustomerName,
-		CustomerPhone: input.CustomerPhone,
-		CustomerEmail: input.CustomerEmail,
-		CustomerIP:    input.CustomerIP,
-		TotalAmount:   input.TotalAmount,
-		Status:        models.OrderStatus(input.Status),
-		PaymentMethod: models.OrderPaymentMethod(input.PaymentMethod),
-		PaymentStatus: models.OrderPaymentStatusPendiente,
-		OrderType:     models.OrderType(input.OrderType),
-		TableNumber:   input.TableNumber,
-		Notes:         input.Notes,
+		ID:              uuid.New(),
+		OrderNumber:     input.OrderNumber,
+		CustomerID:      input.CustomerID,
+		CustomerName:    input.CustomerName,
+		CustomerPhone:   input.CustomerPhone,
+		CustomerEmail:   input.CustomerEmail,
+		CustomerIP:      input.CustomerIP,
+		TotalAmount:     input.TotalAmount,
+		Status:          models.OrderStatus(input.Status),
+		PaymentMethod:   models.OrderPaymentMethod(input.PaymentMethod),
+		PaymentStatus:   models.OrderPaymentStatusPendiente,
+		OrderType:       models.OrderType(input.OrderType),
+		TableNumber:     input.TableNumber,
+		Notes:           input.Notes,
 		CreatedByUserID: input.CreatedByUserID,
 		StatusTimestamps: map[string]time.Time{
 			string(models.OrderStatusPendienteRevision): now,
@@ -233,8 +233,8 @@ func (r *OrderBunRepository) UpdateNotes(ctx context.Context, id uuid.UUID, note
 	}
 
 	model := models.Order{
-		ID:     order.ID,
-		Notes:  notes,
+		ID:        order.ID,
+		Notes:     notes,
 		UpdatedAt: time.Now(),
 	}
 	res, err := r.db.NewUpdate().Model(&model).Set("notes = ?, updated_at = ?", notes, model.UpdatedAt).Where("id = ?", id).Exec(ctx)
@@ -262,7 +262,7 @@ func (r *OrderBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
 func (r *OrderBunRepository) FindByDateRange(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error) {
 	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("created_at >= ? AND created_at <= ?", start, end)
 	if len(statuses) > 0 {
-		q = q.Where("status IN (?)", bun.In(statuses))
+		q = q.Where("status IN (?)", bun.List(statuses))
 	}
 
 	var orders []models.Order
@@ -276,7 +276,7 @@ func (r *OrderBunRepository) FindByDateRange(ctx context.Context, start, end tim
 func (r *OrderBunRepository) FindByDateRangeWithItems(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error) {
 	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("created_at >= ? AND created_at <= ?", start, end)
 	if len(statuses) > 0 {
-		q = q.Where("status IN (?)", bun.In(statuses))
+		q = q.Where("status IN (?)", bun.List(statuses))
 	}
 
 	var orders []models.Order
@@ -290,7 +290,7 @@ func (r *OrderBunRepository) FindByDateRangeWithItems(ctx context.Context, start
 func (r *OrderBunRepository) FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error) {
 	orderQ := r.db.NewSelect().Model((*models.Order)(nil)).Column("id").Where("created_at >= ? AND created_at <= ?", start, end)
 	if len(excludeStatuses) > 0 {
-		orderQ = orderQ.Where("status NOT IN (?)", bun.In(excludeStatuses))
+		orderQ = orderQ.Where("status NOT IN (?)", bun.List(excludeStatuses))
 	}
 
 	var items []models.OrderItem
@@ -317,11 +317,11 @@ func (r *OrderBunRepository) Purge(ctx context.Context, start, end time.Time, st
 	if err != nil {
 		return 0, 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	q := tx.NewSelect().Model((*models.Order)(nil)).Column("id").Where("created_at >= ? AND created_at <= ?", start, end)
 	if len(statuses) > 0 {
-		q = q.Where("status IN (?)", bun.In(statuses))
+		q = q.Where("status IN (?)", bun.List(statuses))
 	}
 
 	var ids []uuid.UUID
@@ -335,13 +335,13 @@ func (r *OrderBunRepository) Purge(ctx context.Context, start, end time.Time, st
 		return 0, 0, nil
 	}
 
-	resItems, err := tx.NewDelete().Model((*models.OrderItem)(nil)).Where("order_items IN (?)", bun.In(ids)).Exec(ctx)
+	resItems, err := tx.NewDelete().Model((*models.OrderItem)(nil)).Where("order_items IN (?)", bun.List(ids)).Exec(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
 	deletedItems, _ := resItems.RowsAffected()
 
-	resOrders, err := tx.NewDelete().Model((*models.Order)(nil)).Where("id IN (?)", bun.In(ids)).Exec(ctx)
+	resOrders, err := tx.NewDelete().Model((*models.Order)(nil)).Where("id IN (?)", bun.List(ids)).Exec(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -364,7 +364,7 @@ func (r *OrderBunRepository) attachItemsToOrders(ctx context.Context, orders []m
 	}
 
 	var items []models.OrderItem
-	if err := r.db.NewSelect().Model(&items).Where("order_items IN (?)", bun.In(orderIDs)).Scan(ctx); err != nil {
+	if err := r.db.NewSelect().Model(&items).Where("order_items IN (?)", bun.List(orderIDs)).Scan(ctx); err != nil {
 		// Fall back to empty items on error; caller will return the error if needed.
 		items = nil
 	}
@@ -404,7 +404,7 @@ func (r *OrderBunRepository) loadProductsByIDs(ctx context.Context, ids []uuid.U
 	}
 
 	var products []models.Product
-	if err := r.db.NewSelect().Model(&products).Where("id IN (?)", bun.In(unique)).Scan(ctx); err != nil {
+	if err := r.db.NewSelect().Model(&products).Where("id IN (?)", bun.List(unique)).Scan(ctx); err != nil {
 		return result
 	}
 

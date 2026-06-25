@@ -25,6 +25,7 @@ type OrderCommandService struct {
 	orderRepo    OrderRepository
 	orderStore   OrderStore
 	customerRepo CustomerRepository
+	productRepo  ProductRepository
 	inventory    *InventoryService
 	dispatcher   *events.Dispatcher
 	tracker      *TrackingTokenService
@@ -36,6 +37,7 @@ func NewOrderCommandService(
 	orderRepo OrderRepository,
 	orderStore OrderStore,
 	customerRepo CustomerRepository,
+	productRepo ProductRepository,
 	inventory *InventoryService,
 	dispatcher *events.Dispatcher,
 	tracker *TrackingTokenService,
@@ -45,6 +47,7 @@ func NewOrderCommandService(
 		orderRepo:    orderRepo,
 		orderStore:   orderStore,
 		customerRepo: customerRepo,
+		productRepo:  productRepo,
 		inventory:    inventory,
 		dispatcher:   dispatcher,
 		tracker:      tracker,
@@ -61,8 +64,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		return dto.Order{}, err
 	}
 
-	createdOrder, err := s.orderStore.CreateOrder(ctx, repository.StoreOrderInput{
-		OrderNumber:   GenerateOrderNumber(),
+	storeInput := repository.StoreOrderInput{
 		CustomerID:    customerID,
 		CustomerName:  input.CustomerName,
 		CustomerPhone: input.CustomerPhone,
@@ -74,7 +76,9 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		Notes:         input.Notes,
 		CreatedByID:   input.CreatedByID,
 		Items:         toStoreOrderItemInputs(input.Items),
-	})
+	}
+
+	createdOrder, err := s.createOrderWithRetry(ctx, storeInput)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -108,6 +112,29 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		s.publishDomainEvent(ctx, domainEvent)
 	}
 	return createdOrder, nil
+}
+
+// createOrderWithRetry attempts to create an order, regenerating the order
+// number on unique-constraint collisions. This prevents a single order-number
+// collision from becoming a raw 500 error for the customer.
+func (s *OrderCommandService) createOrderWithRetry(ctx context.Context, storeInput repository.StoreOrderInput) (dto.Order, error) {
+	const maxAttempts = 3
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		storeInput.OrderNumber = GenerateOrderNumber()
+		createdOrder, err := s.orderStore.CreateOrder(ctx, storeInput)
+		if err == nil {
+			return createdOrder, nil
+		}
+		lastErr = err
+		if !apperror.IsUniqueViolation(err) {
+			return dto.Order{}, err
+		}
+	}
+
+	return dto.Order{}, fmt.Errorf("%w: unable to generate a unique order number after %d attempts: %v",
+		apperror.ErrConflict, maxAttempts, lastErr)
 }
 
 // Approve transitions an order to approved status.
@@ -195,6 +222,10 @@ func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, 
 }
 
 // UpdateStatus updates an order's status.
+//
+// Stock-affecting transitions (en_proceso and cancelada) are committed in the
+// same database transaction as the status change so a stock failure rolls back
+// the status update and surfaces an error instead of silently drifting inventory.
 func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
 	order, err := s.orderRepo.FindByID(ctx, id)
 	if err != nil {
@@ -215,19 +246,31 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 
 	oldStatus := order.Status
 
-	updated, err := s.orderRepo.UpdateStatus(ctx, id, status)
-	if err != nil {
-		return dto.Order{}, err
-	}
-
-	// Handle stock changes
-	if status == "en_proceso" && oldStatus != "en_proceso" {
+	var updated dto.Order
+	switch {
+	case status == "en_proceso" && oldStatus != "en_proceso":
 		orderWithItems, err := s.orderRepo.FindByIDWithItems(ctx, id)
-		if err == nil {
-			_, _ = s.inventory.DeductForOrder(ctx, id, orderWithItems.Items, "")
+		if err != nil {
+			return dto.Order{}, err
 		}
-	} else if status == "cancelada" && oldStatus != "cancelada" {
-		_, _ = s.inventory.RestoreForOrder(ctx, id, "")
+		deductions, err := s.inventory.DeductionsFor(ctx, orderWithItems.Items)
+		if err != nil {
+			return dto.Order{}, err
+		}
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(ctx, id, status, deductions, false)
+		if err != nil {
+			return dto.Order{}, err
+		}
+	case status == "cancelada" && oldStatus != "cancelada":
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(ctx, id, status, nil, true)
+		if err != nil {
+			return dto.Order{}, err
+		}
+	default:
+		updated, err = s.orderStore.UpdateStatus(ctx, id, status)
+		if err != nil {
+			return dto.Order{}, err
+		}
 	}
 
 	if status == "lista" {
@@ -256,6 +299,10 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 // Update updates an order's metadata and items in a transaction.
 // When the customer phone changes, the order is re-linked to the matching
 // customer record (creating one if necessary).
+//
+// If the order has already had stock deducted and its items are being replaced,
+// the old stock is restored and the new stock is deducted inside the same
+// transaction as the order update so the two cannot diverge.
 func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input UpdateOrderInput) (dto.Order, error) {
 	existing, err := s.orderRepo.FindByID(ctx, id)
 	if err != nil {
@@ -281,7 +328,49 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		storeInput.CustomerID = customerID
 	}
 
+	if len(input.Items) > 0 && orderHasDeductedStock(existing.Status) {
+		newItems, err := s.resolveOrderItems(ctx, input.Items)
+		if err != nil {
+			return dto.Order{}, err
+		}
+		deductions, err := s.inventory.DeductionsFor(ctx, newItems)
+		if err != nil {
+			return dto.Order{}, err
+		}
+		return s.orderStore.UpdateOrderWithStockAdjustment(ctx, id, storeInput, deductions, true)
+	}
+
 	return s.orderStore.UpdateOrder(ctx, id, storeInput)
+}
+
+// orderHasDeductedStock reports whether an order in the given status has already
+// had stock deducted from inventory.
+func orderHasDeductedStock(status string) bool {
+	switch status {
+	case "en_proceso", "lista", "entregada":
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveOrderItems resolves the products for service-level item inputs so they
+// can be passed to inventory deduction logic.
+func (s *OrderCommandService) resolveOrderItems(ctx context.Context, items []OrderItemInput) ([]dto.OrderItem, error) {
+	result := make([]dto.OrderItem, 0, len(items))
+	for _, item := range items {
+		product, err := s.productRepo.FindByID(ctx, item.ProductID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, dto.OrderItem{
+			ProductID:      item.ProductID,
+			Quantity:       item.Quantity,
+			Customizations: item.Customizations,
+			Product:        &product,
+		})
+	}
+	return result, nil
 }
 
 // UpdateNotes updates an order's notes field.

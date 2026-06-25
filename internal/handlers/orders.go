@@ -18,7 +18,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
-	"github.com/cjrdz/ishosBackEnd/internal/handlers/dto"
+	"github.com/cjrdz/ishosBackEnd/internal/handlers/requests"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
@@ -59,7 +59,7 @@ func (h *OrderHandler) invalidateListCache() {
 }
 
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var body dto.CreateOrderRequest
+	var body requests.CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -270,15 +270,15 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"order_number":       order.OrderNumber,
-		"customer_name":      order.CustomerName,
-		"status":             order.Status,
-		"updated_at":         order.UpdatedAt,
-		"created_at":         order.CreatedAt,
-		"total_amount":       order.TotalAmount,
-		"order_type":         order.OrderType,
-		"status_timestamps":  order.StatusTimestamps,
-		"items":              publicItems,
+		"order_number":      order.OrderNumber,
+		"customer_name":     order.CustomerName,
+		"status":            order.Status,
+		"updated_at":        order.UpdatedAt,
+		"created_at":        order.CreatedAt,
+		"total_amount":      order.TotalAmount,
+		"order_type":        order.OrderType,
+		"status_timestamps": order.StatusTimestamps,
+		"items":             publicItems,
 	})
 }
 
@@ -418,7 +418,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body dto.UpdateOrderRequest
+	var body requests.UpdateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return

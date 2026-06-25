@@ -61,5 +61,3 @@ func (s *FlavorService) Delete(ctx context.Context, id uuid.UUID) error {
 	}
 	return err
 }
-
-

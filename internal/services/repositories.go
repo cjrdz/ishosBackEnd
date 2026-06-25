@@ -101,6 +101,15 @@ type AdminSettingRepository interface {
 type OrderStore interface {
 	CreateOrder(ctx context.Context, input repository.StoreOrderInput) (dto.Order, error)
 	UpdateOrder(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error)
+	// UpdateOrderWithStockAdjustment updates an order and replaces its items, then
+	// applies an inventory adjustment inside the same transaction. Either deductions
+	// or restore is applied; if both are supplied, deductions take precedence.
+	UpdateOrderWithStockAdjustment(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	// UpdateStatusWithStockAdjustment updates an order's status and applies an
+	// inventory adjustment inside the same transaction. Either deductions or restore
+	// is applied; if both are supplied, deductions take precedence.
+	UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
 }
 
 // ContainerTypeRepository defines the container type data access contract.

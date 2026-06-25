@@ -18,12 +18,30 @@ import (
 
 // InventoryBunRepository implements services.InventoryRepository using Bun.
 type InventoryBunRepository struct {
-	db *bun.DB
+	db bun.IDB
 }
 
 // NewInventoryBunRepository creates a new Bun-backed inventory repository.
-func NewInventoryBunRepository(db *bun.DB) *InventoryBunRepository {
+// Accepts either a *bun.DB or a bun.Tx so the repository can participate in an
+// existing transaction.
+func NewInventoryBunRepository(db bun.IDB) *InventoryBunRepository {
 	return &InventoryBunRepository{db: db}
+}
+
+// withTx runs fn against a transaction. If the repository is backed by *bun.DB,
+// it starts and commits a new transaction. If it is already backed by bun.Tx, it
+// runs fn directly on that transaction without starting a new one.
+func (r *InventoryBunRepository) withTx(ctx context.Context, fn func(ctx context.Context, tx bun.Tx) error) error {
+	if db, ok := r.db.(*bun.DB); ok {
+		return db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+			return fn(ctx, tx)
+		})
+	}
+	tx, ok := r.db.(bun.Tx)
+	if !ok {
+		return fmt.Errorf("unsupported db type: %T", r.db)
+	}
+	return fn(ctx, tx)
 }
 
 // List returns all inventory items ordered by name.
@@ -237,12 +255,16 @@ func (r *InventoryBunRepository) FindStockMovementsByInventoryItem(ctx context.C
 
 // DeductStockForOrder applies a list of stock deductions and creates sale movements atomically.
 func (r *InventoryBunRepository) DeductStockForOrder(ctx context.Context, orderID uuid.UUID, deductions []StockDeductionInput, createdByID string) ([]dto.StockMovement, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	var movements []dto.StockMovement
+	err := r.withTx(ctx, func(ctx context.Context, tx bun.Tx) error {
+		var innerErr error
+		movements, innerErr = r.deductStock(ctx, tx, orderID, deductions, createdByID)
+		return innerErr
+	})
+	return movements, err
+}
 
+func (r *InventoryBunRepository) deductStock(ctx context.Context, tx bun.Tx, orderID uuid.UUID, deductions []StockDeductionInput, createdByID string) ([]dto.StockMovement, error) {
 	movements := make([]dto.StockMovement, 0, len(deductions))
 
 	for _, d := range deductions {
@@ -281,20 +303,21 @@ func (r *InventoryBunRepository) DeductStockForOrder(ctx context.Context, orderI
 		movements = append(movements, toDTOStockMovementFromModel(movement))
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return movements, nil
 }
 
 // RestoreStockForOrder reverses all sale movements for an order atomically.
 func (r *InventoryBunRepository) RestoreStockForOrder(ctx context.Context, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	var restored []dto.StockMovement
+	err := r.withTx(ctx, func(ctx context.Context, tx bun.Tx) error {
+		var innerErr error
+		restored, innerErr = r.restoreStock(ctx, tx, orderID, createdByID)
+		return innerErr
+	})
+	return restored, err
+}
 
+func (r *InventoryBunRepository) restoreStock(ctx context.Context, tx bun.Tx, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error) {
 	var saleMovements []models.StockMovement
 	if err := tx.NewSelect().Model(&saleMovements).Where("order_id = ? AND type = ?", orderID, models.StockMovementTypeSale).Scan(ctx); err != nil {
 		return nil, err
@@ -334,20 +357,21 @@ func (r *InventoryBunRepository) RestoreStockForOrder(ctx context.Context, order
 		restored = append(restored, toDTOStockMovementFromModel(restMovement))
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return restored, nil
 }
 
 // RecordEntry records a stock entry for an inventory item atomically.
 func (r *InventoryBunRepository) RecordEntry(ctx context.Context, input RecordEntryInput) (dto.StockMovement, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return dto.StockMovement{}, err
-	}
-	defer tx.Rollback()
+	var movement dto.StockMovement
+	err := r.withTx(ctx, func(ctx context.Context, tx bun.Tx) error {
+		var innerErr error
+		movement, innerErr = r.recordEntry(ctx, tx, input)
+		return innerErr
+	})
+	return movement, err
+}
 
+func (r *InventoryBunRepository) recordEntry(ctx context.Context, tx bun.Tx, input RecordEntryInput) (dto.StockMovement, error) {
 	var invItem models.InventoryItem
 	if err := tx.NewSelect().Model(&invItem).Where("id = ?", input.InventoryItemID).For("UPDATE").Scan(ctx); err != nil {
 		return dto.StockMovement{}, translateInventoryError(err)
@@ -373,20 +397,21 @@ func (r *InventoryBunRepository) RecordEntry(ctx context.Context, input RecordEn
 		return dto.StockMovement{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return dto.StockMovement{}, err
-	}
 	return toDTOStockMovementFromModel(movement), nil
 }
 
 // RecordAdjustment records a manual stock adjustment atomically.
 func (r *InventoryBunRepository) RecordAdjustment(ctx context.Context, input RecordAdjustmentInput) (dto.StockMovement, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return dto.StockMovement{}, err
-	}
-	defer tx.Rollback()
+	var movement dto.StockMovement
+	err := r.withTx(ctx, func(ctx context.Context, tx bun.Tx) error {
+		var innerErr error
+		movement, innerErr = r.recordAdjustment(ctx, tx, input)
+		return innerErr
+	})
+	return movement, err
+}
 
+func (r *InventoryBunRepository) recordAdjustment(ctx context.Context, tx bun.Tx, input RecordAdjustmentInput) (dto.StockMovement, error) {
 	var invItem models.InventoryItem
 	if err := tx.NewSelect().Model(&invItem).Where("id = ?", input.InventoryItemID).For("UPDATE").Scan(ctx); err != nil {
 		return dto.StockMovement{}, translateInventoryError(err)
@@ -416,20 +441,21 @@ func (r *InventoryBunRepository) RecordAdjustment(ctx context.Context, input Rec
 		return dto.StockMovement{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return dto.StockMovement{}, err
-	}
 	return toDTOStockMovementFromModel(movement), nil
 }
 
 // RecordUnitEntry records a stock entry for a unit-based inventory item atomically.
 func (r *InventoryBunRepository) RecordUnitEntry(ctx context.Context, input RecordUnitEntryInput) (dto.StockMovement, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return dto.StockMovement{}, err
-	}
-	defer tx.Rollback()
+	var movement dto.StockMovement
+	err := r.withTx(ctx, func(ctx context.Context, tx bun.Tx) error {
+		var innerErr error
+		movement, innerErr = r.recordUnitEntry(ctx, tx, input)
+		return innerErr
+	})
+	return movement, err
+}
 
+func (r *InventoryBunRepository) recordUnitEntry(ctx context.Context, tx bun.Tx, input RecordUnitEntryInput) (dto.StockMovement, error) {
 	var invItem models.InventoryItem
 	if err := tx.NewSelect().Model(&invItem).Where("id = ?", input.InventoryItemID).For("UPDATE").Scan(ctx); err != nil {
 		return dto.StockMovement{}, translateInventoryError(err)
@@ -453,9 +479,6 @@ func (r *InventoryBunRepository) RecordUnitEntry(ctx context.Context, input Reco
 		return dto.StockMovement{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return dto.StockMovement{}, err
-	}
 	return toDTOStockMovementFromModel(movement), nil
 }
 

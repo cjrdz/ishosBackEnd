@@ -86,7 +86,7 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 	if err != nil {
 		return dto.Order{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
 	if err != nil {
@@ -95,20 +95,20 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 
 	now := time.Now()
 	order := models.Order{
-		ID:            uuid.New(),
-		OrderNumber:   input.OrderNumber,
-		CustomerID:    input.CustomerID,
-		CustomerName:  input.CustomerName,
-		CustomerPhone: input.CustomerPhone,
-		CustomerEmail: input.CustomerEmail,
-		CustomerIP:    input.CustomerIP,
-		TotalAmount:   total,
-		Status:        models.OrderStatusPendienteRevision,
-		PaymentMethod: models.OrderPaymentMethod(input.PaymentMethod),
-		PaymentStatus: models.OrderPaymentStatusPendiente,
-		OrderType:     models.OrderType(input.OrderType),
-		TableNumber:   input.TableNumber,
-		Notes:         input.Notes,
+		ID:              uuid.New(),
+		OrderNumber:     input.OrderNumber,
+		CustomerID:      input.CustomerID,
+		CustomerName:    input.CustomerName,
+		CustomerPhone:   input.CustomerPhone,
+		CustomerEmail:   input.CustomerEmail,
+		CustomerIP:      input.CustomerIP,
+		TotalAmount:     total,
+		Status:          models.OrderStatusPendienteRevision,
+		PaymentMethod:   models.OrderPaymentMethod(input.PaymentMethod),
+		PaymentStatus:   models.OrderPaymentStatusPendiente,
+		OrderType:       models.OrderType(input.OrderType),
+		TableNumber:     input.TableNumber,
+		Notes:           input.Notes,
 		CreatedByUserID: input.CreatedByID,
 		StatusTimestamps: map[string]time.Time{
 			string(models.OrderStatusPendienteRevision): now,
@@ -139,11 +139,57 @@ func (s *OrderStore) UpdateOrder(ctx context.Context, id uuid.UUID, input StoreU
 	if err != nil {
 		return dto.Order{}, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
+	existingOrder, snapshots, err := s.updateOrderOnDB(ctx, tx, id, input)
+	if err != nil {
+		return dto.Order{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return dto.Order{}, err
+	}
+	return s.toDTOOrder(existingOrder, snapshots), nil
+}
+
+// UpdateOrderWithStockAdjustment updates an order and replaces its items, then
+// applies an inventory adjustment inside the same transaction. This keeps order
+// data and stock consistent when an in-progress order's items change.
+func (s *OrderStore) UpdateOrderWithStockAdjustment(ctx context.Context, id uuid.UUID, input StoreUpdateOrderInput, deductions []StockDeductionInput, restore bool) (dto.Order, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return dto.Order{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	existingOrder, snapshots, err := s.updateOrderOnDB(ctx, tx, id, input)
+	if err != nil {
+		return dto.Order{}, err
+	}
+
+	invRepo := NewInventoryBunRepository(tx)
+	if len(deductions) > 0 {
+		if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
+			return dto.Order{}, err
+		}
+	} else if restore {
+		if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
+			return dto.Order{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return dto.Order{}, err
+	}
+	return s.toDTOOrder(existingOrder, snapshots), nil
+}
+
+// updateOrderOnDB performs the actual order metadata and item replacement
+// against the supplied DB or transaction. Callers are responsible for committing.
+func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UUID, input StoreUpdateOrderInput) (models.Order, []itemSnapshot, error) {
 	var existingOrder models.Order
-	if err := tx.NewSelect().Model(&existingOrder).Where("id = ?", id).For("UPDATE").Scan(ctx); err != nil {
-		return dto.Order{}, translateOrderError(err)
+	if err := db.NewSelect().Model(&existingOrder).Where("id = ?", id).For("UPDATE").Scan(ctx); err != nil {
+		return models.Order{}, nil, translateOrderError(err)
 	}
 
 	now := time.Now()
@@ -160,38 +206,125 @@ func (s *OrderStore) UpdateOrder(ctx context.Context, id uuid.UUID, input StoreU
 	}
 
 	if len(input.Items) == 0 {
-		if _, err := tx.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
-			return dto.Order{}, err
+		if _, err := db.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
+			return models.Order{}, nil, err
 		}
-		if err := tx.Commit(); err != nil {
-			return dto.Order{}, err
-		}
-		return s.toDTOOrder(existingOrder, nil), nil
+		return existingOrder, nil, nil
 	}
 
 	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
 	if err != nil {
-		return dto.Order{}, err
+		return models.Order{}, nil, err
 	}
 	existingOrder.TotalAmount = total
 
-	if _, err := tx.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
+	if _, err := db.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
+		return models.Order{}, nil, err
+	}
+
+	if _, err := db.NewDelete().Model((*models.OrderItem)(nil)).Where("order_items = ?", existingOrder.ID).Exec(ctx); err != nil {
+		return models.Order{}, nil, err
+	}
+
+	if err := s.createItems(ctx, db, existingOrder.ID, snapshots); err != nil {
+		return models.Order{}, nil, err
+	}
+
+	return existingOrder, snapshots, nil
+}
+
+// UpdateStatus updates an order's status.
+func (s *OrderStore) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
+	return s.updateStatusOnDB(ctx, s.db, id, status)
+}
+
+// UpdateStatusWithStockAdjustment updates an order's status and applies an
+// inventory adjustment inside the same transaction so that stock and status are
+// committed atomically. If the adjustment fails, the status change is rolled back.
+func (s *OrderStore) UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []StockDeductionInput, restore bool) (dto.Order, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return dto.Order{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	updated, err := s.updateStatusOnDB(ctx, tx, id, status)
+	if err != nil {
 		return dto.Order{}, err
 	}
 
-	if _, err := tx.NewDelete().Model((*models.OrderItem)(nil)).Where("order_items = ?", existingOrder.ID).Exec(ctx); err != nil {
-		return dto.Order{}, err
-	}
-
-	if err := s.createItems(ctx, tx, existingOrder.ID, snapshots); err != nil {
-		return dto.Order{}, err
+	invRepo := NewInventoryBunRepository(tx)
+	if len(deductions) > 0 {
+		if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
+			return dto.Order{}, err
+		}
+	} else if restore {
+		if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
+			return dto.Order{}, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return dto.Order{}, err
 	}
+	return updated, nil
+}
 
-	return s.toDTOOrder(existingOrder, snapshots), nil
+// updateStatusOnDB updates an order's status against the supplied DB or transaction.
+func (s *OrderStore) updateStatusOnDB(ctx context.Context, db bun.IDB, id uuid.UUID, status string) (dto.Order, error) {
+	order, err := s.findOrderModelByID(ctx, db, id)
+	if err != nil {
+		return dto.Order{}, err
+	}
+
+	now := time.Now()
+	model := models.Order{
+		ID:               order.ID,
+		OrderNumber:      order.OrderNumber,
+		CustomerID:       order.CustomerID,
+		CustomerName:     order.CustomerName,
+		CustomerPhone:    order.CustomerPhone,
+		CustomerEmail:    order.CustomerEmail,
+		CustomerIP:       order.CustomerIP,
+		TotalAmount:      order.TotalAmount,
+		Status:           order.Status,
+		PaymentMethod:    order.PaymentMethod,
+		PaymentStatus:    order.PaymentStatus,
+		OrderType:        order.OrderType,
+		TableNumber:      order.TableNumber,
+		Notes:            order.Notes,
+		RejectionReason:  order.RejectionReason,
+		ReviewedByUserID: order.ReviewedByUserID,
+		ReviewedAt:       order.ReviewedAt,
+		CreatedByUserID:  order.CreatedByUserID,
+		IsArchived:       order.IsArchived,
+		CreatedAt:        order.CreatedAt,
+		UpdatedAt:        now,
+		StatusTimestamps: order.StatusTimestamps,
+	}
+	if model.StatusTimestamps == nil {
+		model.StatusTimestamps = make(map[string]time.Time)
+	}
+	model.StatusTimestamps[status] = now
+	model.Status = models.OrderStatus(status)
+
+	res, err := db.NewUpdate().Model(&model).WherePK().Exec(ctx)
+	if err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+		return dto.Order{}, &apperror.NotFoundError{Resource: "order"}
+	}
+	return toOrderDTOFromModel(model, nil), nil
+}
+
+// findOrderModelByID loads a raw models.Order by ID against the supplied DB or transaction.
+func (s *OrderStore) findOrderModelByID(ctx context.Context, db bun.IDB, id uuid.UUID) (models.Order, error) {
+	var order models.Order
+	if err := db.NewSelect().Model(&order).Where("id = ?", id).Scan(ctx); err != nil {
+		return models.Order{}, translateOrderError(err)
+	}
+	return order, nil
 }
 
 // itemSnapshot holds resolved item data ready for persistence.
@@ -235,7 +368,7 @@ func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolv
 }
 
 // createItems persists resolved item snapshots against an open transaction.
-func (s *OrderStore) createItems(ctx context.Context, tx bun.Tx, orderID uuid.UUID, snapshots []itemSnapshot) error {
+func (s *OrderStore) createItems(ctx context.Context, db bun.IDB, orderID uuid.UUID, snapshots []itemSnapshot) error {
 	for _, item := range snapshots {
 		model := models.OrderItem{
 			ID:                uuid.New(),
@@ -248,7 +381,7 @@ func (s *OrderStore) createItems(ctx context.Context, tx bun.Tx, orderID uuid.UU
 			Subtotal:          item.unitPrice * float64(item.quantity),
 			Customizations:    item.customizations,
 		}
-		if _, err := tx.NewInsert().Model(&model).Exec(ctx); err != nil {
+		if _, err := db.NewInsert().Model(&model).Exec(ctx); err != nil {
 			return err
 		}
 	}

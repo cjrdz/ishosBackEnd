@@ -112,11 +112,12 @@ func (h *ProductHandler) toProductResponse(p dto.Product) productResponse {
 	stockStatus := "not_tracked"
 	if len(p.InventoryItems) > 0 {
 		item := p.InventoryItems[0]
-		if item.CurrentStock <= 0 {
+		switch {
+		case item.CurrentStock <= 0:
 			stockStatus = "out_of_stock"
-		} else if item.CurrentStock <= item.LowStockThreshold {
+		case item.CurrentStock <= item.LowStockThreshold:
 			stockStatus = "low_stock"
-		} else {
+		default:
 			stockStatus = "in_stock"
 		}
 	}
@@ -200,18 +201,18 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Create adds a new product. Admin only.
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name                 string     `json:"name"`
-		Description          string     `json:"description"`
-		Price                float64    `json:"price"`
-		CategoryID           uuid.UUID  `json:"category_id"`
-		ImagePath            *string    `json:"image_path"`
-		StockStatus          *string    `json:"stock_status"`
-		IsAvailable          *bool      `json:"is_available"`
-		ExcludeGlobalFlavors *bool      `json:"exclude_global_flavors"`
-		ExcludeGlobalAddons  *bool      `json:"exclude_global_addons"`
-		BallBased            *bool      `json:"ball_based"`
-		BallQuantity         *int       `json:"ball_quantity"`
-		AllowsMixedFlavors   *bool      `json:"allows_mixed_flavors"`
+		Name                 string    `json:"name"`
+		Description          string    `json:"description"`
+		Price                float64   `json:"price"`
+		CategoryID           uuid.UUID `json:"category_id"`
+		ImagePath            *string   `json:"image_path"`
+		StockStatus          *string   `json:"stock_status"`
+		IsAvailable          *bool     `json:"is_available"`
+		ExcludeGlobalFlavors *bool     `json:"exclude_global_flavors"`
+		ExcludeGlobalAddons  *bool     `json:"exclude_global_addons"`
+		BallBased            *bool     `json:"ball_based"`
+		BallQuantity         *int      `json:"ball_quantity"`
+		AllowsMixedFlavors   *bool     `json:"allows_mixed_flavors"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")

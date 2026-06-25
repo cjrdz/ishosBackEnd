@@ -87,8 +87,8 @@ type seedInventoryItem struct {
 
 // seedInventory matches the JSON shape from inventory.json
 type seedInventory struct {
-	ContainerTypes  []seedContainerType  `json:"container_types"`
-	InventoryItems  []seedInventoryItem  `json:"inventory_items"`
+	ContainerTypes []seedContainerType `json:"container_types"`
+	InventoryItems []seedInventoryItem `json:"inventory_items"`
 }
 
 // fileExists checks if a file exists at the given path

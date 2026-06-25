@@ -25,23 +25,23 @@ type OrderItemResponse struct {
 
 // OrderResponse is the public shape of an order.
 type OrderResponse struct {
-	ID                     uuid.UUID           `json:"id"`
-	OrderNumber            string              `json:"order_number"`
-	CustomerID             *uuid.UUID          `json:"customer_id,omitempty"`
-	CustomerName           string              `json:"customer_name"`
-	CustomerPhone          string              `json:"customer_phone"`
-	CustomerEmail          *string             `json:"customer_email,omitempty"`
-	Status                 string              `json:"status"`
-	PaymentMethod          string              `json:"payment_method"`
-	PaymentStatus          string              `json:"payment_status"`
-	OrderType              string              `json:"order_type"`
-	TableNumber            *int                `json:"table_number,omitempty"`
-	TotalAmount            float64             `json:"total_amount"`
-	Notes                  *string             `json:"notes,omitempty"`
-	RejectionReason        *string             `json:"rejection_reason,omitempty"`
-	CreatedByUserID        *string             `json:"created_by_user_id,omitempty"`
-	CreatedByName          string              `json:"created_by_name"`
-	CreatedByRole          string              `json:"created_by_role"`
+	ID                     uuid.UUID            `json:"id"`
+	OrderNumber            string               `json:"order_number"`
+	CustomerID             *uuid.UUID           `json:"customer_id,omitempty"`
+	CustomerName           string               `json:"customer_name"`
+	CustomerPhone          string               `json:"customer_phone"`
+	CustomerEmail          *string              `json:"customer_email,omitempty"`
+	Status                 string               `json:"status"`
+	PaymentMethod          string               `json:"payment_method"`
+	PaymentStatus          string               `json:"payment_status"`
+	OrderType              string               `json:"order_type"`
+	TableNumber            *int                 `json:"table_number,omitempty"`
+	TotalAmount            float64              `json:"total_amount"`
+	Notes                  *string              `json:"notes,omitempty"`
+	RejectionReason        *string              `json:"rejection_reason,omitempty"`
+	CreatedByUserID        *string              `json:"created_by_user_id,omitempty"`
+	CreatedByName          string               `json:"created_by_name"`
+	CreatedByRole          string               `json:"created_by_role"`
 	CreatedAt              time.Time            `json:"created_at"`
 	UpdatedAt              time.Time            `json:"updated_at"`
 	StatusTimestamps       map[string]time.Time `json:"status_timestamps,omitempty"`
@@ -58,7 +58,7 @@ type employeeCacheEntry struct {
 
 // OrderResponseMapper maps dto.Order values to OrderResponse.
 type OrderResponseMapper struct {
-	pb          *auth.PBAuth
+	pb            *auth.PBAuth
 	employeeCache *cache.TTLCache
 }
 
@@ -79,12 +79,12 @@ func (m *OrderResponseMapper) Map(order dto.Order) OrderResponse {
 // It omits items, created-by resolution, tracking tokens, and timestamps
 // to keep list responses small and fast.
 type OrderLiteResponse struct {
-	ID            uuid.UUID `json:"id"`
-	OrderNumber   string    `json:"order_number"`
-	CustomerName  string    `json:"customer_name"`
-	Status        string    `json:"status"`
-	TotalAmount   float64   `json:"total_amount"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID           uuid.UUID `json:"id"`
+	OrderNumber  string    `json:"order_number"`
+	CustomerName string    `json:"customer_name"`
+	Status       string    `json:"status"`
+	TotalAmount  float64   `json:"total_amount"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // MapLite converts a dto.Order to an OrderLiteResponse.
@@ -188,23 +188,23 @@ func (m *OrderResponseMapper) mapInternal(order dto.Order, access *TrackingAcces
 	}
 
 	resp := OrderResponse{
-		ID:              order.ID,
-		OrderNumber:     order.OrderNumber,
-		CustomerID:      order.CustomerID,
-		CustomerName:    order.CustomerName,
-		CustomerPhone:   order.CustomerPhone,
-		CustomerEmail:   order.CustomerEmail,
-		Status:          order.Status,
-		PaymentMethod:   order.PaymentMethod,
-		PaymentStatus:   order.PaymentStatus,
-		OrderType:       order.OrderType,
-		TableNumber:     order.TableNumber,
-		TotalAmount:     order.TotalAmount,
-		Notes:           order.Notes,
-		RejectionReason: order.RejectionReason,
-		CreatedByUserID: order.CreatedByUserID,
-		CreatedByName:   createdByName,
-		CreatedByRole:   createdByRole,
+		ID:               order.ID,
+		OrderNumber:      order.OrderNumber,
+		CustomerID:       order.CustomerID,
+		CustomerName:     order.CustomerName,
+		CustomerPhone:    order.CustomerPhone,
+		CustomerEmail:    order.CustomerEmail,
+		Status:           order.Status,
+		PaymentMethod:    order.PaymentMethod,
+		PaymentStatus:    order.PaymentStatus,
+		OrderType:        order.OrderType,
+		TableNumber:      order.TableNumber,
+		TotalAmount:      order.TotalAmount,
+		Notes:            order.Notes,
+		RejectionReason:  order.RejectionReason,
+		CreatedByUserID:  order.CreatedByUserID,
+		CreatedByName:    createdByName,
+		CreatedByRole:    createdByRole,
 		CreatedAt:        order.CreatedAt,
 		UpdatedAt:        order.UpdatedAt,
 		StatusTimestamps: order.StatusTimestamps,

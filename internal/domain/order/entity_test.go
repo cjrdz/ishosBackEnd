@@ -98,7 +98,7 @@ func TestOrderCalculateTotal(t *testing.T) {
 
 	for _, item := range items {
 		orderItem, _ := NewOrderItem(item.productID, item.name, item.qty, item.price, nil)
-		order.AddItem(*orderItem)
+		_ = order.AddItem(*orderItem)
 	}
 
 	order.CalculateTotal()
@@ -182,12 +182,12 @@ func TestOrderCanBeEdited(t *testing.T) {
 		t.Errorf("Pending order should be editable")
 	}
 
-	order.Approve("reviewer", false)
+	_ = order.Approve("reviewer", false)
 	if !order.CanBeEdited() {
 		t.Errorf("Received order should be editable")
 	}
 
-	order.TransitionTo(StatusInProgress)
+	_ = order.TransitionTo(StatusInProgress)
 	if order.CanBeEdited() {
 		t.Errorf("InProgress order should not be editable")
 	}
@@ -201,7 +201,7 @@ func TestOrderItemUpdateQuantity(t *testing.T) {
 		t.Errorf("Initial subtotal = %f, want 20.0", initialSubtotal)
 	}
 
-	item.UpdateQuantity(5)
+	_ = item.UpdateQuantity(5)
 	if item.Quantity != 5 {
 		t.Errorf("Quantity = %d, want 5", item.Quantity)
 	}
@@ -216,11 +216,11 @@ func TestOrderGetItemByProductID(t *testing.T) {
 	productID := uuid.New()
 
 	item, _ := NewOrderItem(productID, "Item", 1, 10.0, nil)
-	order.AddItem(*item)
+	_ = order.AddItem(*item)
 
 	found := order.GetItemByProductID(productID)
 	if found == nil {
-		t.Errorf("GetItemByProductID returned nil")
+		t.Fatalf("GetItemByProductID returned nil")
 	}
 
 	if found.ProductID != productID {
@@ -241,7 +241,7 @@ func TestOrderIsEmpty(t *testing.T) {
 	}
 
 	item, _ := NewOrderItem(uuid.New(), "Item", 1, 10.0, nil)
-	order.AddItem(*item)
+	_ = order.AddItem(*item)
 
 	if order.IsEmpty() {
 		t.Errorf("Order with items should not be empty")

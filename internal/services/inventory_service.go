@@ -21,7 +21,7 @@ var (
 
 // InventoryService handles all inventory-related business logic.
 type InventoryService struct {
-	repo             InventoryRepository
+	repo              InventoryRepository
 	containerTypeRepo ContainerTypeRepository
 }
 
@@ -101,9 +101,10 @@ func (s *InventoryService) CheckStock(ctx context.Context, flavorID uuid.UUID, q
 	return invItem.CurrentStock >= quantity, nil
 }
 
-// DeductForOrder deducts stock for an order's items.
-// Returns the created stock movements for potential rollback.
-func (s *InventoryService) DeductForOrder(ctx context.Context, orderID uuid.UUID, items []dto.OrderItem, createdByID string) ([]dto.StockMovement, error) {
+// DeductionsFor builds the list of stock deductions required for an order's
+// items without mutating stock. Untracked products are skipped silently; real
+// lookup errors are returned so callers can decide how to handle them.
+func (s *InventoryService) DeductionsFor(ctx context.Context, items []dto.OrderItem) ([]repository.StockDeductionInput, error) {
 	deductions := make([]repository.StockDeductionInput, 0)
 
 	for _, item := range items {
@@ -155,6 +156,16 @@ func (s *InventoryService) DeductForOrder(ctx context.Context, orderID uuid.UUID
 		}
 	}
 
+	return deductions, nil
+}
+
+// DeductForOrder deducts stock for an order's items.
+// Returns the created stock movements for potential rollback.
+func (s *InventoryService) DeductForOrder(ctx context.Context, orderID uuid.UUID, items []dto.OrderItem, createdByID string) ([]dto.StockMovement, error) {
+	deductions, err := s.DeductionsFor(ctx, items)
+	if err != nil {
+		return nil, err
+	}
 	return s.repo.DeductStockForOrder(ctx, orderID, deductions, createdByID)
 }
 
@@ -205,8 +216,7 @@ func extractFlavorIDs(customizations interface{}) []uuid.UUID {
 
 	if len(ids) == 0 {
 		if flavorID, ok := raw["flavor_id"]; ok {
-			switch v := flavorID.(type) {
-			case string:
+			if v, ok := flavorID.(string); ok {
 				if parsed, err := uuid.Parse(v); err == nil {
 					ids = append(ids, parsed)
 				}
@@ -345,16 +355,6 @@ func (s *InventoryService) GetMovementHistory(ctx context.Context, inventoryItem
 	return s.repo.FindStockMovementsByInventoryItem(ctx, inventoryItemID, limit, offset)
 }
 
-// AdjustForOrderUpdate adjusts stock when order items are updated.
-func (s *InventoryService) AdjustForOrderUpdate(ctx context.Context, orderID uuid.UUID, oldItems []dto.OrderItem, newItems []dto.OrderItem, createdByID string) error {
-	if _, err := s.RestoreForOrder(ctx, orderID, createdByID); err != nil {
-		return err
-	}
-
-	_, err := s.DeductForOrder(ctx, orderID, newItems, createdByID)
-	return err
-}
-
 // GetInventoryItemByProductID returns the inventory item for a unit-based product.
 func (s *InventoryService) GetInventoryItemByProductID(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error) {
 	return s.repo.FindByProductID(ctx, productID)
@@ -407,11 +407,12 @@ func (s *InventoryService) GetInventoryStats(ctx context.Context) (*InventorySta
 			stats.UnitBasedItems++
 		}
 
-		if item.CurrentStock <= 0 {
+		switch {
+		case item.CurrentStock <= 0:
 			stats.OutOfStockItems++
-		} else if item.CurrentStock <= item.LowStockThreshold {
+		case item.CurrentStock <= item.LowStockThreshold:
 			stats.LowStockItems++
-		} else {
+		default:
 			stats.HealthyItems++
 		}
 	}

@@ -1,5 +1,5 @@
-// dto/order.go — Request and response DTOs for order handlers.
-package dto
+// requests/order.go — Request-parsing DTOs for order handlers.
+package requests
 
 import (
 	"github.com/google/uuid"

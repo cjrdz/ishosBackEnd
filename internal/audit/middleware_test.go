@@ -8,15 +8,15 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 
+	orderDomain "github.com/cjrdz/ishosBackEnd/internal/domain/order"
 	"github.com/cjrdz/ishosBackEnd/internal/models"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
-	orderDomain "github.com/cjrdz/ishosBackEnd/internal/domain/order"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func newTestAuditBunDB(t *testing.T) *bun.DB {

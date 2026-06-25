@@ -73,7 +73,7 @@ type UpdateOrderInput struct {
 	Items         []OrderItemInput
 }
 
-func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerRepo CustomerRepository, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string, auditSvc audit.Service) *OrderService {
+func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerRepo CustomerRepository, productRepo ProductRepository, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string, auditSvc audit.Service) *OrderService {
 	return &OrderService{
 		orderRepo:      orderRepo,
 		tracker:        tracker,
@@ -82,20 +82,12 @@ func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerR
 		enrichment:     NewOrderEnrichmentService(),
 		query:          NewOrderQueryService(orderRepo),
 		tracking:       NewOrderTrackingService(tracker, orderRepo, publicStoreURL),
-		command:        NewOrderCommandService(orderRepo, orderStore, customerRepo, inventory, dispatcher, tracker, auditSvc),
+		command:        NewOrderCommandService(orderRepo, orderStore, customerRepo, productRepo, inventory, dispatcher, tracker, auditSvc),
 	}
 }
 
 func (s *OrderService) IssueTrackingAccess(ctx context.Context, orderNumber string) (*TrackingAccess, error) {
 	return s.tracking.IssueTrackingAccess(ctx, orderNumber)
-}
-
-func (s *OrderService) buildTrackingURL(ctx context.Context, orderNumber string) string {
-	trackingAccess, err := s.tracking.IssueTrackingAccess(ctx, orderNumber)
-	if err != nil {
-		return ""
-	}
-	return trackingAccess.URL
 }
 
 func (s *OrderService) ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error) {

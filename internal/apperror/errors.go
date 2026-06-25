@@ -4,18 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Sentinel error types for domain errors.
 var (
-	ErrNotFound      = errors.New("resource not found")
-	ErrConflict      = errors.New("conflict")
-	ErrForbidden     = errors.New("forbidden")
-	ErrValidation    = errors.New("validation failed")
-	ErrUnauthorized  = errors.New("unauthorized")
-	ErrInternal      = errors.New("internal server error")
-	ErrRateLimited   = errors.New("rate limited")
-	ErrUnavailable   = errors.New("service unavailable")
+	ErrNotFound     = errors.New("resource not found")
+	ErrConflict     = errors.New("conflict")
+	ErrForbidden    = errors.New("forbidden")
+	ErrValidation   = errors.New("validation failed")
+	ErrUnauthorized = errors.New("unauthorized")
+	ErrInternal     = errors.New("internal server error")
+	ErrRateLimited  = errors.New("rate limited")
+	ErrUnavailable  = errors.New("service unavailable")
 )
 
 // NotFoundError represents a missing resource.
@@ -149,6 +152,21 @@ func (e *ServiceUnavailableError) Error() string {
 
 func (e *ServiceUnavailableError) Unwrap() error {
 	return ErrUnavailable
+}
+
+// IsUniqueViolation reports whether err is a database unique-constraint violation.
+// It recognises PostgreSQL pgconn errors (SQLSTATE 23505) and SQLite/generic
+// "unique constraint" or "duplicate key" messages.
+func IsUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
 }
 
 // StatusCode maps typed app errors to HTTP status codes.
