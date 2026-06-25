@@ -28,18 +28,19 @@ type StoreOrderItemInput struct {
 
 // StoreOrderInput is the raw data required to create an order transactionally.
 type StoreOrderInput struct {
-	OrderNumber   string
-	CustomerID    *uuid.UUID
-	CustomerName  string
-	CustomerPhone string
-	CustomerEmail *string
-	CustomerIP    *string
-	PaymentMethod string
-	OrderType     string
-	TableNumber   *int
-	Notes         *string
-	CreatedByID   *string
-	Items         []StoreOrderItemInput
+	OrderNumber    string
+	IdempotencyKey *uuid.UUID
+	CustomerID     *uuid.UUID
+	CustomerName   string
+	CustomerPhone  string
+	CustomerEmail  *string
+	CustomerIP     *string
+	PaymentMethod  string
+	OrderType      string
+	TableNumber    *int
+	Notes          *string
+	CreatedByID    *string
+	Items          []StoreOrderItemInput
 }
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
@@ -77,6 +78,32 @@ type OrderStore struct {
 // NewOrderStore creates a new transactional order store.
 func NewOrderStore(db *bun.DB, productRepo productResolver, enrichment EnrichmentService) *OrderStore {
 	return &OrderStore{db: db, productRepo: productRepo, enrichment: enrichment}
+}
+
+// FindOrderByIdempotencyKey returns the order previously created for the
+// given idempotency key, if one exists. Returns apperror.ErrNotFound when
+// no order is associated with the key yet.
+func (s *OrderStore) FindOrderByIdempotencyKey(ctx context.Context, key uuid.UUID) (dto.Order, error) {
+	var ik models.IdempotencyKey
+	if err := s.db.NewSelect().Model(&ik).Where("key = ?", key).Scan(ctx); err != nil {
+		return dto.Order{}, &apperror.NotFoundError{Resource: "idempotency_key", Cause: err}
+	}
+
+	var order models.Order
+	if err := s.db.NewSelect().Model(&order).Where("id = ?", ik.OrderID).Scan(ctx); err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+
+	var items []models.OrderItem
+	if err := s.db.NewSelect().Model(&items).Where("order_items = ?", ik.OrderID).Scan(ctx); err != nil {
+		return dto.Order{}, err
+	}
+
+	dtoItems := make([]dto.OrderItem, len(items))
+	for i, item := range items {
+		dtoItems[i] = toOrderItemDTOFromModel(item, nil)
+	}
+	return toOrderDTOFromModel(order, dtoItems), nil
 }
 
 // CreateOrder creates a new order with its items inside a single transaction.
@@ -119,6 +146,20 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 
 	if _, err := tx.NewInsert().Model(&order).Exec(ctx); err != nil {
 		return dto.Order{}, err
+	}
+
+	// Record the idempotency key in the same transaction as the order. A
+	// unique-constraint violation here means a concurrent request with the
+	// same key already won the race; the caller can fetch the winning order.
+	if input.IdempotencyKey != nil {
+		ikRow := models.IdempotencyKey{
+			Key:       *input.IdempotencyKey,
+			OrderID:   order.ID,
+			CreatedAt: now,
+		}
+		if _, err := tx.NewInsert().Model(&ikRow).Exec(ctx); err != nil {
+			return dto.Order{}, err
+		}
 	}
 
 	if err := s.createItems(ctx, tx, order.ID, snapshots); err != nil {

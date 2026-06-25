@@ -8,8 +8,12 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -175,4 +179,128 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RestoreOnCancel(t *testing.T
 	persisted, err := orderRepo.FindByID(ctx, order.ID)
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusCancelada), persisted.Status)
+}
+
+func TestOrderStore_CreateOrder_DuplicateIdempotencyKey_SecondCallReturnsFirstOrder(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	productRepo := NewProductBunRepository(db)
+	store := NewOrderStore(db, productRepo, noopEnrichment{})
+
+	product, _ := createTestProduct(t, ctx, db, "IK-Product", 5.0)
+	key := uuid.New()
+
+	first, err := store.CreateOrder(ctx, StoreOrderInput{
+		OrderNumber:    "ORD-IK-001",
+		IdempotencyKey: &key,
+		CustomerName:   "Test",
+		CustomerPhone:  "555-7001",
+		PaymentMethod:  string(models.OrderPaymentMethodEfectivo),
+		OrderType:      string(models.OrderTypeParaLlevar),
+		Items: []StoreOrderItemInput{
+			{ProductID: product.ID, Quantity: 1},
+		},
+	})
+	require.NoError(t, err)
+	require.NotEqual(t, uuid.Nil, first.ID)
+
+	// Second call with the same key must not create a new order.
+	_, err = store.CreateOrder(ctx, StoreOrderInput{
+		OrderNumber:    "ORD-IK-002",
+		IdempotencyKey: &key,
+		CustomerName:   "Test",
+		CustomerPhone:  "555-7002",
+		PaymentMethod:  string(models.OrderPaymentMethodEfectivo),
+		OrderType:      string(models.OrderTypeParaLlevar),
+		Items: []StoreOrderItemInput{
+			{ProductID: product.ID, Quantity: 1},
+		},
+	})
+	require.Error(t, err)
+	assert.True(t, isUniqueViolation(err), "expected unique violation, got %v", err)
+
+	// Exactly one order should be associated with this idempotency key.
+	var count int
+	err = db.NewSelect().
+		Model((*models.IdempotencyKey)(nil)).
+		ColumnExpr("COUNT(*)").
+		Where("key = ?", key).
+		Scan(ctx, &count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "expected exactly one idempotency key row")
+
+	var orderID uuid.UUID
+	err = db.NewSelect().
+		Model((*models.IdempotencyKey)(nil)).
+		Column("order_id").
+		Where("key = ?", key).
+		Scan(ctx, &orderID)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, orderID, "idempotency key must point to the first order")
+
+	// The order number must be the first one, not the second.
+	persisted, err := NewOrderBunRepository(db).FindByID(ctx, orderID)
+	require.NoError(t, err)
+	assert.Equal(t, "ORD-IK-001", persisted.OrderNumber)
+}
+
+func TestOrderStore_CreateOrder_ConcurrentDuplicateKeys_OnlyOneOrderPersists(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	productRepo := NewProductBunRepository(db)
+	store := NewOrderStore(db, productRepo, noopEnrichment{})
+
+	product, _ := createTestProduct(t, ctx, db, "IK-Concurrent", 5.0)
+	key := uuid.New()
+
+	const goroutines = 2
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	errors := make([]error, goroutines)
+
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			_, errors[idx] = store.CreateOrder(ctx, StoreOrderInput{
+				OrderNumber:    fmt.Sprintf("ORD-IK-CONC-%d", idx),
+				IdempotencyKey: &key,
+				CustomerName:   "Test",
+				CustomerPhone:  fmt.Sprintf("555-800%d", idx),
+				PaymentMethod:  string(models.OrderPaymentMethodEfectivo),
+				OrderType:      string(models.OrderTypeParaLlevar),
+				Items: []StoreOrderItemInput{
+					{ProductID: product.ID, Quantity: 1},
+				},
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	successes := 0
+	for _, err := range errors {
+		if err == nil {
+			successes++
+		} else if !isUniqueViolation(err) {
+			t.Fatalf("expected unique violation or nil, got %v", err)
+		}
+	}
+	assert.Equal(t, 1, successes, "exactly one concurrent create should succeed")
+
+	var orderCount int
+	err := db.NewSelect().
+		TableExpr("orders AS o").
+		Join("JOIN idempotency_keys AS ik ON ik.order_id = o.id").
+		ColumnExpr("COUNT(*)").
+		Where("ik.key = ?", key).
+		Scan(ctx, &orderCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, orderCount, "exactly one order should persist for the idempotency key")
+}
+
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
 }

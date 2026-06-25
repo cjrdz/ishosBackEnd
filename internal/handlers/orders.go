@@ -65,6 +65,20 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional client-supplied idempotency key. A key identifies a single
+	// logical order submission; resending it returns the original order.
+	var idempotencyKey *uuid.UUID
+	if raw := r.Header.Get("Idempotency-Key"); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			response.WriteOrError(w, nil, &apperror.ValidationError{
+				Fields: map[string]string{"idempotency_key": "must be a valid UUID"},
+			})
+			return
+		}
+		idempotencyKey = &parsed
+	}
+
 	if body.OrderType == "" {
 		body.OrderType = "para_llevar"
 	}
@@ -120,16 +134,17 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, staffID)
 
 	order, err := h.orderSvc.Create(ctx, services.CreateOrderInput{
-		CustomerName:  body.CustomerName,
-		CustomerPhone: body.CustomerPhone,
-		CustomerEmail: nilIfEmpty(body.CustomerEmail),
-		CustomerIP:    &ip,
-		PaymentMethod: body.PaymentMethod,
-		OrderType:     body.OrderType,
-		TableNumber:   body.TableNumber,
-		Notes:         nilIfEmpty(body.Notes),
-		Items:         items,
-		CreatedByID:   createdByID,
+		IdempotencyKey: idempotencyKey,
+		CustomerName:   body.CustomerName,
+		CustomerPhone:  body.CustomerPhone,
+		CustomerEmail:  nilIfEmpty(body.CustomerEmail),
+		CustomerIP:     &ip,
+		PaymentMethod:  body.PaymentMethod,
+		OrderType:      body.OrderType,
+		TableNumber:    body.TableNumber,
+		Notes:          nilIfEmpty(body.Notes),
+		Items:          items,
+		CreatedByID:    createdByID,
 	})
 	if err != nil {
 		response.WriteOrError(w, nil, err)

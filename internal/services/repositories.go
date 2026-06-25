@@ -100,6 +100,7 @@ type AdminSettingRepository interface {
 // It hides Bun transaction orchestration, product validation, and enrichment behind a small interface.
 type OrderStore interface {
 	CreateOrder(ctx context.Context, input repository.StoreOrderInput) (dto.Order, error)
+	FindOrderByIdempotencyKey(ctx context.Context, key uuid.UUID) (dto.Order, error)
 	UpdateOrder(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error)
 	// UpdateOrderWithStockAdjustment updates an order and replaces its items, then
 	// applies an inventory adjustment inside the same transaction. Either deductions

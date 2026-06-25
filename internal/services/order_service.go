@@ -44,16 +44,17 @@ type OrderService struct {
 }
 
 type CreateOrderInput struct {
-	CustomerName  string
-	CustomerPhone string
-	CustomerEmail *string
-	CustomerIP    *string
-	PaymentMethod string
-	OrderType     string
-	TableNumber   *int
-	Notes         *string
-	Items         []OrderItemInput
-	CreatedByID   *string
+	IdempotencyKey *uuid.UUID
+	CustomerName   string
+	CustomerPhone  string
+	CustomerEmail  *string
+	CustomerIP     *string
+	PaymentMethod  string
+	OrderType      string
+	TableNumber    *int
+	Notes          *string
+	Items          []OrderItemInput
+	CreatedByID    *string
 }
 
 type OrderItemInput struct {

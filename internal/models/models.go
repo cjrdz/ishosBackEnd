@@ -230,6 +230,16 @@ type OrderTrackingToken struct {
 	RevokedAt     *time.Time `bun:"revoked_at"`
 }
 
+// IdempotencyKey records a client-supplied key for an order creation
+// request, allowing a retried or duplicated request to return the
+// original order instead of creating a new one.
+type IdempotencyKey struct {
+	bun.BaseModel `bun:"table:idempotency_keys,alias:ik"`
+	Key           uuid.UUID `bun:",pk,type:uuid"`
+	OrderID       uuid.UUID `bun:"order_id,notnull,type:uuid"`
+	CreatedAt     time.Time `bun:"created_at,notnull"`
+}
+
 // Product mirrors the products table.
 type Product struct {
 	bun.BaseModel        `bun:"table:products,alias:p"`

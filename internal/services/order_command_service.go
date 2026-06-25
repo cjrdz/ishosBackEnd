@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
@@ -59,27 +60,51 @@ func NewOrderCommandService(
 // Enriches customizations, validates products, links the order to a customer
 // record, and publishes the creation event.
 func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput) (dto.Order, error) {
+	// If this exact key already produced an order (a true retry, or a
+	// double-submit that arrived sequentially rather than concurrently),
+	// return the original instead of creating another.
+	if input.IdempotencyKey != nil {
+		existing, err := s.orderStore.FindOrderByIdempotencyKey(ctx, *input.IdempotencyKey)
+		if err == nil {
+			return existing, nil
+		}
+		if !errors.Is(err, apperror.ErrNotFound) {
+			return dto.Order{}, err
+		}
+		// ErrNotFound is expected: no prior order for this key, proceed.
+	}
+
 	customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
 	if err != nil {
 		return dto.Order{}, err
 	}
 
 	storeInput := repository.StoreOrderInput{
-		CustomerID:    customerID,
-		CustomerName:  input.CustomerName,
-		CustomerPhone: input.CustomerPhone,
-		CustomerEmail: input.CustomerEmail,
-		CustomerIP:    input.CustomerIP,
-		PaymentMethod: input.PaymentMethod,
-		OrderType:     input.OrderType,
-		TableNumber:   input.TableNumber,
-		Notes:         input.Notes,
-		CreatedByID:   input.CreatedByID,
-		Items:         toStoreOrderItemInputs(input.Items),
+		IdempotencyKey: input.IdempotencyKey,
+		CustomerID:     customerID,
+		CustomerName:   input.CustomerName,
+		CustomerPhone:  input.CustomerPhone,
+		CustomerEmail:  input.CustomerEmail,
+		CustomerIP:     input.CustomerIP,
+		PaymentMethod:  input.PaymentMethod,
+		OrderType:      input.OrderType,
+		TableNumber:    input.TableNumber,
+		Notes:          input.Notes,
+		CreatedByID:    input.CreatedByID,
+		Items:          toStoreOrderItemInputs(input.Items),
 	}
 
 	createdOrder, err := s.createOrderWithRetry(ctx, storeInput)
 	if err != nil {
+		// If we lost a concurrent race on the idempotency key itself, the
+		// winning order already exists — fetch and return it instead of
+		// surfacing a conflict to the customer who did nothing wrong.
+		if input.IdempotencyKey != nil && apperror.IsUniqueViolation(err) {
+			existing, findErr := s.orderStore.FindOrderByIdempotencyKey(ctx, *input.IdempotencyKey)
+			if findErr == nil {
+				return existing, nil
+			}
+		}
 		return dto.Order{}, err
 	}
 
@@ -131,10 +156,26 @@ func (s *OrderCommandService) createOrderWithRetry(ctx context.Context, storeInp
 		if !apperror.IsUniqueViolation(err) {
 			return dto.Order{}, err
 		}
+		// A unique violation on the idempotency key cannot be fixed by
+		// regenerating the order number; stop retrying immediately so the
+		// caller can fetch the winning order.
+		if isIdempotencyKeyConflict(err) {
+			return dto.Order{}, err
+		}
 	}
 
 	return dto.Order{}, fmt.Errorf("%w: unable to generate a unique order number after %d attempts: %v",
 		apperror.ErrConflict, maxAttempts, lastErr)
+}
+
+// isIdempotencyKeyConflict reports whether err is a Postgres unique-violation
+// on the idempotency_keys primary key.
+func isIdempotencyKeyConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return pgErr.ConstraintName == "idempotency_keys_pkey"
+	}
+	return false
 }
 
 // Approve transitions an order to approved status.

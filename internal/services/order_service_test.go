@@ -130,6 +130,7 @@ func (s *orderRepoStub) Purge(ctx context.Context, start, end time.Time, statuse
 
 type orderStoreStub struct {
 	createFn                     func(ctx context.Context, input repository.StoreOrderInput) (dto.Order, error)
+	findByIdempotencyKeyFn       func(ctx context.Context, key uuid.UUID) (dto.Order, error)
 	updateFn                     func(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error)
 	updateWithAdjustmentFn       func(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
 	updateStatusFn               func(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
@@ -141,6 +142,13 @@ func (s *orderStoreStub) CreateOrder(ctx context.Context, input repository.Store
 		return s.createFn(ctx, input)
 	}
 	return dto.Order{}, nil
+}
+
+func (s *orderStoreStub) FindOrderByIdempotencyKey(ctx context.Context, key uuid.UUID) (dto.Order, error) {
+	if s.findByIdempotencyKeyFn != nil {
+		return s.findByIdempotencyKeyFn(ctx, key)
+	}
+	return dto.Order{}, &apperror.NotFoundError{Resource: "idempotency_key"}
 }
 
 func (s *orderStoreStub) UpdateOrder(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error) {
@@ -342,6 +350,148 @@ func TestOrderCommandService_Create_CreatesCustomerWhenMissing(t *testing.T) {
 	}
 	if capturedCustomerID == nil {
 		t.Fatal("expected a customer ID to be linked")
+	}
+}
+
+func TestOrderCommandService_Create_WithIdempotencyKey_ExistingOrder_ReturnsOriginalWithoutCreating(t *testing.T) {
+	key := uuid.New()
+	existing := dto.Order{ID: uuid.New(), OrderNumber: "ORD-IK-001"}
+
+	store := &orderStoreStub{
+		findByIdempotencyKeyFn: func(_ context.Context, got uuid.UUID) (dto.Order, error) {
+			if got != key {
+				t.Fatalf("expected key %q, got %q", key, got)
+			}
+			return existing, nil
+		},
+		createFn: func(_ context.Context, _ repository.StoreOrderInput) (dto.Order, error) {
+			t.Fatal("CreateOrder should not be called when an idempotency key already has an order")
+			return dto.Order{}, nil
+		},
+	}
+
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	got, err := svc.Create(context.Background(), CreateOrderInput{
+		IdempotencyKey: &key,
+		CustomerName:   "Jane",
+		CustomerPhone:  "5550000",
+		PaymentMethod:  "efectivo",
+		OrderType:      "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.OrderNumber != existing.OrderNumber {
+		t.Fatalf("expected order %q, got %+v", existing.OrderNumber, got)
+	}
+}
+
+func TestOrderCommandService_Create_WithIdempotencyKey_NoExisting_CreatesNormally(t *testing.T) {
+	key := uuid.New()
+	customerID := uuid.New()
+	customerRepo := &customerRepoStub{
+		findByPhone: func(_ context.Context, _ string) (dto.Customer, error) {
+			return dto.Customer{ID: customerID}, nil
+		},
+	}
+
+	called := false
+	store := &orderStoreStub{
+		findByIdempotencyKeyFn: func(_ context.Context, _ uuid.UUID) (dto.Order, error) {
+			return dto.Order{}, &apperror.NotFoundError{Resource: "idempotency_key"}
+		},
+		createFn: func(_ context.Context, input repository.StoreOrderInput) (dto.Order, error) {
+			called = true
+			if input.IdempotencyKey == nil || *input.IdempotencyKey != key {
+				t.Fatalf("expected idempotency key %q in store input, got %v", key, input.IdempotencyKey)
+			}
+			return dto.Order{OrderNumber: "ORD-IK-002"}, nil
+		},
+	}
+
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	_, err := svc.Create(context.Background(), CreateOrderInput{
+		IdempotencyKey: &key,
+		CustomerName:   "Jane",
+		CustomerPhone:  "5550000",
+		PaymentMethod:  "efectivo",
+		OrderType:      "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected CreateOrder to be called")
+	}
+}
+
+func TestOrderCommandService_Create_WithoutIdempotencyKey_Unaffected(t *testing.T) {
+	customerRepo := &customerRepoStub{
+		findByPhone: func(_ context.Context, _ string) (dto.Customer, error) {
+			return dto.Customer{ID: uuid.New()}, nil
+		},
+	}
+
+	findCalled := false
+	store := &orderStoreStub{
+		findByIdempotencyKeyFn: func(_ context.Context, _ uuid.UUID) (dto.Order, error) {
+			findCalled = true
+			return dto.Order{}, nil
+		},
+		createFn: func(_ context.Context, _ repository.StoreOrderInput) (dto.Order, error) {
+			return dto.Order{OrderNumber: "ORD-NO-IK"}, nil
+		},
+	}
+
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	_, err := svc.Create(context.Background(), CreateOrderInput{
+		CustomerName:  "Jane",
+		CustomerPhone: "5550000",
+		PaymentMethod: "efectivo",
+		OrderType:     "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if findCalled {
+		t.Fatal("FindOrderByIdempotencyKey should not be called when no key is supplied")
+	}
+}
+
+func TestOrderCommandService_Create_IdempotencyKeyRaceLoser_FetchesWinner(t *testing.T) {
+	key := uuid.New()
+	winner := dto.Order{ID: uuid.New(), OrderNumber: "ORD-IK-WINNER"}
+	customerRepo := &customerRepoStub{
+		findByPhone: func(_ context.Context, _ string) (dto.Customer, error) {
+			return dto.Customer{ID: uuid.New()}, nil
+		},
+	}
+
+	store := &orderStoreStub{
+		findByIdempotencyKeyFn: func(_ context.Context, got uuid.UUID) (dto.Order, error) {
+			if got != key {
+				t.Fatalf("expected key %q, got %q", key, got)
+			}
+			return winner, nil
+		},
+		createFn: func(_ context.Context, _ repository.StoreOrderInput) (dto.Order, error) {
+			return dto.Order{}, errors.New("duplicate key value violates unique constraint \"idempotency_keys_pkey\"")
+		},
+	}
+
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	got, err := svc.Create(context.Background(), CreateOrderInput{
+		IdempotencyKey: &key,
+		CustomerName:   "Jane",
+		CustomerPhone:  "5550000",
+		PaymentMethod:  "efectivo",
+		OrderType:      "para_llevar",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.OrderNumber != winner.OrderNumber {
+		t.Fatalf("expected winner order %+v, got %+v", winner, got)
 	}
 }
 
