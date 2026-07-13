@@ -53,3 +53,4 @@ __debug_bin
 # githints local change-tracking store (store.db, salt, and rendered markdown)
 .githints/
 AGENTS.md
+tests/testAPI
