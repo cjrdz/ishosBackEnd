@@ -91,12 +91,16 @@ func (s *OrderService) IssueTrackingAccess(ctx context.Context, orderNumber stri
 	return s.tracking.IssueTrackingAccess(ctx, orderNumber)
 }
 
-func (s *OrderService) ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error) {
-	return s.query.ListPaginated(ctx, status, page, limit)
+func (s *OrderService) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+	return s.query.ListPaginated(ctx, status, archived, page, limit)
 }
 
 func (s *OrderService) GetByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error) {
 	return s.query.GetByIDWithItems(ctx, id)
+}
+
+func (s *OrderService) GetByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error) {
+	return s.query.GetByIDWithItemsAndProducts(ctx, id)
 }
 
 func (s *OrderService) GetByOrderNumber(ctx context.Context, orderNumber string) (dto.Order, error) {
@@ -133,6 +137,10 @@ func (s *OrderService) Update(ctx context.Context, id uuid.UUID, input UpdateOrd
 
 func (s *OrderService) UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error) {
 	return s.command.UpdateNotes(ctx, id, notes)
+}
+
+func (s *OrderService) SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error) {
+	return s.command.SetArchived(ctx, id, archived)
 }
 
 func (s *OrderService) Delete(ctx context.Context, id uuid.UUID) error {

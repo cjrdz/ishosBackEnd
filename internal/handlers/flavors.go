@@ -97,7 +97,7 @@ func (h *FlavorHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *FlavorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name         string `json:"name"`
-		DisplayOrder int    `json:"display_order"`
+		DisplayOrder *int   `json:"display_order"`
 		IsSeasonal   bool   `json:"is_seasonal"`
 	}
 

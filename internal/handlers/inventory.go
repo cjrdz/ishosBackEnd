@@ -31,6 +31,17 @@ func (h *InventoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, response.NewPaginated(items, 1, len(items), len(items)))
 }
 
+// Dashboard returns flavor inventory, unit inventory and stats in a single
+// response so the admin UI can render the inventory tab with one request.
+func (h *InventoryHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
+	dashboard, err := h.inventory.GetInventoryDashboard(r.Context())
+	if err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, dashboard)
+}
+
 // Get returns a single inventory item with its movement history.
 func (h *InventoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))

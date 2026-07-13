@@ -90,6 +90,11 @@ type Config struct {
 	// Tracking endpoint abuse controls.
 	TrackingRequestsPerHour int `env:"TRACKING_REQUESTS_PER_HOUR" envDefault:"240"`
 
+	// Order auto-archiving.
+	OrderArchiveEnabled         bool `env:"ORDER_ARCHIVE_ENABLED" envDefault:"true"`
+	OrderArchiveAgeDays         int  `env:"ORDER_ARCHIVE_AGE_DAYS" envDefault:"7"`
+	OrderArchiveIntervalMinutes int  `env:"ORDER_ARCHIVE_INTERVAL_MINUTES" envDefault:"60"`
+
 	// One-time bootstrap: if set and no admin employee exists, the server will
 	// create the first admin on startup then ignore the vars on subsequent starts.
 	BootstrapAdminEmail    string `env:"BOOTSTRAP_ADMIN_EMAIL"`
@@ -218,6 +223,14 @@ func (c *Config) Validate() error {
 	}
 	if c.LoginAttemptsPerMinute <= 0 {
 		return fmt.Errorf("LOGIN_ATTEMPTS_PER_MINUTE must be positive, got %d", c.LoginAttemptsPerMinute)
+	}
+
+	// Archive configuration
+	if c.OrderArchiveAgeDays <= 0 {
+		return fmt.Errorf("ORDER_ARCHIVE_AGE_DAYS must be positive, got %d", c.OrderArchiveAgeDays)
+	}
+	if c.OrderArchiveIntervalMinutes <= 0 {
+		return fmt.Errorf("ORDER_ARCHIVE_INTERVAL_MINUTES must be positive, got %d", c.OrderArchiveIntervalMinutes)
 	}
 
 	// Lockout configuration

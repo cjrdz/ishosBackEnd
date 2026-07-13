@@ -290,7 +290,7 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	var updated dto.Order
 	switch {
 	case status == "en_proceso" && oldStatus != "en_proceso":
-		orderWithItems, err := s.orderRepo.FindByIDWithItems(ctx, id)
+		orderWithItems, err := s.orderRepo.FindByIDWithItemsAndProducts(ctx, id)
 		if err != nil {
 			return dto.Order{}, err
 		}
@@ -412,6 +412,15 @@ func (s *OrderCommandService) resolveOrderItems(ctx context.Context, items []Ord
 		})
 	}
 	return result, nil
+}
+
+// SetArchived toggles an order's archive flag. Manual archive/unarchive is
+// allowed for any status and is intended for admin-only use.
+func (s *OrderCommandService) SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error) {
+	if _, err := s.orderRepo.FindByID(ctx, id); err != nil {
+		return dto.Order{}, err
+	}
+	return s.orderRepo.SetArchived(ctx, id, archived)
 }
 
 // UpdateNotes updates an order's notes field.

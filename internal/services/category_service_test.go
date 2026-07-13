@@ -151,7 +151,8 @@ func TestCategoryServiceCreate_InvalidatesCache(t *testing.T) {
 	// Warm cache
 	_, _ = svc.List(context.Background(), false)
 	// Create should invalidate
-	_, _ = svc.Create(context.Background(), repository.CreateCategoryInput{Name: "New", Slug: "new", DisplayOrder: 1})
+	displayOrder := 1
+	_, _ = svc.Create(context.Background(), repository.CreateCategoryInput{Name: "New", Slug: "new", DisplayOrder: &displayOrder})
 	// This should hit the repo again
 	_, _ = svc.List(context.Background(), false)
 

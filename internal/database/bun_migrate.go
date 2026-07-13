@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/rs/zerolog/log"
 	"github.com/uptrace/bun"
 
 	"github.com/cjrdz/ishosBackEnd/internal/models"
@@ -14,7 +15,23 @@ import (
 // EnsureBunSchema creates tables and indexes if they do not exist, then runs
 // idempotent backfills for columns/data that the previous auto-migration historically
 // missed. It is safe to run against an already-migrated database.
+//
+// On a warm database it short-circuits: if the orders table already exists we
+// assume the schema and backfills are up to date. This avoids paying a Neon
+// round-trip for every CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS
+// statement on every server restart.
 func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
+	initialized, err := isSchemaInitialized(ctx, db)
+	if err != nil {
+		return fmt.Errorf("check schema initialization: %w", err)
+	}
+	if initialized {
+		log.Debug().Msg("schema already initialized; skipping migration")
+		// Indexes added after the initial schema rollout must still be created
+		// idempotently on warm databases.
+		return ensureOrderArchiveIndex(ctx, db)
+	}
+
 	if err := createTables(ctx, db); err != nil {
 		return fmt.Errorf("create bun tables: %w", err)
 	}
@@ -25,6 +42,24 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 		return fmt.Errorf("run backfills: %w", err)
 	}
 	return nil
+}
+
+// isSchemaInitialized returns true when the orders table already exists in the
+// current schema. Orders is used as a sentinel because it is created near the
+// end of the table list and depends on most other tables.
+func isSchemaInitialized(ctx context.Context, db *bun.DB) (bool, error) {
+	const query = `
+SELECT EXISTS (
+	SELECT 1
+	FROM information_schema.tables
+	WHERE table_schema = current_schema()
+	  AND table_name = 'orders'
+)`
+	var exists bool
+	if err := db.QueryRowContext(ctx, query).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func createTables(ctx context.Context, db *bun.DB) error {
@@ -162,6 +197,14 @@ func createIndexes(ctx context.Context, db *bun.DB) error {
 		if err != nil {
 			return fmt.Errorf("create index %s: %w", idx.name, err)
 		}
+	}
+	return nil
+}
+
+func ensureOrderArchiveIndex(ctx context.Context, db *bun.DB) error {
+	_, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_orders_is_archived_created_at ON orders (is_archived, created_at DESC)`)
+	if err != nil {
+		return fmt.Errorf("create order archive index: %w", err)
 	}
 	return nil
 }

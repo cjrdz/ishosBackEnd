@@ -133,7 +133,8 @@ func TestAddonServiceCreate_InvalidatesCache(t *testing.T) {
 	svc := NewAddonService(repo)
 
 	_, _ = svc.List(context.Background(), true)
-	_, _ = svc.Create(context.Background(), repository.CreateAddonInput{Name: "Caramel", Price: 1.0, GroupName: "extras", DisplayOrder: 1, IsActive: true})
+	displayOrder := 1
+	_, _ = svc.Create(context.Background(), repository.CreateAddonInput{Name: "Caramel", Price: 1.0, GroupName: "extras", DisplayOrder: &displayOrder, IsActive: true})
 	_, _ = svc.List(context.Background(), true)
 
 	if repo.listCalls != 2 {

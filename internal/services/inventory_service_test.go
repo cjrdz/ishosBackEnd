@@ -254,6 +254,70 @@ func TestInventoryService_RecordEntry_ContainerTypeNotFound(t *testing.T) {
 	}
 }
 
+func TestInventoryService_RecordEntry_AutoCreatesFlavorInventoryItem(t *testing.T) {
+	flavorID := uuid.New()
+	containerTypeID := uuid.New()
+	inventoryItemID := uuid.New()
+
+	repo := &inventoryRepoStub{
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{}, &apperror.NotFoundError{Resource: "inventory_item"}
+		},
+		createFn: func(_ context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error) {
+			if input.Name != "Vainilla" {
+				t.Fatalf("unexpected name %q", input.Name)
+			}
+			if input.Type != "ball_based" {
+				t.Fatalf("unexpected type %q", input.Type)
+			}
+			if input.CurrentStock != 0 {
+				t.Fatalf("unexpected current_stock %d", input.CurrentStock)
+			}
+			if input.LowStockThreshold != 100 {
+				t.Fatalf("unexpected threshold %d", input.LowStockThreshold)
+			}
+			if input.FlavorID == nil || *input.FlavorID != flavorID {
+				t.Fatalf("unexpected flavor_id")
+			}
+			return dto.InventoryItem{
+				ID:                inventoryItemID,
+				Name:              input.Name,
+				Type:              input.Type,
+				CurrentStock:      input.CurrentStock,
+				LowStockThreshold: input.LowStockThreshold,
+				FlavorID:          input.FlavorID,
+			}, nil
+		},
+		recordEntryFn: func(_ context.Context, input repository.RecordEntryInput) (dto.StockMovement, error) {
+			if input.InventoryItemID != inventoryItemID {
+				t.Fatalf("expected inventory item %s, got %s", inventoryItemID, input.InventoryItemID)
+			}
+			if input.TotalBalls != 100 {
+				t.Fatalf("expected total balls 100, got %d", input.TotalBalls)
+			}
+			return dto.StockMovement{ID: uuid.New(), InventoryItemID: inventoryItemID, Quantity: 100}, nil
+		},
+	}
+	ctRepo := &containerTypeRepoStub{getByID: func(_ context.Context, _ uuid.UUID) (dto.ContainerType, error) {
+		return dto.ContainerType{ID: containerTypeID, Name: "Big", BallsPerContainer: 100, IsCustom: false}, nil
+	}}
+	flavorRepo := &flavorRepoStub{findByID: func(_ context.Context, id uuid.UUID) (dto.Flavor, error) {
+		if id != flavorID {
+			t.Fatalf("unexpected flavor id %s", id)
+		}
+		return dto.Flavor{ID: flavorID, Name: "Vainilla"}, nil
+	}}
+	svc := NewInventoryService(repo, ctRepo, WithFlavorRepo(flavorRepo))
+
+	movement, err := svc.RecordEntry(context.Background(), flavorID, containerTypeID, 1, 0, "staff-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if movement.Quantity != 100 {
+		t.Fatalf("expected quantity 100, got %d", movement.Quantity)
+	}
+}
+
 func TestInventoryService_DeductForOrder_SkipsUntracked(t *testing.T) {
 	repo := &inventoryRepoStub{
 		findByProductIDFn: func(_ context.Context, _ uuid.UUID) (dto.InventoryItem, error) {

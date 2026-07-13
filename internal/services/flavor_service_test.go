@@ -133,7 +133,8 @@ func TestFlavorServiceCreate_InvalidatesCache(t *testing.T) {
 	svc := NewFlavorService(repo)
 
 	_, _ = svc.List(context.Background(), true)
-	_, _ = svc.Create(context.Background(), repository.CreateFlavorInput{Name: "Chocolate", DisplayOrder: 1, IsActive: true})
+	displayOrder := 1
+	_, _ = svc.Create(context.Background(), repository.CreateFlavorInput{Name: "Chocolate", DisplayOrder: &displayOrder, IsActive: true})
 	_, _ = svc.List(context.Background(), true)
 
 	if repo.listCalls != 2 {

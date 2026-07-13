@@ -28,9 +28,10 @@ type ProductRepository interface {
 
 // OrderRepository defines the order data access contract.
 type OrderRepository interface {
-	ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error)
+	ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	FindByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error)
+	FindByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	FindByOrderNumber(ctx context.Context, orderNumber string) (dto.Order, error)
 	FindByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
 	FindRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
@@ -39,6 +40,7 @@ type OrderRepository interface {
 	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
 	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
+	SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// Reporting and bulk operations
@@ -46,6 +48,10 @@ type OrderRepository interface {
 	FindByDateRangeWithItems(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error)
 	FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error)
 	Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error)
+
+	// Archiving
+	FindEligibleForArchive(ctx context.Context, terminalStatuses []string, cutoff time.Time, limit int) ([]dto.Order, error)
+	ArchiveOrders(ctx context.Context, ids []uuid.UUID) (int, error)
 }
 
 // FlavorRepository defines the flavor data access contract.

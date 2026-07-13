@@ -1,9 +1,10 @@
 package repository
 
 // CreateFlavorInput is the data required to create a flavor.
+// DisplayOrder is optional; when nil the repository assigns the next available order.
 type CreateFlavorInput struct {
 	Name         string
-	DisplayOrder int
+	DisplayOrder *int
 	IsSeasonal   bool
 	IsActive     bool
 }

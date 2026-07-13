@@ -142,7 +142,7 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Slug         string  `json:"slug"`
 		Description  string  `json:"description"`
 		ImagePath    *string `json:"image_path"`
-		DisplayOrder int     `json:"display_order"`
+		DisplayOrder *int    `json:"display_order"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")

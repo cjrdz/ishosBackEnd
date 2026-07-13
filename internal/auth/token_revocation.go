@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/singleflight"
 )
 
 // TokenRevocationBackend defines the interface for token revocation stores.
@@ -51,7 +52,13 @@ var revocationCache = &revocationCheckCache{
 	entries: make(map[string]revocationCacheEntry),
 }
 
-const revocationCacheTTL = 10 * time.Second
+// revocationFlight prevents a thundering herd when the in-memory cache expires.
+// Concurrent requests for the same token share one DB lookup.
+var revocationFlight singleflight.Group
+
+// Tokens are rarely revoked, so negative (not-revoked) results dominate.
+// Caching them for one minute removes most revocation-check DB round trips.
+const revocationCacheTTL = 60 * time.Second
 
 func (c *revocationCheckCache) get(hash string) (revoked bool, ok bool) {
 	c.mu.RLock()
@@ -125,21 +132,26 @@ func IsTokenRevoked(token string) bool {
 		return revoked
 	}
 
-	now := time.Now()
 	holder := revokedTokens.Load().(tokenRevocationHolder)
 	if holder.backend == nil {
 		log.Error().Msg("Auth token revocation: no backend configured, treating as revoked")
 		return true // fail-closed
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	revoked, err := holder.backend.IsTokenRevoked(ctx, hash, now)
+	// Only one goroutine per token hash hits the DB; others wait and reuse
+	// the result. This keeps the connection pool from being swamped when a
+	// burst of authenticated requests arrives.
+	result, err, _ := revocationFlight.Do(hash, func() (interface{}, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return holder.backend.IsTokenRevoked(ctx, hash, time.Now())
+	})
 	if err != nil {
 		log.Error().Err(err).Msg("Auth token revocation: failed to check token status, treating as revoked")
 		return true // fail-closed
 	}
 
+	revoked := result.(bool)
 	// Cache the result so the next request avoids the DB round-trip.
 	revocationCache.set(hash, revoked)
 	return revoked

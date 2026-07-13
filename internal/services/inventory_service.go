@@ -11,6 +11,7 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
+	"github.com/cjrdz/ishosBackEnd/internal/models"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
@@ -19,15 +20,33 @@ var (
 	ErrInventoryNotFound = fmt.Errorf("%w: inventory item not found", apperror.ErrNotFound)
 )
 
+// defaultFlavorLowStockThreshold is used when a flavor inventory item is
+// auto-created on the first stock entry.
+const defaultFlavorLowStockThreshold = 100
+
 // InventoryService handles all inventory-related business logic.
 type InventoryService struct {
 	repo              InventoryRepository
 	containerTypeRepo ContainerTypeRepository
+	flavorRepo        FlavorRepository
+}
+
+// InventoryServiceOption configures an InventoryService.
+type InventoryServiceOption func(*InventoryService)
+
+// WithFlavorRepo enables the inventory service to look up flavor details and
+// auto-create inventory items for flavors that are not yet tracked.
+func WithFlavorRepo(r FlavorRepository) InventoryServiceOption {
+	return func(s *InventoryService) { s.flavorRepo = r }
 }
 
 // NewInventoryService creates a new inventory service.
-func NewInventoryService(repo InventoryRepository, containerTypeRepo ContainerTypeRepository) *InventoryService {
-	return &InventoryService{repo: repo, containerTypeRepo: containerTypeRepo}
+func NewInventoryService(repo InventoryRepository, containerTypeRepo ContainerTypeRepository, opts ...InventoryServiceOption) *InventoryService {
+	s := &InventoryService{repo: repo, containerTypeRepo: containerTypeRepo}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // List returns all inventory items.
@@ -233,10 +252,39 @@ func (s *InventoryService) RestoreForOrder(ctx context.Context, orderID uuid.UUI
 }
 
 // RecordEntry records a stock entry for a flavor (containers received).
+// If the flavor does not have an inventory item yet, it is created automatically
+// provided the service was configured with a FlavorRepository.
 func (s *InventoryService) RecordEntry(ctx context.Context, flavorID, containerTypeID uuid.UUID, quantityContainers int, ballsPerContainer int, createdByID string) (dto.StockMovement, error) {
 	invItem, err := s.repo.FindByFlavorID(ctx, flavorID)
 	if err != nil {
-		return dto.StockMovement{}, ErrInventoryNotFound
+		if !errors.Is(err, apperror.ErrNotFound) {
+			return dto.StockMovement{}, err
+		}
+
+		// Flavor not tracked yet. Auto-create an inventory item when possible.
+		if s.flavorRepo == nil {
+			return dto.StockMovement{}, ErrInventoryNotFound
+		}
+
+		flavor, flavorErr := s.flavorRepo.FindByID(ctx, flavorID)
+		if flavorErr != nil {
+			if errors.Is(flavorErr, apperror.ErrNotFound) {
+				return dto.StockMovement{}, fmt.Errorf("%w: flavor not found", apperror.ErrValidation)
+			}
+			return dto.StockMovement{}, flavorErr
+		}
+
+		created, createErr := s.repo.Create(ctx, repository.CreateInventoryItemInput{
+			Name:              flavor.Name,
+			Type:              string(models.InventoryItemTypeBallBased),
+			CurrentStock:      0,
+			LowStockThreshold: defaultFlavorLowStockThreshold,
+			FlavorID:          &flavorID,
+		})
+		if createErr != nil {
+			return dto.StockMovement{}, createErr
+		}
+		invItem = created
 	}
 
 	ct, err := s.containerTypeRepo.GetByID(ctx, containerTypeID)
@@ -428,4 +476,56 @@ type InventoryStats struct {
 	OutOfStockItems int `json:"out_of_stock_items"`
 	LowStockItems   int `json:"low_stock_items"`
 	HealthyItems    int `json:"healthy_items"`
+}
+
+// InventoryDashboard bundles the data the admin inventory tab needs on first
+// load. Computing it from a single ListLinked query removes two extra Neon
+// round trips compared with fetching flavors, units and stats separately.
+type InventoryDashboard struct {
+	FlavorItems []dto.InventoryItem `json:"flavor_items"`
+	UnitItems   []dto.InventoryItem `json:"unit_items"`
+	Stats       InventoryStats      `json:"stats"`
+}
+
+// GetInventoryDashboard returns flavor inventory, unit inventory and aggregate
+// stats in one shot.
+func (s *InventoryService) GetInventoryDashboard(ctx context.Context) (*InventoryDashboard, error) {
+	items, err := s.repo.ListLinked(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	dashboard := &InventoryDashboard{
+		FlavorItems: make([]dto.InventoryItem, 0, len(items)/2),
+		UnitItems:   make([]dto.InventoryItem, 0, len(items)/2),
+		Stats: InventoryStats{
+			TotalItems: len(items),
+		},
+	}
+
+	for _, item := range items {
+		switch item.Type {
+		case "ball_based":
+			dashboard.Stats.BallBasedItems++
+			if item.FlavorID != nil {
+				dashboard.FlavorItems = append(dashboard.FlavorItems, item)
+			}
+		case "unit_based":
+			dashboard.Stats.UnitBasedItems++
+			if item.ProductID != nil {
+				dashboard.UnitItems = append(dashboard.UnitItems, item)
+			}
+		}
+
+		switch {
+		case item.CurrentStock <= 0:
+			dashboard.Stats.OutOfStockItems++
+		case item.CurrentStock <= item.LowStockThreshold:
+			dashboard.Stats.LowStockItems++
+		default:
+			dashboard.Stats.HealthyItems++
+		}
+	}
+
+	return dashboard, nil
 }

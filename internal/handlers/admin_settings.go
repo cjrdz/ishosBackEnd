@@ -109,3 +109,47 @@ func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *ht
 		"offers":         activeOffers,
 	})
 }
+
+// GetArchiveSettings returns the persisted order archive configuration.
+//
+// GET /api/v1/settings/archive
+func (h *AdminSettingsHandler) GetArchiveSettings(w http.ResponseWriter, r *http.Request) {
+	cfg, err := h.settingsSvc.GetArchiveSettings(r.Context(), services.ArchiveConfig{})
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "No se pudo cargar configuración de archivo")
+		return
+	}
+	response.JSON(w, http.StatusOK, cfg)
+}
+
+// UpdateArchiveSettings persists the order archive configuration.
+//
+// PATCH /api/v1/settings/archive
+// Body: { "enabled": bool, "age_days": int, "interval_minutes": int }
+func (h *AdminSettingsHandler) UpdateArchiveSettings(w http.ResponseWriter, r *http.Request) {
+	var body services.ArchiveConfig
+	if err := decodeJSON(r, &body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
+		return
+	}
+
+	adminID := getAdminID(r)
+	saved, err := h.settingsSvc.UpdateArchiveSettings(r.Context(), body, adminID, services.ArchiveConfig{})
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración de archivo")
+		return
+	}
+
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(r.Context(), audit.ActionSettingsUpdated, actorID, "settings:archive", map[string]any{
+		"enabled":           saved.Enabled,
+		"age_days":          saved.AgeDays,
+		"interval_minutes":  saved.IntervalMinutes,
+	}, ip)
+
+	response.JSON(w, http.StatusOK, saved)
+}

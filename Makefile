@@ -51,7 +51,7 @@ format: ## Format code
 	goimports -w .
 
 bruno: ## Run Bruno API tests
-	cd ishosfactorytest && bruno run .
+	cd tests/testAPI && bruno run .
 
 backup-pb: ## Backup PocketBase data
 	./scripts/backup_pb.sh

@@ -87,8 +87,31 @@ func (r *CategoryBunRepository) FindBySlugWithProducts(ctx context.Context, slug
 	return category, nil
 }
 
-// Create creates a new category.
+// nextCategoryDisplayOrder returns the next available display_order for categories.
+func (r *CategoryBunRepository) nextDisplayOrder(ctx context.Context, db bun.IDB) (int, error) {
+	var max sql.NullInt64
+	if err := db.NewSelect().
+		Table("categories").
+		ColumnExpr("COALESCE(MAX(display_order), -1)").
+		Scan(ctx, &max); err != nil {
+		return 0, err
+	}
+	return int(max.Int64) + 1, nil
+}
+
+// Create creates a new category. If input.DisplayOrder is nil, it is auto-assigned.
 func (r *CategoryBunRepository) Create(ctx context.Context, input CreateCategoryInput) (dto.Category, error) {
+	displayOrder := 0
+	if input.DisplayOrder != nil {
+		displayOrder = *input.DisplayOrder
+	} else {
+		next, err := r.nextDisplayOrder(ctx, r.db)
+		if err != nil {
+			return dto.Category{}, err
+		}
+		displayOrder = next
+	}
+
 	now := time.Now()
 	normalizedImagePath, _ := normalizeCategoryImagePath(input.ImagePath)
 
@@ -98,7 +121,7 @@ func (r *CategoryBunRepository) Create(ctx context.Context, input CreateCategory
 		Slug:         input.Slug,
 		Description:  &input.Description,
 		ImagePath:    normalizedImagePath,
-		DisplayOrder: input.DisplayOrder,
+		DisplayOrder: displayOrder,
 		IsActive:     true,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -164,20 +187,36 @@ func (r *CategoryBunRepository) Update(ctx context.Context, id uuid.UUID, input 
 	return toCategoryDTOFromModel(model), nil
 }
 
-// Delete deletes a category by ID.
+// Delete deletes a category by ID and compacts the display_order of the remaining categories.
 func (r *CategoryBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	model := models.Category{ID: id}
-	res, err := r.db.NewDelete().Model(&model).WherePK().Exec(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return &apperror.NotFoundError{Resource: "category", Cause: err}
+	return runInTx(ctx, r.db, func(ctx context.Context, tx bun.Tx) error {
+		var row models.Category
+		if err := tx.NewSelect().Model(&row).Where("id = ?", id).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &apperror.NotFoundError{Resource: "category", Cause: err}
+			}
+			return err
 		}
+
+		model := models.Category{ID: id}
+		res, err := tx.NewDelete().Model(&model).WherePK().Exec(ctx)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &apperror.NotFoundError{Resource: "category", Cause: err}
+			}
+			return err
+		}
+		if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+			return &apperror.NotFoundError{Resource: "category"}
+		}
+
+		_, err = tx.NewUpdate().
+			Table("categories").
+			Set("display_order = display_order - 1").
+			Where("display_order > ?", row.DisplayOrder).
+			Exec(ctx)
 		return err
-	}
-	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
-		return &apperror.NotFoundError{Resource: "category"}
-	}
-	return nil
+	})
 }
 
 func toProductSummaryFromModel(p models.Product, categoryID uuid.UUID) dto.Product {

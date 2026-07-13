@@ -101,7 +101,7 @@ func (h *AddonHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name         string  `json:"name"`
 		Price        float64 `json:"price"`
 		GroupName    string  `json:"group_name"`
-		DisplayOrder int     `json:"display_order"`
+		DisplayOrder *int    `json:"display_order"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

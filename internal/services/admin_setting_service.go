@@ -26,9 +26,15 @@ type AdminSettingService struct {
 }
 
 const (
-	ordersEnabledCacheKey  = "settings:orders_enabled"
-	tokenTTLConfigCacheKey = "settings:token_ttl_config"
-	settingsCacheTTL       = 10 * time.Second
+	ordersEnabledCacheKey   = "settings:orders_enabled"
+	tokenTTLConfigCacheKey  = "settings:token_ttl_config"
+	archiveConfigCacheKey   = "settings:archive_config"
+	settingsCacheTTL        = 10 * time.Second
+)
+
+// Order archive configuration keys.
+const (
+	OrderArchiveConfigKey = "order.archive.config"
 )
 
 // Helper to validate and upsert a setting with audit
@@ -157,11 +163,13 @@ const StoreOrdersEnabledKey = "store.orders.enabled"
 const StoreOffersKey = "store.offers"
 
 type OfferItem struct {
-	ProductID     string  `json:"product_id"`
-	Label         string  `json:"label"`
-	Note          string  `json:"note,omitempty"`
-	DiscountPrice float64 `json:"discount_price,omitempty"`
-	ExpiresAt     string  `json:"expires_at"` // RFC 3339
+	ProductID     string   `json:"product_id"`
+	Label         string   `json:"label"`
+	Note          string   `json:"note,omitempty"`
+	DiscountPrice float64  `json:"discount_price,omitempty"`
+	FlavorID      string   `json:"flavor_id,omitempty"`
+	FlavorIDs     []string `json:"flavor_ids,omitempty"`
+	ExpiresAt     string   `json:"expires_at"` // RFC 3339
 }
 
 type StoreSettings struct {
@@ -208,6 +216,18 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 					if v, ok := m["discount_price"].(float64); ok {
 						item.DiscountPrice = v
 					}
+					if v, ok := m["flavor_id"].(string); ok {
+						item.FlavorID = v
+					}
+					if rawIds, ok := m["flavor_ids"].([]any); ok {
+						ids := make([]string, 0, len(rawIds))
+						for _, raw := range rawIds {
+							if id, idOK := raw.(string); idOK {
+								ids = append(ids, id)
+							}
+						}
+						item.FlavorIDs = ids
+					}
 					if v, ok := m["expires_at"].(string); ok {
 						item.ExpiresAt = v
 					}
@@ -241,6 +261,8 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 			"label":          o.Label,
 			"note":           o.Note,
 			"discount_price": o.DiscountPrice,
+			"flavor_id":      o.FlavorID,
+			"flavor_ids":     o.FlavorIDs,
 			"expires_at":     o.ExpiresAt,
 		})
 	}
@@ -249,6 +271,92 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 		return StoreSettings{}, fmt.Errorf("failed to save offers: %w", err)
 	}
 	return input, nil
+}
+
+// ArchiveConfig controls automatic order archiving.
+type ArchiveConfig struct {
+	Enabled         bool `json:"enabled"`
+	AgeDays         int  `json:"age_days"`
+	IntervalMinutes int  `json:"interval_minutes"`
+}
+
+func sanitizeArchiveConfig(input ArchiveConfig, defaults ArchiveConfig) ArchiveConfig {
+	resolved := ArchiveConfig{
+		Enabled:         input.Enabled,
+		AgeDays:         input.AgeDays,
+		IntervalMinutes: input.IntervalMinutes,
+	}
+	if resolved.AgeDays <= 0 {
+		resolved.AgeDays = defaults.AgeDays
+	}
+	if resolved.AgeDays <= 0 {
+		resolved.AgeDays = 7
+	}
+	if resolved.IntervalMinutes <= 0 {
+		resolved.IntervalMinutes = defaults.IntervalMinutes
+	}
+	if resolved.IntervalMinutes <= 0 {
+		resolved.IntervalMinutes = 60
+	}
+	return resolved
+}
+
+// GetArchiveSettings reads the persisted archive configuration, falling back to
+// the supplied defaults when no setting exists or values are invalid.
+func (s *AdminSettingService) GetArchiveSettings(ctx context.Context, defaults ArchiveConfig) (ArchiveConfig, error) {
+	result := sanitizeArchiveConfig(ArchiveConfig{}, defaults)
+	if s.repo == nil {
+		return result, nil
+	}
+
+	if v, ok := s.cache.Get(archiveConfigCacheKey); ok {
+		return sanitizeArchiveConfig(v.(ArchiveConfig), defaults), nil
+	}
+
+	rec, err := s.repo.GetByKey(ctx, OrderArchiveConfigKey)
+	if err != nil {
+		return result, nil
+	}
+
+	resolved := ArchiveConfig{
+		Enabled:         parseBoolSetting(rec.Value["enabled"]),
+		AgeDays:         parsePositiveInt(rec.Value["age_days"]),
+		IntervalMinutes: parsePositiveInt(rec.Value["interval_minutes"]),
+	}
+	result = sanitizeArchiveConfig(resolved, defaults)
+	s.cache.Set(archiveConfigCacheKey, result)
+	return result, nil
+}
+
+func parseBoolSetting(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return typed == "true" || typed == "1"
+	case float64:
+		return typed != 0
+	}
+	return false
+}
+
+// UpdateArchiveSettings persists archive configuration and invalidates the cache.
+func (s *AdminSettingService) UpdateArchiveSettings(ctx context.Context, input ArchiveConfig, changedBy string, defaults ArchiveConfig) (ArchiveConfig, error) {
+	sanitized := sanitizeArchiveConfig(input, defaults)
+	if s.repo == nil {
+		return sanitized, nil
+	}
+
+	value := map[string]any{
+		"enabled":          sanitized.Enabled,
+		"age_days":         sanitized.AgeDays,
+		"interval_minutes": sanitized.IntervalMinutes,
+	}
+	if err := s.upsertSetting(ctx, OrderArchiveConfigKey, value, changedBy); err != nil {
+		return ArchiveConfig{}, fmt.Errorf("failed to save archive settings: %w", err)
+	}
+	s.cache.Delete(archiveConfigCacheKey)
+	return sanitized, nil
 }
 
 // AreOrdersEnabled is a convenience helper for the kill-switch check.

@@ -77,8 +77,13 @@ func (r *OrderBunRepository) CreateItem(ctx context.Context, input CreateOrderIt
 }
 
 // ListPaginated returns paginated orders with items.
-func (r *OrderBunRepository) ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error) {
-	q := r.db.NewSelect().Model((*models.Order)(nil))
+// Product details are not loaded because the admin list response only needs
+// the snapshot product_name stored on each item; skipping the products query
+// removes one Neon round-trip per request.
+// archived=false excludes orders that have been archived; archived=true returns
+// only archived orders.
+func (r *OrderBunRepository) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("is_archived = ?", archived)
 	if status != "" {
 		q = q.Where("status = ?", status)
 	}
@@ -98,13 +103,26 @@ func (r *OrderBunRepository) ListPaginated(ctx context.Context, status string, p
 	return result, total, nil
 }
 
-// FindByIDWithItems returns an order with items and product details.
+// FindByIDWithItems returns an order with items. Product details are omitted
+// because the admin detail response uses the snapshot product_name only.
 func (r *OrderBunRepository) FindByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error) {
 	var order models.Order
 	if err := r.db.NewSelect().Model(&order).Where("id = ?", id).Scan(ctx); err != nil {
 		return dto.Order{}, translateOrderError(err)
 	}
 	result := r.attachItemsToOrders(ctx, []models.Order{order})
+	return result[0], nil
+}
+
+// FindByIDWithItemsAndProducts returns an order with items and the associated
+// product records. Use this when downstream logic (e.g. inventory deductions)
+// needs full product metadata.
+func (r *OrderBunRepository) FindByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error) {
+	var order models.Order
+	if err := r.db.NewSelect().Model(&order).Where("id = ?", id).Scan(ctx); err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+	result := r.attachItemsAndProductsToOrders(ctx, []models.Order{order})
 	return result[0], nil
 }
 
@@ -249,6 +267,69 @@ func (r *OrderBunRepository) UpdateNotes(ctx context.Context, id uuid.UUID, note
 	return r.FindByID(ctx, id)
 }
 
+// SetArchived updates an order's archive flag and returns the refreshed order.
+func (r *OrderBunRepository) SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error) {
+	res, err := r.db.NewUpdate().
+		Model((*models.Order)(nil)).
+		Set("is_archived = ?, updated_at = ?", archived, time.Now()).
+		Where("id = ?", id).
+		Exec(ctx)
+	if err != nil {
+		return dto.Order{}, translateOrderError(err)
+	}
+	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+		return dto.Order{}, &apperror.NotFoundError{Resource: "order"}
+	}
+	return r.FindByID(ctx, id)
+}
+
+// FindEligibleForArchive returns terminal-status orders that are not yet
+// archived and whose terminal timestamp (or updated_at fallback) is older than
+// the provided cutoff. Only orders whose current status is terminal are
+// considered, and the per-status timestamp in status_timestamps is preferred.
+func (r *OrderBunRepository) FindEligibleForArchive(ctx context.Context, terminalStatuses []string, cutoff time.Time, limit int) ([]dto.Order, error) {
+	if len(terminalStatuses) == 0 {
+		return nil, nil
+	}
+
+	q := r.db.NewSelect().Model((*models.Order)(nil)).
+		Where("is_archived = ?", false).
+		Where("status IN (?)", bun.List(terminalStatuses)).
+		Where(`COALESCE(
+			(status_timestamps->>'entregada')::timestamptz,
+			(status_timestamps->>'cancelada')::timestamptz,
+			updated_at
+		) < ?`, cutoff).
+		Order("created_at ASC").
+		Limit(limit)
+
+	var orders []models.Order
+	if err := q.Scan(ctx, &orders); err != nil {
+		return nil, err
+	}
+	return toOrderDTOsFromModels(orders), nil
+}
+
+// ArchiveOrders marks the provided orders as archived and returns the number
+// of rows actually changed.
+func (r *OrderBunRepository) ArchiveOrders(ctx context.Context, ids []uuid.UUID) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	res, err := r.db.NewUpdate().
+		Model((*models.Order)(nil)).
+		Set("is_archived = ?, updated_at = ?", true, time.Now()).
+		Where("id IN (?)", bun.List(ids)).
+		Where("is_archived = ?", false).
+		Exec(ctx)
+	if err != nil {
+		return 0, err
+	}
+	changed, _ := res.RowsAffected()
+	return int(changed), nil
+}
+
 // Delete deletes an order and its items.
 func (r *OrderBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	if _, err := r.db.NewDelete().Model((*models.OrderItem)(nil)).Where("order_items = ?", id).Exec(ctx); err != nil {
@@ -366,6 +447,34 @@ func (r *OrderBunRepository) attachItemsToOrders(ctx context.Context, orders []m
 	var items []models.OrderItem
 	if err := r.db.NewSelect().Model(&items).Where("order_items IN (?)", bun.List(orderIDs)).Scan(ctx); err != nil {
 		// Fall back to empty items on error; caller will return the error if needed.
+		items = nil
+	}
+
+	itemsByOrder := make(map[uuid.UUID][]dto.OrderItem)
+	for _, item := range items {
+		dtoItem := toOrderItemDTOFromModel(item, nil)
+		itemsByOrder[item.OrderID] = append(itemsByOrder[item.OrderID], dtoItem)
+	}
+
+	result := make([]dto.Order, len(orders))
+	for i, o := range orders {
+		result[i] = toOrderDTOFromModel(o, itemsByOrder[o.ID])
+	}
+	return result
+}
+
+func (r *OrderBunRepository) attachItemsAndProductsToOrders(ctx context.Context, orders []models.Order) []dto.Order {
+	if len(orders) == 0 {
+		return nil
+	}
+
+	orderIDs := make([]uuid.UUID, len(orders))
+	for i, o := range orders {
+		orderIDs[i] = o.ID
+	}
+
+	var items []models.OrderItem
+	if err := r.db.NewSelect().Model(&items).Where("order_items IN (?)", bun.List(orderIDs)).Scan(ctx); err != nil {
 		items = nil
 	}
 

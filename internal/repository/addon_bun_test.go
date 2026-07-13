@@ -18,7 +18,7 @@ func TestAddonBunRepository_CreateAndFind(t *testing.T) {
 		Name:         "Sprinkles",
 		Price:        0.5,
 		GroupName:    "toppings",
-		DisplayOrder: 1,
+		DisplayOrder: intPtr(1),
 		IsActive:     true,
 	})
 	require.NoError(t, err)

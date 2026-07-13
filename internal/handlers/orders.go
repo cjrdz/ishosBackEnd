@@ -31,8 +31,10 @@ type OrderHandler struct {
 	tracker        *services.TrackingTokenService
 	mapper         *services.OrderResponseMapper
 	settingsSvc    *services.AdminSettingService
+	archiver       *services.OrderArchiver
 	publicStoreURL string
-	responseCache  *cache.TTLCache
+	listCache      *cache.TTLCache
+	detailCache    *cache.TTLCache
 }
 
 func NewOrderHandler(
@@ -40,6 +42,7 @@ func NewOrderHandler(
 	tracker *services.TrackingTokenService,
 	mapper *services.OrderResponseMapper,
 	settingsSvc *services.AdminSettingService,
+	archiver *services.OrderArchiver,
 	publicStoreURL string,
 	rl *middleware.OrderRateLimiter,
 ) *OrderHandler {
@@ -49,13 +52,23 @@ func NewOrderHandler(
 		tracker:        tracker,
 		mapper:         mapper,
 		settingsSvc:    settingsSvc,
+		archiver:       archiver,
 		publicStoreURL: publicStoreURL,
-		responseCache:  cache.New(5 * time.Second),
+		// The frontend polls the orders list every 15 s; a 25 s TTL means most
+		// polls are served from memory instead of hitting Neon.
+		listCache: cache.New(25 * time.Second),
+		// Detail views are read-heavy and invalidated on mutation, so cache a
+		// bit longer to make reopening/reprinting the same order fast.
+		detailCache: cache.New(60 * time.Second),
 	}
 }
 
 func (h *OrderHandler) invalidateListCache() {
-	h.responseCache.InvalidateAll()
+	h.listCache.InvalidateAll()
+}
+
+func (h *OrderHandler) invalidateOrderCache(id uuid.UUID) {
+	h.detailCache.Delete(fmt.Sprintf("order:%s", id.String()))
 }
 
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -173,15 +186,16 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	lite := r.URL.Query().Get("lite") == "true"
+	archived := r.URL.Query().Get("archived") == "true"
 	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
-	cacheKey := fmt.Sprintf("orders:%s:%t:%d:%d", status, lite, params.Page, params.PerPage)
+	cacheKey := fmt.Sprintf("orders:%s:%t:%t:%d:%d", status, lite, archived, params.Page, params.PerPage)
 
-	if cached, ok := h.responseCache.Get(cacheKey); ok {
+	if cached, ok := h.listCache.Get(cacheKey); ok {
 		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
-	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, params.Page, params.PerPage)
+	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, archived, params.Page, params.PerPage)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -193,7 +207,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 			responses[i] = h.mapper.MapLite(o)
 		}
 		paginated := response.NewPaginated(responses, params.Page, params.PerPage, total)
-		h.responseCache.Set(cacheKey, paginated)
+		h.listCache.Set(cacheKey, paginated)
 		response.JSON(w, http.StatusOK, paginated)
 		return
 	}
@@ -205,7 +219,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		responses[i] = h.mapper.Map(o)
 	}
 	paginated := response.NewPaginated(responses, params.Page, params.PerPage, total)
-	h.responseCache.Set(cacheKey, paginated)
+	h.listCache.Set(cacheKey, paginated)
 	response.JSON(w, http.StatusOK, paginated)
 }
 
@@ -213,6 +227,12 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		return
+	}
+
+	cacheKey := fmt.Sprintf("order:%s", id.String())
+	if cached, ok := h.detailCache.Get(cacheKey); ok {
+		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
@@ -225,7 +245,11 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Warm employee cache so created_by resolution does not hit PocketBase
+	// on a cold cache for the first detail request after server start.
+	h.mapper.PreloadEmployees()
 	resp := h.mapper.Map(order)
+	h.detailCache.Set(cacheKey, resp)
 	response.JSON(w, http.StatusOK, resp)
 }
 
@@ -324,6 +348,7 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateListCache()
+	h.invalidateOrderCache(id)
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -359,6 +384,7 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateListCache()
+	h.invalidateOrderCache(id)
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -409,6 +435,7 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateListCache()
+	h.invalidateOrderCache(id)
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -496,6 +523,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateListCache()
+	h.invalidateOrderCache(id)
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -533,6 +561,7 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateListCache()
+	h.invalidateOrderCache(id)
 	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
 }
 
@@ -568,5 +597,63 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.invalidateListCache()
+	h.invalidateOrderCache(id)
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Order deleted"})
+}
+
+// Archive toggles the archive flag of an order.
+//
+// PATCH /api/v1/orders/{id}/archive
+// Body: { "archived": bool }
+func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		return
+	}
+
+	var body struct {
+		Archived bool `json:"archived"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid body")
+		return
+	}
+
+	actorID := ""
+	if record, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(record)
+	}
+
+	updated, err := h.orderSvc.SetArchived(audit.ContextFromRequest(r, actorID), id, body.Archived)
+	if err != nil {
+		writeAppError(w, err, "Failed to update archive status")
+		return
+	}
+
+	h.invalidateListCache()
+	h.invalidateOrderCache(id)
+	response.JSON(w, http.StatusOK, h.mapper.Map(updated))
+}
+
+// RunArchive triggers an immediate auto-archive pass.
+//
+// POST /api/v1/admin/orders/archive/run
+func (h *OrderHandler) RunArchive(w http.ResponseWriter, r *http.Request) {
+	if h.archiver == nil {
+		response.Error(w, http.StatusServiceUnavailable, "Archiver not configured")
+		return
+	}
+
+	archived, err := h.archiver.RunOnce(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Manual archive run failed")
+		response.Error(w, http.StatusInternalServerError, "Failed to run archive")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"archived": archived,
+		"message":  "Archivo ejecutado",
+	})
 }

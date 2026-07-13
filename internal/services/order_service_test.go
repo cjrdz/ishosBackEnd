@@ -14,9 +14,10 @@ import (
 )
 
 type orderRepoStub struct {
-	listFn                    func(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error)
+	listFn                    func(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
 	findByID                  func(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	findByIDWithItems         func(ctx context.Context, id uuid.UUID) (dto.Order, error)
+	findByIDWithItemsAndProducts func(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	findByOrderNumber         func(ctx context.Context, orderNumber string) (dto.Order, error)
 	findByOrderNumberAndPhone func(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
 	findRecentByPhone         func(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
@@ -25,12 +26,13 @@ type orderRepoStub struct {
 	rejectFn                  func(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error)
 	updateStatusFn            func(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
 	updateNotesFn             func(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
+	setArchivedFn             func(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
 	deleteFn                  func(ctx context.Context, id uuid.UUID) error
 }
 
-func (s *orderRepoStub) ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error) {
+func (s *orderRepoStub) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
 	if s.listFn != nil {
-		return s.listFn(ctx, status, page, limit)
+		return s.listFn(ctx, status, archived, page, limit)
 	}
 	return nil, 0, nil
 }
@@ -45,6 +47,13 @@ func (s *orderRepoStub) FindByID(ctx context.Context, id uuid.UUID) (dto.Order, 
 func (s *orderRepoStub) FindByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error) {
 	if s.findByIDWithItems != nil {
 		return s.findByIDWithItems(ctx, id)
+	}
+	return dto.Order{}, nil
+}
+
+func (s *orderRepoStub) FindByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error) {
+	if s.findByIDWithItemsAndProducts != nil {
+		return s.findByIDWithItemsAndProducts(ctx, id)
 	}
 	return dto.Order{}, nil
 }
@@ -105,6 +114,13 @@ func (s *orderRepoStub) UpdateNotes(ctx context.Context, id uuid.UUID, notes *st
 	return dto.Order{}, nil
 }
 
+func (s *orderRepoStub) SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error) {
+	if s.setArchivedFn != nil {
+		return s.setArchivedFn(ctx, id, archived)
+	}
+	return dto.Order{ID: id, IsArchived: archived}, nil
+}
+
 func (s *orderRepoStub) Delete(ctx context.Context, id uuid.UUID) error {
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, id)
@@ -126,6 +142,14 @@ func (s *orderRepoStub) FindOrderItemsByOrderDateRange(ctx context.Context, star
 
 func (s *orderRepoStub) Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error) {
 	return 0, 0, nil
+}
+
+func (s *orderRepoStub) FindEligibleForArchive(ctx context.Context, terminalStatuses []string, cutoff time.Time, limit int) ([]dto.Order, error) {
+	return nil, nil
+}
+
+func (s *orderRepoStub) ArchiveOrders(ctx context.Context, ids []uuid.UUID) (int, error) {
+	return 0, nil
 }
 
 type orderStoreStub struct {
@@ -192,12 +216,12 @@ func TestOrderQueryService_GetByOrderNumber_NotFound(t *testing.T) {
 }
 
 func TestOrderQueryService_ListPaginated(t *testing.T) {
-	repo := &orderRepoStub{listFn: func(_ context.Context, _ string, _, _ int) ([]dto.Order, int, error) {
+	repo := &orderRepoStub{listFn: func(_ context.Context, _ string, _ bool, _, _ int) ([]dto.Order, int, error) {
 		return []dto.Order{{OrderNumber: "ORD-1"}}, 1, nil
 	}}
 	svc := NewOrderQueryService(repo)
 
-	orders, total, err := svc.ListPaginated(context.Background(), "", 1, 10)
+	orders, total, err := svc.ListPaginated(context.Background(), "", false, 1, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

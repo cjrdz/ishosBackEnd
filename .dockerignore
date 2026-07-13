@@ -7,7 +7,7 @@
 pb_data
 bin
 tests
-ishosfactorytest
+testAPI
 *.log
 coverage.out
 coverage.html

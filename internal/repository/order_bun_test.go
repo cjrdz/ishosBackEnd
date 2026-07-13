@@ -140,7 +140,7 @@ func TestOrderBunRepository_ListPaginated(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	orders, total, err := repo.ListPaginated(ctx, "", 1, 10)
+	orders, total, err := repo.ListPaginated(ctx, "", false, 1, 10)
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	assert.Equal(t, 1, total)

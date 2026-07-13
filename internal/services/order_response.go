@@ -49,6 +49,7 @@ type OrderResponse struct {
 	TrackingToken          *string              `json:"tracking_token,omitempty"`
 	TrackingTokenExpiresAt *time.Time           `json:"tracking_token_expires_at,omitempty"`
 	TrackingURL            *string              `json:"tracking_url,omitempty"`
+	IsArchived             bool                 `json:"is_archived"`
 }
 
 type employeeCacheEntry struct {
@@ -209,6 +210,7 @@ func (m *OrderResponseMapper) mapInternal(order dto.Order, access *TrackingAcces
 		UpdatedAt:        order.UpdatedAt,
 		StatusTimestamps: order.StatusTimestamps,
 		Items:            items,
+		IsArchived:       order.IsArchived,
 	}
 
 	if access != nil {

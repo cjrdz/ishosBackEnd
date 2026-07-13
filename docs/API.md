@@ -1160,7 +1160,7 @@ Response `200 OK`:
 
 ### Setup
 
-1. Open Bruno, create a new collection called **ishosBackend**.
+1. Open Bruno, create a new collection called **testAPI** or use the existing one.
 2. Enable the cookie jar in the collection settings.
 3. Create an environment called **dev** with variable:
    - `BASE_URL` = `http://localhost:8080`

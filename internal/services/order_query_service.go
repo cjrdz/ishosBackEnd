@@ -22,13 +22,20 @@ func NewOrderQueryService(orderRepo OrderRepository) *OrderQueryService {
 }
 
 // ListPaginated retrieves paginated orders by status.
-func (s *OrderQueryService) ListPaginated(ctx context.Context, status string, page, limit int) ([]dto.Order, int, error) {
-	return s.orderRepo.ListPaginated(ctx, status, page, limit)
+// archived=false returns active orders; archived=true returns only archived orders.
+func (s *OrderQueryService) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+	return s.orderRepo.ListPaginated(ctx, status, archived, page, limit)
 }
 
 // GetByIDWithItems retrieves an order by ID with its items loaded.
 func (s *OrderQueryService) GetByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error) {
 	return s.orderRepo.FindByIDWithItems(ctx, id)
+}
+
+// GetByIDWithItemsAndProducts retrieves an order by ID with its items and the
+// full product records needed for inventory deductions.
+func (s *OrderQueryService) GetByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error) {
+	return s.orderRepo.FindByIDWithItemsAndProducts(ctx, id)
 }
 
 // GetByOrderNumber retrieves an order by its order number.

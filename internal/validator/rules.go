@@ -111,7 +111,7 @@ func ValidateEmployeeUpdate(email, password, name, phone, role, state *string) V
 	return errs
 }
 
-func ValidateCategoryCreate(name, slug string, displayOrder int) ValidationErrors {
+func ValidateCategoryCreate(name, slug string, displayOrder *int) ValidationErrors {
 	var errs ValidationErrors
 
 	if strings.TrimSpace(name) == "" {
@@ -126,7 +126,7 @@ func ValidateCategoryCreate(name, slug string, displayOrder int) ValidationError
 		errs.Add("slug", "max 100 characters")
 	}
 
-	if displayOrder < 0 {
+	if displayOrder != nil && *displayOrder < 0 {
 		errs.Add("display_order", "must be zero or positive")
 	}
 

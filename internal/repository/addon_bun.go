@@ -56,15 +56,38 @@ func (r *AddonBunRepository) FindByID(ctx context.Context, id uuid.UUID) (dto.Ad
 	return toAddonDTOFromModel(row), nil
 }
 
-// Create creates a new addon.
+// nextAddonDisplayOrder returns the next available display_order for addons.
+func (r *AddonBunRepository) nextDisplayOrder(ctx context.Context, db bun.IDB) (int, error) {
+	var max sql.NullInt64
+	if err := db.NewSelect().
+		Table("addons").
+		ColumnExpr("COALESCE(MAX(display_order), -1)").
+		Scan(ctx, &max); err != nil {
+		return 0, err
+	}
+	return int(max.Int64) + 1, nil
+}
+
+// Create creates a new addon. If input.DisplayOrder is nil, it is auto-assigned.
 func (r *AddonBunRepository) Create(ctx context.Context, input CreateAddonInput) (dto.Addon, error) {
+	displayOrder := 0
+	if input.DisplayOrder != nil {
+		displayOrder = *input.DisplayOrder
+	} else {
+		next, err := r.nextDisplayOrder(ctx, r.db)
+		if err != nil {
+			return dto.Addon{}, err
+		}
+		displayOrder = next
+	}
+
 	now := time.Now()
 	row := models.Addon{
 		ID:           uuid.New(),
 		Name:         input.Name,
 		Price:        input.Price,
 		GroupName:    input.GroupName,
-		DisplayOrder: input.DisplayOrder,
+		DisplayOrder: displayOrder,
 		IsActive:     input.IsActive,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -121,20 +144,36 @@ func (r *AddonBunRepository) Update(ctx context.Context, id uuid.UUID, input Upd
 	return toAddonDTOFromModel(model), nil
 }
 
-// Delete deletes an addon by ID.
+// Delete deletes an addon by ID and compacts the display_order of the remaining addons.
 func (r *AddonBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	model := models.Addon{ID: id}
-	res, err := r.db.NewDelete().Model(&model).WherePK().Exec(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return &apperror.NotFoundError{Resource: "addon", Cause: err}
+	return runInTx(ctx, r.db, func(ctx context.Context, tx bun.Tx) error {
+		var row models.Addon
+		if err := tx.NewSelect().Model(&row).Where("id = ?", id).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &apperror.NotFoundError{Resource: "addon", Cause: err}
+			}
+			return err
 		}
+
+		model := models.Addon{ID: id}
+		res, err := tx.NewDelete().Model(&model).WherePK().Exec(ctx)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &apperror.NotFoundError{Resource: "addon", Cause: err}
+			}
+			return err
+		}
+		if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+			return &apperror.NotFoundError{Resource: "addon"}
+		}
+
+		_, err = tx.NewUpdate().
+			Table("addons").
+			Set("display_order = display_order - 1").
+			Where("display_order > ?", row.DisplayOrder).
+			Exec(ctx)
 		return err
-	}
-	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
-		return &apperror.NotFoundError{Resource: "addon"}
-	}
-	return nil
+	})
 }
 
 func toAddonDTOFromModel(m models.Addon) dto.Addon {

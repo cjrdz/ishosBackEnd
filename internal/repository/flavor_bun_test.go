@@ -51,7 +51,7 @@ func TestFlavorBunRepository_CreateAndFind(t *testing.T) {
 
 	created, err := repo.Create(ctx, CreateFlavorInput{
 		Name:         "Chocolate",
-		DisplayOrder: 1,
+		DisplayOrder: intPtr(1),
 		IsSeasonal:   false,
 		IsActive:     true,
 	})
@@ -74,7 +74,7 @@ func TestFlavorBunRepository_Update(t *testing.T) {
 	db := newTestBunDB(t)
 	repo := NewFlavorBunRepository(db)
 
-	created, err := repo.Create(ctx, CreateFlavorInput{Name: "Vanilla", DisplayOrder: 2, IsActive: true})
+	created, err := repo.Create(ctx, CreateFlavorInput{Name: "Vanilla", DisplayOrder: intPtr(2), IsActive: true})
 	require.NoError(t, err)
 
 	name := "Vanilla Bean"
@@ -84,17 +84,39 @@ func TestFlavorBunRepository_Update(t *testing.T) {
 	assert.Equal(t, 2, updated.DisplayOrder)
 }
 
-func TestFlavorBunRepository_Delete(t *testing.T) {
+func TestFlavorBunRepository_AutoDisplayOrder(t *testing.T) {
 	ctx := context.Background()
 	db := newTestBunDB(t)
 	repo := NewFlavorBunRepository(db)
 
-	created, err := repo.Create(ctx, CreateFlavorInput{Name: "Strawberry", DisplayOrder: 3, IsActive: true})
+	first, err := repo.Create(ctx, CreateFlavorInput{Name: "Vanilla", IsActive: true})
+	require.NoError(t, err)
+	assert.Equal(t, 0, first.DisplayOrder)
+
+	second, err := repo.Create(ctx, CreateFlavorInput{Name: "Chocolate", IsActive: true})
+	require.NoError(t, err)
+	assert.Equal(t, 1, second.DisplayOrder)
+}
+
+func TestFlavorBunRepository_DeleteCompactsOrder(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	repo := NewFlavorBunRepository(db)
+
+	first, err := repo.Create(ctx, CreateFlavorInput{Name: "Vanilla", DisplayOrder: intPtr(0), IsActive: true})
+	require.NoError(t, err)
+	second, err := repo.Create(ctx, CreateFlavorInput{Name: "Chocolate", DisplayOrder: intPtr(1), IsActive: true})
+	require.NoError(t, err)
+	third, err := repo.Create(ctx, CreateFlavorInput{Name: "Strawberry", DisplayOrder: intPtr(2), IsActive: true})
 	require.NoError(t, err)
 
-	require.NoError(t, repo.Delete(ctx, created.ID))
+	require.NoError(t, repo.Delete(ctx, second.ID))
 
-	_, err = repo.FindByID(ctx, created.ID)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
+	updatedThird, err := repo.FindByID(ctx, third.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, updatedThird.DisplayOrder)
+
+	updatedFirst, err := repo.FindByID(ctx, first.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, updatedFirst.DisplayOrder)
 }

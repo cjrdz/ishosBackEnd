@@ -33,7 +33,9 @@ type Server struct {
 	router             chi.Router
 	cfg                *config.Config
 	trackingTokenStore *repository.TrackingTokenBunStore
+	archiver           *services.OrderArchiver
 	cleanupCancel      context.CancelFunc
+	archiverCancel     context.CancelFunc
 }
 
 // New creates a new Server instance with all dependencies initialized.
@@ -74,7 +76,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	productSvc := services.NewProductService(productRepo)
 	settingsSvc := services.NewAdminSettingService(settingsRepo)
 	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
-	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo)
+	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo, services.WithFlavorRepo(flavorRepo))
 	auditSvc := audit.NewService(repository.NewAuditLogBunRepository(bunDB))
 	authService := auth.NewService(
 		pb,
@@ -132,6 +134,12 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		cfg.PublicStoreURL,
 		auditSvc,
 	)
+	archiveDefaults := services.ArchiveConfig{
+		Enabled:         cfg.OrderArchiveEnabled,
+		AgeDays:         cfg.OrderArchiveAgeDays,
+		IntervalMinutes: cfg.OrderArchiveIntervalMinutes,
+	}
+	orderArchiver := services.NewOrderArchiver(orderRepo, settingsSvc, archiveDefaults)
 	orderResponseMapper := services.NewOrderResponseMapper(pb)
 	publicStoreURL := strings.TrimRight(strings.TrimSpace(cfg.PublicStoreURL), "/")
 
@@ -170,7 +178,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		cfg.RedisURL,
 		cfg.RedisPrefix,
 	)
-	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, publicStoreURL, orderRateLimiter)
+	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, orderArchiver, publicStoreURL, orderRateLimiter)
 
 	// ── Middleware ───────────────────────────────────────────────────────
 	loginRateLimiter := appmiddleware.NewLoginRateLimit(authService)
@@ -245,6 +253,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 				protectedSettings.Use(authMiddleware.RequireSession)
 				protectedSettings.Get("/store", adminSettingsHandler.GetStoreSettings)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/store", adminSettingsHandler.UpdateStoreSettings)
+				protectedSettings.With(appmiddleware.RequireAdmin).Get("/archive", adminSettingsHandler.GetArchiveSettings)
+				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/archive", adminSettingsHandler.UpdateArchiveSettings)
 			})
 		})
 
@@ -306,7 +316,11 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.Post("/orders/{id}/reject", orderHandler.Reject)
 			protected.Patch("/orders/{id}/status", orderHandler.UpdateStatus)
 			protected.Patch("/orders/{id}/notes", orderHandler.UpdateNotes)
+			protected.With(appmiddleware.RequireAdmin).Patch("/orders/{id}/archive", orderHandler.Archive)
 			protected.Delete("/orders/{id}", orderHandler.Delete)
+
+			// Admin archive run
+			protected.With(appmiddleware.RequireAdmin).Post("/admin/orders/archive/run", orderHandler.RunArchive)
 
 			// Analytics (admin only)
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/overview", analyticsHandler.Overview)
@@ -316,6 +330,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			// Inventory (admin only)
 			protected.With(appmiddleware.RequireAdmin).Route("/inventory", func(inv chi.Router) {
 				inv.Get("/", inventoryHandler.List)
+				inv.Get("/dashboard", inventoryHandler.Dashboard)
 				inv.Get("/flavors", inventoryHandler.ListFlavorInventory)
 				inv.Get("/unit-products", inventoryHandler.ListUnitInventory)
 				inv.Post("/unit-products", inventoryHandler.CreateUnitInventoryItem)
@@ -358,6 +373,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		router:             r,
 		cfg:                cfg,
 		trackingTokenStore: trackingTokenStore,
+		archiver:           orderArchiver,
 	}, nil
 }
 
@@ -484,7 +500,8 @@ func (s *Server) Router() http.Handler {
 }
 
 // StartBackgroundJobs starts non-blocking maintenance goroutines (e.g. periodic
-// cleanup of expired tracking tokens). Call this after the server is running.
+// cleanup of expired tracking tokens and order archiving). Call this after the
+// server is running.
 func (s *Server) StartBackgroundJobs(ctx context.Context) {
 	if s.trackingTokenStore == nil {
 		return
@@ -513,12 +530,21 @@ func (s *Server) StartBackgroundJobs(ctx context.Context) {
 			}
 		}
 	}()
+
+	if s.archiver != nil {
+		archCtx, archCancel := context.WithCancel(ctx)
+		s.archiverCancel = archCancel
+		go s.archiver.Start(archCtx)
+	}
 }
 
 // Close gracefully shuts down the database connection.
 func (s *Server) Close() {
 	if s.cleanupCancel != nil {
 		s.cleanupCancel()
+	}
+	if s.archiverCancel != nil {
+		s.archiverCancel()
 	}
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {

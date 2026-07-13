@@ -56,13 +56,36 @@ func (r *FlavorBunRepository) FindByID(ctx context.Context, id uuid.UUID) (dto.F
 	return toFlavorDTOFromModel(row), nil
 }
 
-// Create creates a new flavor.
+// nextFlavorDisplayOrder returns the next available display_order for flavors.
+func (r *FlavorBunRepository) nextDisplayOrder(ctx context.Context, db bun.IDB) (int, error) {
+	var max sql.NullInt64
+	if err := db.NewSelect().
+		Table("flavors").
+		ColumnExpr("COALESCE(MAX(display_order), -1)").
+		Scan(ctx, &max); err != nil {
+		return 0, err
+	}
+	return int(max.Int64) + 1, nil
+}
+
+// Create creates a new flavor. If input.DisplayOrder is nil, it is auto-assigned.
 func (r *FlavorBunRepository) Create(ctx context.Context, input CreateFlavorInput) (dto.Flavor, error) {
+	displayOrder := 0
+	if input.DisplayOrder != nil {
+		displayOrder = *input.DisplayOrder
+	} else {
+		next, err := r.nextDisplayOrder(ctx, r.db)
+		if err != nil {
+			return dto.Flavor{}, err
+		}
+		displayOrder = next
+	}
+
 	now := time.Now()
 	row := models.Flavor{
 		ID:           uuid.New(),
 		Name:         input.Name,
-		DisplayOrder: input.DisplayOrder,
+		DisplayOrder: displayOrder,
 		IsSeasonal:   input.IsSeasonal,
 		IsActive:     input.IsActive,
 		CreatedAt:    now,
@@ -116,20 +139,36 @@ func (r *FlavorBunRepository) Update(ctx context.Context, id uuid.UUID, input Up
 	return toFlavorDTOFromModel(model), nil
 }
 
-// Delete deletes a flavor by ID.
+// Delete deletes a flavor by ID and compacts the display_order of the remaining flavors.
 func (r *FlavorBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	model := models.Flavor{ID: id}
-	res, err := r.db.NewDelete().Model(&model).WherePK().Exec(ctx)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return &apperror.NotFoundError{Resource: "flavor", Cause: err}
+	return runInTx(ctx, r.db, func(ctx context.Context, tx bun.Tx) error {
+		var row models.Flavor
+		if err := tx.NewSelect().Model(&row).Where("id = ?", id).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &apperror.NotFoundError{Resource: "flavor", Cause: err}
+			}
+			return err
 		}
+
+		model := models.Flavor{ID: id}
+		res, err := tx.NewDelete().Model(&model).WherePK().Exec(ctx)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return &apperror.NotFoundError{Resource: "flavor", Cause: err}
+			}
+			return err
+		}
+		if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+			return &apperror.NotFoundError{Resource: "flavor"}
+		}
+
+		_, err = tx.NewUpdate().
+			Table("flavors").
+			Set("display_order = display_order - 1").
+			Where("display_order > ?", row.DisplayOrder).
+			Exec(ctx)
 		return err
-	}
-	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
-		return &apperror.NotFoundError{Resource: "flavor"}
-	}
-	return nil
+	})
 }
 
 func toFlavorDTOFromModel(m models.Flavor) dto.Flavor {

@@ -20,7 +20,7 @@ func TestCategoryBunRepository_CreateAndFind(t *testing.T) {
 		Name:         "Ice Cream",
 		Slug:         "ice-cream",
 		Description:  "Frozen treats",
-		DisplayOrder: 1,
+		DisplayOrder: intPtr(1),
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Ice Cream", created.Name)
@@ -44,9 +44,9 @@ func TestCategoryBunRepository_FindActive(t *testing.T) {
 	db := newTestBunDB(t)
 	repo := NewCategoryBunRepository(db)
 
-	activeCat, err := repo.Create(ctx, CreateCategoryInput{Name: "Active", Slug: "active", DisplayOrder: 1})
+	activeCat, err := repo.Create(ctx, CreateCategoryInput{Name: "Active", Slug: "active", DisplayOrder: intPtr(1)})
 	require.NoError(t, err)
-	inactiveCat, err := repo.Create(ctx, CreateCategoryInput{Name: "Inactive", Slug: "inactive", DisplayOrder: 2})
+	inactiveCat, err := repo.Create(ctx, CreateCategoryInput{Name: "Inactive", Slug: "inactive", DisplayOrder: intPtr(2)})
 	require.NoError(t, err)
 	isActive := false
 	_, err = repo.Update(ctx, inactiveCat.ID, UpdateCategoryInput{IsActive: &isActive})
@@ -63,7 +63,7 @@ func TestCategoryBunRepository_FindBySlugWithProducts(t *testing.T) {
 	db := newTestBunDB(t)
 	repo := NewCategoryBunRepository(db)
 
-	cat, err := repo.Create(ctx, CreateCategoryInput{Name: "Shakes", Slug: "shakes", DisplayOrder: 1})
+	cat, err := repo.Create(ctx, CreateCategoryInput{Name: "Shakes", Slug: "shakes", DisplayOrder: intPtr(1)})
 	require.NoError(t, err)
 
 	product := models.Product{
@@ -86,7 +86,7 @@ func TestCategoryBunRepository_UpdateAndDelete(t *testing.T) {
 	db := newTestBunDB(t)
 	repo := NewCategoryBunRepository(db)
 
-	created, err := repo.Create(ctx, CreateCategoryInput{Name: "Old", Slug: "old", DisplayOrder: 1})
+	created, err := repo.Create(ctx, CreateCategoryInput{Name: "Old", Slug: "old", DisplayOrder: intPtr(1)})
 	require.NoError(t, err)
 
 	name := "New"

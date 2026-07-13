@@ -30,6 +30,18 @@ var SettingsRegistry = map[string]struct {
 			return json.Unmarshal(raw, &v)
 		},
 	},
+	// OrderArchiveConfigKey = "order.archive.config"
+	// Value shape: {"enabled": bool, "age_days": int, "interval_minutes": int}
+	"order.archive.config": {
+		Validate: func(raw json.RawMessage) error {
+			var v struct {
+				Enabled         bool `json:"enabled"`
+				AgeDays         int  `json:"age_days"`
+				IntervalMinutes int  `json:"interval_minutes"`
+			}
+			return json.Unmarshal(raw, &v)
+		},
+	},
 }
 
 // Helper to check key and value
