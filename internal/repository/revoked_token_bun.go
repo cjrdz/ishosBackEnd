@@ -73,3 +73,17 @@ func (s *RevokedTokenBunStore) IsTokenRevoked(ctx context.Context, tokenHash str
 
 	return exists, nil
 }
+
+// CleanupExpired deletes revoked token rows whose expires_at has passed.
+func (s *RevokedTokenBunStore) CleanupExpired(ctx context.Context, now time.Time) (int64, error) {
+	if s.db == nil {
+		return 0, nil
+	}
+
+	res, err := s.db.NewDelete().Model((*models.RevokedToken)(nil)).Where("expires_at <= ?", now.UTC()).Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup expired revoked tokens (bun): %w", err)
+	}
+
+	return res.RowsAffected()
+}

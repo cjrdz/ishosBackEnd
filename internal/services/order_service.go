@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
-	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/events"
 )
@@ -74,7 +73,7 @@ type UpdateOrderInput struct {
 	Items         []OrderItemInput
 }
 
-func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerRepo CustomerRepository, productRepo ProductRepository, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string, auditSvc audit.Service) *OrderService {
+func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerRepo CustomerRepository, productRepo ProductRepository, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string) *OrderService {
 	return &OrderService{
 		orderRepo:      orderRepo,
 		tracker:        tracker,
@@ -83,7 +82,7 @@ func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerR
 		enrichment:     NewOrderEnrichmentService(),
 		query:          NewOrderQueryService(orderRepo),
 		tracking:       NewOrderTrackingService(tracker, orderRepo, publicStoreURL),
-		command:        NewOrderCommandService(orderRepo, orderStore, customerRepo, productRepo, inventory, dispatcher, tracker, auditSvc),
+		command:        NewOrderCommandService(orderRepo, orderStore, customerRepo, productRepo, inventory, dispatcher, tracker),
 	}
 }
 

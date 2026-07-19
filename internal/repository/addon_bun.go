@@ -146,7 +146,7 @@ func (r *AddonBunRepository) Update(ctx context.Context, id uuid.UUID, input Upd
 
 // Delete deletes an addon by ID and compacts the display_order of the remaining addons.
 func (r *AddonBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return runInTx(ctx, r.db, func(ctx context.Context, tx bun.Tx) error {
+	return runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
 		var row models.Addon
 		if err := tx.NewSelect().Model(&row).Where("id = ?", id).Scan(ctx); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

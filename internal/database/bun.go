@@ -2,8 +2,8 @@
 package database
 
 import (
-	stdsql "database/sql"
 	"context"
+	stdsql "database/sql"
 	"errors"
 	"time"
 

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 
 	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
@@ -26,26 +26,6 @@ type AnalyticsHandler struct {
 	cache       *cachepkg.TTLCache
 	redis       *redis.Client
 	redisPrefix string
-}
-
-type analyticsOverviewResponse struct {
-	Period          string         `json:"period"`
-	TotalOrders     int            `json:"total_orders"`
-	TotalRevenue    float64        `json:"total_revenue"`
-	AvgOrderValue   float64        `json:"avg_order_value"`
-	StatusBreakdown map[string]int `json:"status_breakdown"`
-}
-
-type analyticsTimelinePointResponse struct {
-	Date    string  `json:"date"`
-	Count   int     `json:"count"`
-	Revenue float64 `json:"revenue"`
-}
-
-type analyticsTopProductResponse struct {
-	Name       string  `json:"name"`
-	TotalSold  int     `json:"total_sold"`
-	TotalValue float64 `json:"total_value"`
 }
 
 func NewAnalyticsHandler(orderRepo services.OrderRepository, cfg *config.Config) *AnalyticsHandler {
@@ -81,7 +61,7 @@ func NewAnalyticsHandler(orderRepo services.OrderRepository, cfg *config.Config)
 func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	// cache key includes the full query string so period variants are cached independently.
 	cacheKey := "analytics:overview:" + r.URL.RawQuery
-	var cached analyticsOverviewResponse
+	var cached dto.AnalyticsOverview
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
 		return
@@ -98,45 +78,20 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, err := h.orderRepo.FindByDateRange(r.Context(), start, time.Now(), nil)
+	result, err := h.orderRepo.AnalyticsOverview(r.Context(), start, time.Now())
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
 		return
 	}
+	result.Period = period
 
-	statusBreakdown := make(map[string]int)
-	totalRevenue := 0.0
-	nonCancelledCount := 0
-
-	for _, order := range orders {
-		status := order.Status
-		statusBreakdown[status]++
-
-		if order.Status != "cancelada" {
-			totalRevenue += order.TotalAmount
-			nonCancelledCount++
-		}
-	}
-
-	avgOrderValue := 0.0
-	if nonCancelledCount > 0 {
-		avgOrderValue = totalRevenue / float64(nonCancelledCount)
-	}
-
-	result := analyticsOverviewResponse{
-		Period:          period,
-		TotalOrders:     len(orders),
-		TotalRevenue:    totalRevenue,
-		AvgOrderValue:   avgOrderValue,
-		StatusBreakdown: statusBreakdown,
-	}
 	h.cacheSet(r.Context(), cacheKey, result)
 	response.JSON(w, http.StatusOK, result)
 }
 
 func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request) {
 	cacheKey := "analytics:orders-over-time:" + r.URL.RawQuery
-	var cached []analyticsTimelinePointResponse
+	var cached []dto.AnalyticsTimelinePoint
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
 		return
@@ -151,43 +106,31 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	start, end, err := parseDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	orders, err := h.orderRepo.FindByDateRange(r.Context(), start, end, nil)
+	points, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), start, end, groupBy)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
 		return
 	}
 
-	type bucket struct {
-		count   int
-		revenue float64
-	}
-	buckets := make(map[string]bucket)
-
-	for _, order := range orders {
-		key := bucketKey(order.CreatedAt, groupBy)
-		current := buckets[key]
-		current.count++
-		if order.Status != "cancelada" {
-			current.revenue += order.TotalAmount
-		}
-		buckets[key] = current
+	buckets := make(map[string]dto.AnalyticsTimelinePoint, len(points))
+	for _, p := range points {
+		buckets[p.Date] = p
 	}
 
 	seriesKeys := buildSeriesKeys(start, end, groupBy)
-	result := make([]analyticsTimelinePointResponse, 0, len(seriesKeys))
+	result := make([]dto.AnalyticsTimelinePoint, 0, len(seriesKeys))
 	for _, key := range seriesKeys {
-		b := buckets[key]
-		result = append(result, analyticsTimelinePointResponse{
-			Date:    key,
-			Count:   b.count,
-			Revenue: b.revenue,
-		})
+		if p, ok := buckets[key]; ok {
+			result = append(result, p)
+			continue
+		}
+		result = append(result, dto.AnalyticsTimelinePoint{Date: key, Count: 0, Revenue: 0})
 	}
 
 	h.cacheSet(r.Context(), cacheKey, result)
@@ -196,73 +139,121 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 
 func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 	cacheKey := "analytics:top-products:" + r.URL.RawQuery
-	var cached []analyticsTopProductResponse
+	var cached []dto.AnalyticsTopProduct
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
-	start, end, err := parseDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
+	start, end, limit, err := analyticsTopProductsParams(r)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	result, err := h.orderRepo.AnalyticsTopProducts(r.Context(), start, end, limit)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
+		return
+	}
+
+	h.cacheSet(r.Context(), cacheKey, result)
+	response.JSON(w, http.StatusOK, result)
+}
+
+// Dashboard returns overview, orders-over-time, and top-products in a single
+// response. All three sections are computed from the same start/end date range
+// so the overview period always matches the timeline and top-products window.
+func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
+	cacheKey := "analytics:dashboard:" + r.URL.RawQuery
+	var cached dto.AnalyticsDashboard
+	if h.cacheGet(r.Context(), cacheKey, &cached) {
+		response.JSON(w, http.StatusOK, cached)
+		return
+	}
+
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	groupBy := r.URL.Query().Get("groupBy")
+	if groupBy == "" {
+		groupBy = "day"
+	}
+	if groupBy != "day" && groupBy != "week" && groupBy != "month" {
+		response.Error(w, http.StatusBadRequest, "groupBy must be one of: day, week, month")
+		return
+	}
+
+	_, _, limit, err := analyticsTopProductsParams(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	overview, err := h.orderRepo.AnalyticsOverview(r.Context(), start, end)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
+		return
+	}
+	overview.Period = "custom"
+
+	rawPoints, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), start, end, groupBy)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
+		return
+	}
+	buckets := make(map[string]dto.AnalyticsTimelinePoint, len(rawPoints))
+	for _, p := range rawPoints {
+		buckets[p.Date] = p
+	}
+	seriesKeys := buildSeriesKeys(start, end, groupBy)
+	ordersOverTime := make([]dto.AnalyticsTimelinePoint, 0, len(seriesKeys))
+	for _, key := range seriesKeys {
+		if p, ok := buckets[key]; ok {
+			ordersOverTime = append(ordersOverTime, p)
+			continue
+		}
+		ordersOverTime = append(ordersOverTime, dto.AnalyticsTimelinePoint{Date: key, Count: 0, Revenue: 0})
+	}
+
+	topProducts, err := h.orderRepo.AnalyticsTopProducts(r.Context(), start, end, limit)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
+		return
+	}
+
+	result := dto.AnalyticsDashboard{
+		Overview:       overview,
+		OrdersOverTime: ordersOverTime,
+		TopProducts:    topProducts,
+	}
+
+	h.cacheSet(r.Context(), cacheKey, result)
+	response.JSON(w, http.StatusOK, result)
+}
+
+func analyticsTopProductsParams(r *http.Request) (time.Time, time.Time, int, error) {
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365)
+	if err != nil {
+		return time.Time{}, time.Time{}, 0, err
 	}
 
 	limit := 10
 	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
 		parsedLimit, err := strconv.Atoi(rawLimit)
 		if err != nil || parsedLimit <= 0 {
-			response.Error(w, http.StatusBadRequest, "limit must be a positive integer")
-			return
+			return time.Time{}, time.Time{}, 0, fmt.Errorf("limit must be a positive integer")
 		}
 		if parsedLimit > 50 {
-			// hard cap: top-products is a full-scan aggregation, capped to keep response size bounded.
 			parsedLimit = 50
 		}
 		limit = parsedLimit
 	}
 
-	items, err := h.orderRepo.FindOrderItemsByOrderDateRange(r.Context(), start, end, []string{"cancelada"})
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
-		return
-	}
-
-	type aggregate struct {
-		totalSold  int
-		totalValue float64
-	}
-	byProduct := make(map[string]aggregate)
-
-	for _, item := range items {
-		current := byProduct[item.ProductName]
-		current.totalSold += item.Quantity
-		current.totalValue += item.Subtotal
-		byProduct[item.ProductName] = current
-	}
-
-	result := make([]analyticsTopProductResponse, 0, len(byProduct))
-	for name, data := range byProduct {
-		result = append(result, analyticsTopProductResponse{
-			Name:       name,
-			TotalSold:  data.totalSold,
-			TotalValue: data.totalValue,
-		})
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].TotalSold == result[j].TotalSold {
-			return result[i].TotalValue > result[j].TotalValue
-		}
-		return result[i].TotalSold > result[j].TotalSold
-	})
-
-	if len(result) > limit {
-		result = result[:limit]
-	}
-
-	h.cacheSet(r.Context(), cacheKey, result)
-	response.JSON(w, http.StatusOK, result)
+	return start, end, limit, nil
 }
 
 func (h *AnalyticsHandler) cacheGet(ctx context.Context, key string, target any) bool {
@@ -334,6 +325,38 @@ func parseDateRange(startRaw, endRaw string) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
+func capDateRange(startRaw, endRaw string, maxDays int) (time.Time, time.Time, error) {
+	now := time.Now()
+	if endRaw == "" {
+		endRaw = now.Format("2006-01-02")
+	}
+	if startRaw == "" {
+		startRaw = now.AddDate(0, -1, 0).Format("2006-01-02")
+	}
+
+	startDate, err := time.Parse("2006-01-02", startRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("start must use YYYY-MM-DD format")
+	}
+	endDate, err := time.Parse("2006-01-02", endRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("end must use YYYY-MM-DD format")
+	}
+
+	start := startDate
+	end := endDate.Add(24*time.Hour - time.Nanosecond)
+	if end.Before(start) {
+		return time.Time{}, time.Time{}, fmt.Errorf("end must be greater than or equal to start")
+	}
+
+	inclusiveDays := int(endDate.Sub(startDate).Hours()/24) + 1
+	if inclusiveDays > maxDays {
+		return time.Time{}, time.Time{}, fmt.Errorf("date range cannot exceed %d days", maxDays)
+	}
+
+	return start, end, nil
+}
+
 func periodStart(period string) (time.Time, error) {
 	now := time.Now()
 	switch period {
@@ -372,8 +395,6 @@ func buildSeriesKeys(start, end time.Time, groupBy string) []string {
 			cursor = cursor.AddDate(0, 1, 0)
 		}
 	case "week":
-		// Advance day-by-day and deduplicate ISO week keys; a simple week-count
-		// arithmetic would misalign when start/end straddle a year boundary.
 		cursor := start
 		seen := map[string]struct{}{}
 		for !cursor.After(end) {

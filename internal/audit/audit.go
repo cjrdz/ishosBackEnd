@@ -16,6 +16,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 )
 
@@ -26,6 +28,11 @@ type AuditEntry = dto.AuditEntry
 type LogRepository interface {
 	// Log creates an audit entry for a sensitive action.
 	Log(ctx context.Context, action, actorID, resource string, changes map[string]any, ip string) error
+
+	// LogWithDB creates an audit entry using the provided bun transaction or DB
+	// so the audit record is written in the same database transaction as the
+	// mutation it describes.
+	LogWithDB(ctx context.Context, db bun.IDB, action, actorID, resource string, changes map[string]any, ip string) error
 
 	// GetByResource retrieves all audit entries for a specific resource.
 	GetByResource(ctx context.Context, resource string, limit, offset int) ([]*AuditEntry, error)
@@ -53,9 +60,45 @@ const (
 	ActionOrderReady      = "order.ready"
 	ActionOrderUpdated    = "order.updated"
 	ActionOrderDeleted    = "order.deleted"
+	ActionOrderArchived   = "order.archived"
 	ActionSettingsUpdated = "settings.updated"
 	ActionExportTriggered = "export.triggered"
 	ActionEmployeeAdded   = "employee.added"
 	ActionEmployeeUpdated = "employee.updated"
 	ActionEmployeeRemoved = "employee.removed"
+
+	ActionProductCreated             = "product.created"
+	ActionProductUpdated             = "product.updated"
+	ActionProductDeleted             = "product.deleted"
+	ActionProductAvailabilityToggled = "product.availability_toggled"
+
+	ActionCategoryCreated = "category.created"
+	ActionCategoryUpdated = "category.updated"
+	ActionCategoryDeleted = "category.deleted"
+
+	ActionFlavorCreated = "flavor.created"
+	ActionFlavorUpdated = "flavor.updated"
+	ActionFlavorDeleted = "flavor.deleted"
+
+	ActionAddonCreated = "addon.created"
+	ActionAddonUpdated = "addon.updated"
+	ActionAddonDeleted = "addon.deleted"
+
+	ActionContainerTypeCreated = "container_type.created"
+	ActionContainerTypeUpdated = "container_type.updated"
+	ActionContainerTypeDeleted = "container_type.deleted"
+
+	ActionInventoryEntryRecorded      = "inventory.entry_recorded"
+	ActionInventoryAdjustmentRecorded = "inventory.adjustment_recorded"
+	ActionInventoryUnitEntryRecorded  = "inventory.unit_entry_recorded"
+	ActionInventoryItemLinked         = "inventory.item_linked"
+	ActionInventoryItemUnlinked       = "inventory.item_unlinked"
+	ActionInventoryUnitItemCreated    = "inventory.unit_item_created"
+
+	ActionUserCreated  = "user.created"
+	ActionUserUpdated  = "user.updated"
+	ActionUserDeleted  = "user.deleted"
+	ActionUserUpserted = "user.upserted"
+
+	ActionImageDeleted = "image.deleted"
 )

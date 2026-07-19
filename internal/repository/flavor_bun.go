@@ -141,7 +141,7 @@ func (r *FlavorBunRepository) Update(ctx context.Context, id uuid.UUID, input Up
 
 // Delete deletes a flavor by ID and compacts the display_order of the remaining flavors.
 func (r *FlavorBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return runInTx(ctx, r.db, func(ctx context.Context, tx bun.Tx) error {
+	return runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
 		var row models.Flavor
 		if err := tx.NewSelect().Model(&row).Where("id = ?", id).Scan(ctx); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

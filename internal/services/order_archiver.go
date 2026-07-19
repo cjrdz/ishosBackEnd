@@ -14,11 +14,11 @@ import (
 
 // OrderArchiver runs automatic archiving of old terminal orders.
 type OrderArchiver struct {
-	repo       OrderRepository
-	settings   *AdminSettingService
-	defaults   ArchiveConfig
-	batchSize  int
-	terminal   []string
+	repo      OrderRepository
+	settings  *AdminSettingService
+	defaults  ArchiveConfig
+	batchSize int
+	terminal  []string
 }
 
 // NewOrderArchiver creates an archiver using the supplied repository and

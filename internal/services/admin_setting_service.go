@@ -26,10 +26,11 @@ type AdminSettingService struct {
 }
 
 const (
-	ordersEnabledCacheKey   = "settings:orders_enabled"
-	tokenTTLConfigCacheKey  = "settings:token_ttl_config"
-	archiveConfigCacheKey   = "settings:archive_config"
-	settingsCacheTTL        = 10 * time.Second
+	ordersEnabledCacheKey        = "settings:orders_enabled"
+	tokenTTLConfigCacheKey       = "settings:token_ttl_config"
+	archiveConfigCacheKey        = "settings:archive_config"
+	publicOrderRateLimitCacheKey = "settings:public_order_rate_limit"
+	settingsCacheTTL             = 10 * time.Second
 )
 
 // Order archive configuration keys.
@@ -97,6 +98,27 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 	result := sanitizeTokenTTLConfig(resolved, defaults)
 	s.cache.Set(tokenTTLConfigCacheKey, result)
 	return result, nil
+}
+
+// UpdateTokenTTLConfig persists the panel/session configuration and invalidates
+// the local cache so subsequent reads use the new values immediately.
+func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, changedBy string, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+	sanitized := sanitizeTokenTTLConfig(input, defaults)
+	if s.repo == nil {
+		return sanitized, nil
+	}
+
+	value := map[string]any{
+		"auth_cookie_ttl_hours":     sanitized.AuthCookieTTLHours,
+		"auth_token_ttl_hours":      sanitized.AuthTokenTTLHours,
+		"tracking_token_ttl_hours":  sanitized.TrackingTokenTTLHours,
+		"inactivity_logout_seconds": sanitized.InactivityLogoutSeconds,
+	}
+	if err := s.upsertSetting(ctx, AdminTokenTTLSettingKey, value, changedBy); err != nil {
+		return TokenTTLConfig{}, fmt.Errorf("failed to save panel config: %w", err)
+	}
+	s.cache.Delete(tokenTTLConfigCacheKey)
+	return sanitized, nil
 }
 
 func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
@@ -356,6 +378,114 @@ func (s *AdminSettingService) UpdateArchiveSettings(ctx context.Context, input A
 		return ArchiveConfig{}, fmt.Errorf("failed to save archive settings: %w", err)
 	}
 	s.cache.Delete(archiveConfigCacheKey)
+	return sanitized, nil
+}
+
+// PublicOrderRateLimitConfig controls public order throttling.
+type PublicOrderRateLimitConfig struct {
+	PhoneBurst         int `json:"phone_burst"`
+	PhoneWindowMinutes int `json:"phone_window_minutes"`
+	PhoneBlockMinutes  int `json:"phone_block_minutes"`
+	IPBurst            int `json:"ip_burst"`
+	IPWindowMinutes    int `json:"ip_window_minutes"`
+	IPBlockMinutes     int `json:"ip_block_minutes"`
+	StaffBurst         int `json:"staff_burst"`
+	StaffWindowMinutes int `json:"staff_window_minutes"`
+}
+
+// PublicOrderRateLimitConfigKey is the admin settings key for public order rate limits.
+const PublicOrderRateLimitConfigKey = "public_order.rate_limit.config"
+
+func sanitizePublicOrderRateLimitConfig(input PublicOrderRateLimitConfig, defaults PublicOrderRateLimitConfig) PublicOrderRateLimitConfig {
+	resolved := PublicOrderRateLimitConfig{
+		PhoneBurst:         input.PhoneBurst,
+		PhoneWindowMinutes: input.PhoneWindowMinutes,
+		PhoneBlockMinutes:  input.PhoneBlockMinutes,
+		IPBurst:            input.IPBurst,
+		IPWindowMinutes:    input.IPWindowMinutes,
+		IPBlockMinutes:     input.IPBlockMinutes,
+		StaffBurst:         input.StaffBurst,
+		StaffWindowMinutes: input.StaffWindowMinutes,
+	}
+	if resolved.PhoneBurst <= 0 {
+		resolved.PhoneBurst = defaults.PhoneBurst
+	}
+	if resolved.PhoneWindowMinutes <= 0 {
+		resolved.PhoneWindowMinutes = defaults.PhoneWindowMinutes
+	}
+	if resolved.PhoneBlockMinutes <= 0 {
+		resolved.PhoneBlockMinutes = defaults.PhoneBlockMinutes
+	}
+	if resolved.IPBurst <= 0 {
+		resolved.IPBurst = defaults.IPBurst
+	}
+	if resolved.IPWindowMinutes <= 0 {
+		resolved.IPWindowMinutes = defaults.IPWindowMinutes
+	}
+	if resolved.IPBlockMinutes <= 0 {
+		resolved.IPBlockMinutes = defaults.IPBlockMinutes
+	}
+	if resolved.StaffBurst <= 0 {
+		resolved.StaffBurst = defaults.StaffBurst
+	}
+	if resolved.StaffWindowMinutes <= 0 {
+		resolved.StaffWindowMinutes = defaults.StaffWindowMinutes
+	}
+	return resolved
+}
+
+// GetPublicOrderRateLimitConfig returns the persisted public order rate-limit config.
+func (s *AdminSettingService) GetPublicOrderRateLimitConfig(ctx context.Context, defaults PublicOrderRateLimitConfig) (PublicOrderRateLimitConfig, error) {
+	result := sanitizePublicOrderRateLimitConfig(PublicOrderRateLimitConfig{}, defaults)
+	if s.repo == nil {
+		return result, nil
+	}
+
+	if v, ok := s.cache.Get(publicOrderRateLimitCacheKey); ok {
+		return sanitizePublicOrderRateLimitConfig(v.(PublicOrderRateLimitConfig), defaults), nil
+	}
+
+	rec, err := s.repo.GetByKey(ctx, PublicOrderRateLimitConfigKey)
+	if err != nil {
+		return result, nil
+	}
+
+	resolved := PublicOrderRateLimitConfig{
+		PhoneBurst:         parsePositiveInt(rec.Value["phone_burst"]),
+		PhoneWindowMinutes: parsePositiveInt(rec.Value["phone_window_minutes"]),
+		PhoneBlockMinutes:  parsePositiveInt(rec.Value["phone_block_minutes"]),
+		IPBurst:            parsePositiveInt(rec.Value["ip_burst"]),
+		IPWindowMinutes:    parsePositiveInt(rec.Value["ip_window_minutes"]),
+		IPBlockMinutes:     parsePositiveInt(rec.Value["ip_block_minutes"]),
+		StaffBurst:         parsePositiveInt(rec.Value["staff_burst"]),
+		StaffWindowMinutes: parsePositiveInt(rec.Value["staff_window_minutes"]),
+	}
+	result = sanitizePublicOrderRateLimitConfig(resolved, defaults)
+	s.cache.Set(publicOrderRateLimitCacheKey, result)
+	return result, nil
+}
+
+// UpdatePublicOrderRateLimitConfig persists public order rate-limit config and invalidates the cache.
+func (s *AdminSettingService) UpdatePublicOrderRateLimitConfig(ctx context.Context, input PublicOrderRateLimitConfig, changedBy string, defaults PublicOrderRateLimitConfig) (PublicOrderRateLimitConfig, error) {
+	sanitized := sanitizePublicOrderRateLimitConfig(input, defaults)
+	if s.repo == nil {
+		return sanitized, nil
+	}
+
+	value := map[string]any{
+		"phone_burst":          sanitized.PhoneBurst,
+		"phone_window_minutes": sanitized.PhoneWindowMinutes,
+		"phone_block_minutes":  sanitized.PhoneBlockMinutes,
+		"ip_burst":             sanitized.IPBurst,
+		"ip_window_minutes":    sanitized.IPWindowMinutes,
+		"ip_block_minutes":     sanitized.IPBlockMinutes,
+		"staff_burst":          sanitized.StaffBurst,
+		"staff_window_minutes": sanitized.StaffWindowMinutes,
+	}
+	if err := s.upsertSetting(ctx, PublicOrderRateLimitConfigKey, value, changedBy); err != nil {
+		return PublicOrderRateLimitConfig{}, fmt.Errorf("failed to save public order rate-limit settings: %w", err)
+	}
+	s.cache.Delete(publicOrderRateLimitCacheKey)
 	return sanitized, nil
 }
 

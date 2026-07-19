@@ -27,7 +27,7 @@ func main() {
 
 func run() error {
 	cfg := config.Load()
-	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg)
 	if err != nil {
 		return fmt.Errorf("connect to PostgreSQL: %w", err)
 	}

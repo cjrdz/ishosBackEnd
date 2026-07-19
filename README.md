@@ -35,8 +35,12 @@ Database  → PostgreSQL
 ## Documentation
 
 - **[GUIDE.md](docs/GUIDE.md)** ← Start here! Patterns, common tasks, troubleshooting
-- **[API.md](docs/API.md)** — All endpoints
-- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Production setup
+- **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Production setup and environment variables
+- **[API contract](api/openapi.yaml)** — Authoritative OpenAPI 3.0 spec generated from source
+  - Also served live at `/openapi.yaml` and `/openapi.json`
+  - Interactive UI (Scalar) at **`/docs`** on a running server
+  - Generate locally: `go run ./cmd/api openapi > api/openapi.yaml`
+- **[API.md](docs/API.md)** — Points to `/docs` and the OpenAPI spec
 
 ---
 
@@ -47,6 +51,7 @@ go run ./cmd/api              # Run server
 go test ./...                 # Run all tests
 make migrate                  # Database migration
 make bootstrap-admin          # Create first admin
+go run ./cmd/api openapi      # Print OpenAPI YAML to stdout
 ```
 
 > Repository integration tests require PostgreSQL. Use `make docker-up` to start a local Postgres, or run them via CI (which provisions a Postgres service container automatically).
@@ -72,16 +77,24 @@ docs/                  # Documentation
 
 ---
 
-## Security
+## Security & Operations
 
 ✅ Bun ORM queries (no SQL injection)
-✅ Audit logging (all sensitive ops)
-✅ Token revocation (secure logout)
-✅ Rate limiting (login + endpoints)
+✅ Transactional audit logging for order and catalog mutations
+✅ Token revocation (secure logout validates the token first)
+✅ Rate limiting (login + public orders + tracking) with Redis-backed distributed state
 ✅ HttpOnly cookie auth (no JS-accessible tokens)
 ✅ SameSite=Lax CSRF protection
 ✅ Atomic stock transactions (status + inventory committed together)
 ✅ Idempotent order creation (client-supplied key prevents duplicate orders)
+✅ Global 1 MiB JSON body-size limit
+✅ Hardened CORS (wildcard origins rejected when credentials are enabled)
+✅ Hardened image uploads (dimensions, extension/content-type match, folder allowlist)
+✅ Sanitized fallback error messages (no internal details leaked)
+✅ Configurable database connection pool
+✅ Bounded in-memory cache with optional LRU eviction
+✅ Read-only transactions for analytics and export queries
+✅ Graceful shutdown of background jobs, event dispatcher, and WhatsApp worker
 
 ---
 
@@ -101,7 +114,7 @@ docs/                  # Documentation
 ## Need Help?
 
 - **"How do I add an endpoint?"** → See [GUIDE.md](docs/GUIDE.md)
-- **"Where's the API reference?"** → See [API.md](docs/API.md)
+- **"Where's the API reference?"** → See the interactive docs at `/docs` or the OpenAPI spec at `/openapi.yaml`
 - **"How do I deploy?"** → See [DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ---

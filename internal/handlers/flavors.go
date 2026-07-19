@@ -3,8 +3,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -21,10 +23,11 @@ import (
 
 type FlavorHandler struct {
 	flavorService services.FlavorServiceInterface
+	auditSvc      audit.Service
 }
 
-func NewFlavorHandler(svc services.FlavorServiceInterface) *FlavorHandler {
-	return &FlavorHandler{flavorService: svc}
+func NewFlavorHandler(svc services.FlavorServiceInterface, auditSvc audit.Service) *FlavorHandler {
+	return &FlavorHandler{flavorService: svc, auditSvc: auditSvc}
 }
 
 type flavorResponse struct {
@@ -101,7 +104,7 @@ func (h *FlavorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		IsSeasonal   bool   `json:"is_seasonal"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -111,7 +114,10 @@ func (h *FlavorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := h.flavorService.Create(r.Context(), repository.CreateFlavorInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	f, err := h.flavorService.Create(ctx, repository.CreateFlavorInput{
 		Name:         body.Name,
 		DisplayOrder: body.DisplayOrder,
 		IsSeasonal:   body.IsSeasonal,
@@ -122,6 +128,11 @@ func (h *FlavorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to create flavor")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionFlavorCreated, actorID, fmt.Sprintf("flavor:%s", f.ID.String()), map[string]any{
+		"name": f.Name,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, toFlavorResponse(f))
 }
@@ -143,7 +154,7 @@ func (h *FlavorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsActive     *bool   `json:"is_active"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -153,7 +164,10 @@ func (h *FlavorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f, err := h.flavorService.Update(r.Context(), id, repository.UpdateFlavorInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	f, err := h.flavorService.Update(ctx, id, repository.UpdateFlavorInput{
 		Name:         body.Name,
 		DisplayOrder: body.DisplayOrder,
 		IsSeasonal:   body.IsSeasonal,
@@ -169,6 +183,11 @@ func (h *FlavorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionFlavorUpdated, actorID, fmt.Sprintf("flavor:%s", id.String()), map[string]any{
+		"name": f.Name,
+	}, ip)
+
 	response.JSON(w, http.StatusOK, toFlavorResponse(f))
 }
 
@@ -182,7 +201,10 @@ func (h *FlavorHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.flavorService.Delete(r.Context(), id); err != nil {
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	if err := h.flavorService.Delete(ctx, id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Flavor not found")
 			return
@@ -191,6 +213,9 @@ func (h *FlavorHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete flavor")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionFlavorDeleted, actorID, fmt.Sprintf("flavor:%s", id.String()), nil, ip)
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Flavor deleted"})
 }

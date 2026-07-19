@@ -27,8 +27,10 @@ func NewExportHandler(orderRepo services.OrderRepository, auditSvc audit.Service
 	return &ExportHandler{orderRepo: orderRepo, auditSvc: auditSvc}
 }
 
+const maxExportWindowDays = 90
+
 func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
-	start, end, err := parseDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"))
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), maxExportWindowDays)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -49,11 +51,11 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, err := h.orderRepo.FindByDateRangeWithItems(r.Context(), start, end, statuses)
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "Failed to export orders")
-		return
+	actorID := ""
+	if rec, ok := auth.GetRecord(r.Context()); ok {
+		actorID = auth.RecordID(rec)
 	}
+	ip := auth.ClientIP(r)
 
 	filename := fmt.Sprintf("orders_%s_to_%s.%s", start.Format("2006-01-02"), end.Format("2006-01-02"), format)
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
@@ -62,10 +64,14 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 	if format == "json" {
 		w.Header().Set("Content-Type", "application/json")
 
-		mapper := services.NewOrderResponseMapper(nil)
-		rows := make([]services.OrderResponse, 0, len(orders))
-		for _, order := range orders {
-			rows = append(rows, mapper.Map(order))
+		var rows []dto.ExportOrderRow
+		streamErr := h.orderRepo.StreamOrderExportRows(r.Context(), start, end, statuses, 500, func(row dto.ExportOrderRow) error {
+			rows = append(rows, row)
+			return nil
+		})
+		if streamErr != nil {
+			response.Error(w, http.StatusInternalServerError, "Failed to export orders")
+			return
 		}
 
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -75,11 +81,6 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 			"orders": rows,
 		})
 
-		actorID := ""
-		if rec, ok := auth.GetRecord(r.Context()); ok {
-			actorID = auth.RecordID(rec)
-		}
-		ip := auth.ClientIP(r)
 		_ = h.auditSvc.Log(r.Context(), audit.ActionExportTriggered, actorID, "export:orders", map[string]any{
 			"format":    format,
 			"count":     len(rows),
@@ -110,50 +111,51 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 		"updated_at",
 	})
 
-	for _, order := range orders {
+	var exportedCount int
+	streamErr := h.orderRepo.StreamOrderExportRows(r.Context(), start, end, statuses, 500, func(row dto.ExportOrderRow) error {
+		exportedCount++
 		tableNumber := ""
-		if order.TableNumber != nil {
-			tableNumber = fmt.Sprintf("%d", *order.TableNumber)
+		if row.TableNumber != nil {
+			tableNumber = fmt.Sprintf("%d", *row.TableNumber)
 		}
 
 		notes := ""
-		if order.Notes != nil {
-			notes = *order.Notes
+		if row.Notes != nil {
+			notes = *row.Notes
 		}
 
-		_ = csvWriter.Write([]string{
-			order.ID.String(),
-			order.OrderNumber,
-			order.CustomerName,
-			order.CustomerPhone,
-			order.Status,
-			order.PaymentMethod,
-			order.PaymentStatus,
-			order.OrderType,
+		return csvWriter.Write([]string{
+			row.ID.String(),
+			row.OrderNumber,
+			row.CustomerName,
+			row.CustomerPhone,
+			row.Status,
+			row.PaymentMethod,
+			row.PaymentStatus,
+			row.OrderType,
 			tableNumber,
-			fmt.Sprintf("%.2f", order.TotalAmount),
-			fmt.Sprintf("%d", len(order.Items)),
-			orderItemsSummary(order.Items),
+			fmt.Sprintf("%.2f", row.TotalAmount),
+			fmt.Sprintf("%d", row.ItemsCount),
+			row.ItemsSummary,
 			notes,
-			order.CreatedAt.Format(time.RFC3339),
-			order.UpdatedAt.Format(time.RFC3339),
+			row.CreatedAt.Format(time.RFC3339),
+			row.UpdatedAt.Format(time.RFC3339),
 		})
-	}
+	})
 
 	csvWriter.Flush()
+	if streamErr != nil {
+		response.Error(w, http.StatusInternalServerError, "Failed to export orders")
+		return
+	}
 	if err := csvWriter.Error(); err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to encode CSV export")
 		return
 	}
 
-	actorID := ""
-	if rec, ok := auth.GetRecord(r.Context()); ok {
-		actorID = auth.RecordID(rec)
-	}
-	ip := auth.ClientIP(r)
 	_ = h.auditSvc.Log(r.Context(), audit.ActionExportTriggered, actorID, "export:orders", map[string]any{
 		"format":    format,
-		"count":     len(orders),
+		"count":     exportedCount,
 		"date_from": start.Format("2006-01-02"),
 		"date_to":   end.Format("2006-01-02"),
 	}, ip)
@@ -237,17 +239,4 @@ func parseOrderStatuses(raw string, defaults []string) ([]string, error) {
 	}
 
 	return parsed, nil
-}
-
-func orderItemsSummary(items []dto.OrderItem) string {
-	if len(items) == 0 {
-		return ""
-	}
-
-	parts := make([]string, 0, len(items))
-	for _, item := range items {
-		parts = append(parts, fmt.Sprintf("%dx %s", item.Quantity, item.ProductName))
-	}
-
-	return strings.Join(parts, "; ")
 }

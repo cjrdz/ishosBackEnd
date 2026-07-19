@@ -32,6 +32,7 @@ type OrderServiceInterface interface {
 
 type ProductServiceInterface interface {
 	List(ctx context.Context, categorySlug string, includeAll bool) ([]dto.Product, error)
+	ListPaginated(ctx context.Context, categorySlug string, includeAll bool, page, perPage int) ([]dto.Product, int, error)
 	GetByIDWithCategory(ctx context.Context, id uuid.UUID) (dto.Product, error)
 	Create(ctx context.Context, input repository.CreateProductInput) (dto.Product, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.UpdateProductInput) (dto.Product, error)
@@ -57,6 +58,7 @@ type AddonServiceInterface interface {
 
 type CategoryServiceInterface interface {
 	List(ctx context.Context, showAll bool) ([]dto.Category, error)
+	ListPaginated(ctx context.Context, showAll bool, page, perPage int) ([]dto.Category, int, error)
 	GetBySlug(ctx context.Context, slug string) (dto.Category, error)
 	Create(ctx context.Context, input repository.CreateCategoryInput) (dto.Category, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.UpdateCategoryInput) (dto.Category, error)

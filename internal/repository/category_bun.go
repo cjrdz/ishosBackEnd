@@ -37,8 +37,43 @@ func (r *CategoryBunRepository) FindActive(ctx context.Context) ([]dto.Category,
 
 // FindAll returns all categories ordered by display_order.
 func (r *CategoryBunRepository) FindAll(ctx context.Context) ([]dto.Category, error) {
+	return r.findAll(ctx, false, 0, 0)
+}
+
+// FindAllPaginated returns a page of active categories plus the total count.
+func (r *CategoryBunRepository) FindAllPaginated(ctx context.Context, showAll bool, page, perPage int) ([]dto.Category, int, error) {
+	rows, err := r.findAll(ctx, !showAll, page, perPage)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := r.countAll(ctx, !showAll)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+func (r *CategoryBunRepository) buildCategoryQuery(onlyActive bool) *bun.SelectQuery {
+	q := r.db.NewSelect().Model((*models.Category)(nil)).Order("display_order ASC")
+	if onlyActive {
+		q = q.Where("is_active = ?", true)
+	}
+	return q
+}
+
+func (r *CategoryBunRepository) countAll(ctx context.Context, onlyActive bool) (int, error) {
+	return r.buildCategoryQuery(onlyActive).Count(ctx)
+}
+
+func (r *CategoryBunRepository) findAll(ctx context.Context, onlyActive bool, page, perPage int) ([]dto.Category, error) {
+	q := r.buildCategoryQuery(onlyActive)
+	if page > 0 && perPage > 0 {
+		offset := (page - 1) * perPage
+		q = q.Limit(perPage).Offset(offset)
+	}
+
 	var rows []models.Category
-	if err := r.db.NewSelect().Model(&rows).Order("display_order ASC").Scan(ctx); err != nil {
+	if err := q.Scan(ctx, &rows); err != nil {
 		return nil, err
 	}
 	return toCategoryDTOsFromModels(rows), nil
@@ -189,7 +224,7 @@ func (r *CategoryBunRepository) Update(ctx context.Context, id uuid.UUID, input 
 
 // Delete deletes a category by ID and compacts the display_order of the remaining categories.
 func (r *CategoryBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return runInTx(ctx, r.db, func(ctx context.Context, tx bun.Tx) error {
+	return runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
 		var row models.Category
 		if err := tx.NewSelect().Model(&row).Where("id = ?", id).Scan(ctx); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

@@ -98,18 +98,6 @@ func (o *Order) AddItem(item OrderItem) error {
 	return nil
 }
 
-// RemoveItem removes an item by product ID (removes first match).
-func (o *Order) RemoveItem(productID uuid.UUID) bool {
-	for i, item := range o.Items {
-		if item.ProductID == productID {
-			o.Items = append(o.Items[:i], o.Items[i+1:]...)
-			o.UpdatedAt = time.Now()
-			return true
-		}
-	}
-	return false
-}
-
 // CalculateTotal recalculates the total amount from all items.
 func (o *Order) CalculateTotal() {
 	total := 0.0
@@ -169,35 +157,6 @@ func (o *Order) TransitionTo(newStatus OrderStatus) error {
 	return nil
 }
 
-// UpdateMetadata updates customer-facing metadata.
-func (o *Order) UpdateMetadata(customerName, customerPhone, customerEmail, paymentMethod, orderType string, tableNumber *int, notes string) error {
-	if customerName != "" {
-		o.CustomerName = customerName
-	}
-	if customerPhone != "" {
-		o.CustomerPhone = customerPhone
-	}
-	if customerEmail != "" {
-		o.CustomerEmail = customerEmail
-	}
-	if paymentMethod != "" {
-		o.PaymentMethod = paymentMethod
-	}
-	if orderType != "" {
-		o.OrderType = orderType
-	}
-	o.TableNumber = tableNumber
-	o.Notes = notes
-	o.UpdatedAt = time.Now()
-	return nil
-}
-
-// UpdateNotes updates just the notes field.
-func (o *Order) UpdateNotes(notes string) {
-	o.Notes = notes
-	o.UpdatedAt = time.Now()
-}
-
 // IsEmpty returns true if the order has no items.
 func (o *Order) IsEmpty() bool {
 	return len(o.Items) == 0
@@ -217,20 +176,6 @@ func (o *Order) GetItemByProductID(productID uuid.UUID) *OrderItem {
 		}
 	}
 	return nil
-}
-
-// GetItemCount returns the total number of items (by line count, not quantity).
-func (o *Order) GetItemCount() int {
-	return len(o.Items)
-}
-
-// GetTotalQuantity returns the sum of all item quantities.
-func (o *Order) GetTotalQuantity() int {
-	total := 0
-	for _, item := range o.Items {
-		total += item.Quantity
-	}
-	return total
 }
 
 // recordStatusTimestamp records the first time a status was reached.
@@ -286,21 +231,4 @@ func (oi *OrderItem) UpdateQuantity(quantity int) error {
 	oi.Quantity = quantity
 	oi.Subtotal = float64(quantity) * oi.UnitPrice
 	return nil
-}
-
-// UpdateCustomizations replaces the customizations for this item.
-func (oi *OrderItem) UpdateCustomizations(customizations Customizations) {
-	if customizations == nil {
-		oi.Customizations = NewCustomizations()
-	} else {
-		oi.Customizations = customizations
-	}
-}
-
-// AddCustomization adds or updates a single customization choice.
-func (oi *OrderItem) AddCustomization(key string, value interface{}) {
-	if oi.Customizations == nil {
-		oi.Customizations = NewCustomizations()
-	}
-	oi.Customizations.Set(key, value)
 }

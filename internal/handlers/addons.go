@@ -3,8 +3,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -21,10 +23,11 @@ import (
 
 type AddonHandler struct {
 	addonService services.AddonServiceInterface
+	auditSvc     audit.Service
 }
 
-func NewAddonHandler(svc services.AddonServiceInterface) *AddonHandler {
-	return &AddonHandler{addonService: svc}
+func NewAddonHandler(svc services.AddonServiceInterface, auditSvc audit.Service) *AddonHandler {
+	return &AddonHandler{addonService: svc, auditSvc: auditSvc}
 }
 
 type addonResponse struct {
@@ -104,7 +107,7 @@ func (h *AddonHandler) Create(w http.ResponseWriter, r *http.Request) {
 		DisplayOrder *int    `json:"display_order"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -119,7 +122,10 @@ func (h *AddonHandler) Create(w http.ResponseWriter, r *http.Request) {
 		groupName = "extras"
 	}
 
-	a, err := h.addonService.Create(r.Context(), repository.CreateAddonInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	a, err := h.addonService.Create(ctx, repository.CreateAddonInput{
 		Name:         body.Name,
 		Price:        body.Price,
 		GroupName:    groupName,
@@ -131,6 +137,12 @@ func (h *AddonHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to create addon")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionAddonCreated, actorID, fmt.Sprintf("addon:%s", a.ID.String()), map[string]any{
+		"name":  a.Name,
+		"price": a.Price,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, toAddonResponse(a))
 }
@@ -153,7 +165,7 @@ func (h *AddonHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsActive     *bool    `json:"is_active"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -163,7 +175,10 @@ func (h *AddonHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a, err := h.addonService.Update(r.Context(), id, repository.UpdateAddonInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	a, err := h.addonService.Update(ctx, id, repository.UpdateAddonInput{
 		Name:         body.Name,
 		Price:        body.Price,
 		GroupName:    body.GroupName,
@@ -180,6 +195,12 @@ func (h *AddonHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionAddonUpdated, actorID, fmt.Sprintf("addon:%s", id.String()), map[string]any{
+		"name":  a.Name,
+		"price": a.Price,
+	}, ip)
+
 	response.JSON(w, http.StatusOK, toAddonResponse(a))
 }
 
@@ -193,7 +214,10 @@ func (h *AddonHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.addonService.Delete(r.Context(), id); err != nil {
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	if err := h.addonService.Delete(ctx, id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Addon not found")
 			return
@@ -202,6 +226,9 @@ func (h *AddonHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete addon")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionAddonDeleted, actorID, fmt.Sprintf("addon:%s", id.String()), nil, ip)
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Addon deleted"})
 }

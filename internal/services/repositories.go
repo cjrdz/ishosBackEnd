@@ -18,6 +18,7 @@ import (
 // ProductRepository defines the product data access contract.
 type ProductRepository interface {
 	FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]dto.Product, error)
+	FindAllPaginated(ctx context.Context, categorySlug string, onlyAvailable bool, page, perPage int) ([]dto.Product, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.Product, error)
 	FindByIDWithCategory(ctx context.Context, id uuid.UUID) (dto.Product, error)
 	Create(ctx context.Context, input repository.CreateProductInput) (dto.Product, error)
@@ -49,6 +50,14 @@ type OrderRepository interface {
 	FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error)
 	Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error)
 
+	// SQL-aggregated analytics (avoid loading full date ranges into memory).
+	AnalyticsOverview(ctx context.Context, start, end time.Time) (dto.AnalyticsOverview, error)
+	AnalyticsOrdersOverTime(ctx context.Context, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error)
+	AnalyticsTopProducts(ctx context.Context, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error)
+
+	// Streaming export rows (CSV) without loading the full date range into memory.
+	StreamOrderExportRows(ctx context.Context, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error
+
 	// Archiving
 	FindEligibleForArchive(ctx context.Context, terminalStatuses []string, cutoff time.Time, limit int) ([]dto.Order, error)
 	ArchiveOrders(ctx context.Context, ids []uuid.UUID) (int, error)
@@ -76,6 +85,7 @@ type AddonRepository interface {
 type CategoryRepository interface {
 	FindAll(ctx context.Context) ([]dto.Category, error)
 	FindActive(ctx context.Context) ([]dto.Category, error)
+	FindAllPaginated(ctx context.Context, showAll bool, page, perPage int) ([]dto.Category, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.Category, error)
 	FindBySlug(ctx context.Context, slug string) (dto.Category, error)
 	FindBySlugWithProducts(ctx context.Context, slug string) (dto.Category, error)

@@ -3,7 +3,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
@@ -30,14 +31,16 @@ type ProductHandler struct {
 	cfg              *config.Config
 	productService   services.ProductServiceInterface
 	inventoryService *services.InventoryService
+	auditSvc         audit.Service
 	responseCache    *cache.TTLCache
 }
 
-func NewProductHandler(svc services.ProductServiceInterface, cfg *config.Config, inventoryService *services.InventoryService) *ProductHandler {
+func NewProductHandler(svc services.ProductServiceInterface, cfg *config.Config, inventoryService *services.InventoryService, auditSvc audit.Service) *ProductHandler {
 	return &ProductHandler{
 		cfg:              cfg,
 		productService:   svc,
 		inventoryService: inventoryService,
+		auditSvc:         auditSvc,
 		responseCache:    cache.New(5 * time.Minute),
 	}
 }
@@ -144,36 +147,61 @@ func (h *ProductHandler) toProductResponse(p dto.Product) productResponse {
 	}
 }
 
-// List returns all products.
+// List returns products, paginated by default. Use ?all=true for the full list
+// (backward-compatible admin behavior).
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	category := r.URL.Query().Get("category")
 	includeAll := r.URL.Query().Get("all") == "true"
-	cacheKey := fmt.Sprintf("products:%s:%t", category, includeAll)
 
-	if cached, ok := h.responseCache.Get(cacheKey); ok {
-		response.JSON(w, http.StatusOK, cached)
+	ctx := r.Context()
+	var result []productResponse
+	var page, perPage, total int
+
+	if includeAll {
+		cacheKey := fmt.Sprintf("products:%s:%t", category, includeAll)
+		if cached, ok := h.responseCache.Get(cacheKey); ok {
+			response.JSON(w, http.StatusOK, cached)
+			return
+		}
+
+		products, err := h.productService.List(ctx, category, true)
+		if err != nil {
+			response.WriteOrError(w, nil, err)
+			return
+		}
+
+		sort.Slice(products, func(i, j int) bool {
+			return products[i].CreatedAt.Before(products[j].CreatedAt)
+		})
+
+		result = make([]productResponse, len(products))
+		for i, p := range products {
+			result[i] = h.toProductResponse(p)
+		}
+
+		page = 1
+		perPage = len(result)
+		total = len(result)
+
+		paginated := response.NewPaginated(result, page, perPage, total)
+		h.responseCache.Set(cacheKey, paginated)
+		response.JSON(w, http.StatusOK, paginated)
 		return
 	}
 
-	ctx := r.Context()
-	products, err := h.productService.List(ctx, category, includeAll)
+	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
+	products, total, err := h.productService.ListPaginated(ctx, category, false, params.Page, params.PerPage)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
 	}
 
-	sort.Slice(products, func(i, j int) bool {
-		return products[i].CreatedAt.Before(products[j].CreatedAt)
-	})
-
-	result := make([]productResponse, len(products))
+	result = make([]productResponse, len(products))
 	for i, p := range products {
 		result[i] = h.toProductResponse(p)
 	}
 
-	paginated := response.NewPaginated(result, 1, len(result), len(result))
-	h.responseCache.Set(cacheKey, paginated)
-	response.JSON(w, http.StatusOK, paginated)
+	response.JSON(w, http.StatusOK, response.NewPaginated(result, params.Page, params.PerPage, total))
 }
 
 // Get returns a single product by ID.
@@ -214,7 +242,7 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		BallQuantity         *int      `json:"ball_quantity"`
 		AllowsMixedFlavors   *bool     `json:"allows_mixed_flavors"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -225,8 +253,11 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
 	h.invalidateListCache()
-	p, err := h.productService.Create(r.Context(), repository.CreateProductInput{
+	p, err := h.productService.Create(ctx, repository.CreateProductInput{
 		Name:                 body.Name,
 		Description:          body.Description,
 		Price:                body.Price,
@@ -246,11 +277,17 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-create inventory item for unit-based products
 	if body.BallBased != nil && !*body.BallBased {
-		_, invErr := h.inventoryService.CreateUnitInventoryItem(r.Context(), p.Name, p.ID, 10)
+		_, invErr := h.inventoryService.CreateUnitInventoryItem(ctx, p.Name, p.ID, 10)
 		if invErr != nil {
 			log.Warn().Err(invErr).Str("product", p.Name).Msg("Failed to auto-create inventory item for product")
 		}
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionProductCreated, actorID, fmt.Sprintf("product:%s", p.ID.String()), map[string]any{
+		"name":  p.Name,
+		"price": p.Price,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, h.toProductResponse(p))
 }
@@ -291,7 +328,7 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		BallQuantity         *int       `json:"ball_quantity"`
 		AllowsMixedFlavors   *bool      `json:"allows_mixed_flavors"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -301,8 +338,11 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
 	h.invalidateListCache()
-	p, err := h.productService.Update(r.Context(), id, repository.UpdateProductInput{
+	p, err := h.productService.Update(ctx, id, repository.UpdateProductInput{
 		Name:                 body.Name,
 		Description:          body.Description,
 		Price:                body.Price,
@@ -323,6 +363,12 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to update product")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionProductUpdated, actorID, fmt.Sprintf("product:%s", id.String()), map[string]any{
+		"name": p.Name,
+	}, ip)
+
 	response.JSON(w, http.StatusOK, h.toProductResponse(p))
 }
 
@@ -334,8 +380,11 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
 	h.invalidateListCache()
-	if err := h.productService.Delete(r.Context(), id); err != nil {
+	if err := h.productService.Delete(ctx, id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Product not found")
 			return
@@ -348,6 +397,10 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete product")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionProductDeleted, actorID, fmt.Sprintf("product:%s", id.String()), nil, ip)
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Product deleted"})
 }
 
@@ -359,8 +412,11 @@ func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
 	h.invalidateListCache()
-	updated, err := h.productService.ToggleAvailability(r.Context(), id)
+	updated, err := h.productService.ToggleAvailability(ctx, id)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Product not found")
@@ -369,6 +425,12 @@ func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Reque
 		response.Error(w, http.StatusInternalServerError, "Failed to toggle availability")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionProductAvailabilityToggled, actorID, fmt.Sprintf("product:%s", id.String()), map[string]any{
+		"is_available": updated.IsAvailable,
+	}, ip)
+
 	response.JSON(w, http.StatusOK, h.toProductResponse(updated))
 }
 

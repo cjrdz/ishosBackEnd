@@ -1,5 +1,5 @@
-// ratelimit.go — IP- and phone-based rate limiting for order creation and tracking,
-// backed by Redis with an in-memory fallback for single-instance deployments.
+// ratelimit.go — Phone-first, IP-secondary rate limiting for public order creation
+// and tracking, backed by Redis with an in-memory fail-strict fallback.
 package middleware
 
 import (
@@ -15,67 +15,151 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 )
 
-type rateLimitStore interface {
-	Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error)
+const (
+	defaultTrackingBurst  = 240
+	defaultTrackingWindow = time.Hour
+	failStrictPhoneBurst  = 1
+	failStrictPhoneWindow = time.Hour
+	failStrictPhoneBlock  = time.Hour
+	failStrictIPBurst     = 1
+	failStrictIPWindow    = time.Hour
+	failStrictIPBlock     = time.Hour
+	failStrictStaffBurst  = 1
+	failStrictStaffWindow = time.Hour
+	configCacheTTL        = 10 * time.Second
+	rateLimitStoreTimeout = 2 * time.Second
+)
+
+// RateLimitResult carries the outcome of a single limit check so callers can
+// write consistent response headers and decide whether to proceed.
+type RateLimitResult struct {
+	Allowed    bool
+	Limit      int
+	Remaining  int
+	ResetAt    time.Time
+	RetryAfter time.Duration
 }
 
+// WriteHeaders adds standard rate-limit headers to the response.
+func (r *RateLimitResult) WriteHeaders(w http.ResponseWriter) {
+	w.Header().Set("X-RateLimit-Limit", strconv.Itoa(r.Limit))
+	w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(r.Remaining))
+	if !r.ResetAt.IsZero() {
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(r.ResetAt.Unix(), 10))
+	}
+	if r.RetryAfter > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(r.RetryAfter.Seconds())))
+	}
+}
+
+// rateLimitStore is the backend contract for sliding-window + block checks.
+type rateLimitStore interface {
+	// CheckAndRecord evaluates the limit for key. If allowed, the attempt is recorded.
+	CheckAndRecord(ctx context.Context, key string, burst int, window, block time.Duration) (RateLimitResult, error)
+}
+
+// memoryRateLimitStore is an in-process sliding-window store.
 type memoryRateLimitStore struct {
 	mu       sync.Mutex
 	attempts map[string][]time.Time
+	blocked  map[string]time.Time
 }
 
 func newMemoryRateLimitStore() *memoryRateLimitStore {
-	return &memoryRateLimitStore{attempts: make(map[string][]time.Time)}
+	return &memoryRateLimitStore{
+		attempts: make(map[string][]time.Time),
+		blocked:  make(map[string]time.Time),
+	}
 }
 
-func (s *memoryRateLimitStore) Allow(_ context.Context, key string, limit int, window time.Duration) (bool, error) {
+func (s *memoryRateLimitStore) CheckAndRecord(_ context.Context, key string, burst int, window, block time.Duration) (RateLimitResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	cutoff := now.Add(-window)
 
-	// In-place filter: reusing the backing array avoids allocation.
-	// Safe because we only compact leftward, never overwriting ahead of the read cursor.
+	if expiry, ok := s.blocked[key]; ok && now.Before(expiry) {
+		return RateLimitResult{
+			Allowed:    false,
+			Limit:      burst,
+			Remaining:  0,
+			ResetAt:    expiry,
+			RetryAfter: time.Until(expiry),
+		}, nil
+	}
+	delete(s.blocked, key)
+
+	cutoff := now.Add(-window)
 	recent := s.attempts[key][:0]
-	for _, attempt := range s.attempts[key] {
-		if attempt.After(cutoff) {
-			recent = append(recent, attempt)
+	for _, t := range s.attempts[key] {
+		if t.After(cutoff) {
+			recent = append(recent, t)
 		}
 	}
 
-	if len(recent) >= limit {
-		s.attempts[key] = append([]time.Time(nil), recent...)
-		return false, nil
+	if len(recent) >= burst {
+		expiry := now.Add(block)
+		s.blocked[key] = expiry
+		s.attempts[key] = recent
+		return RateLimitResult{
+			Allowed:    false,
+			Limit:      burst,
+			Remaining:  0,
+			ResetAt:    expiry,
+			RetryAfter: block,
+		}, nil
 	}
 
 	recent = append(recent, now)
-	s.attempts[key] = append([]time.Time(nil), recent...)
-	return true, nil
+	s.attempts[key] = recent
+
+	return RateLimitResult{
+		Allowed:    true,
+		Limit:      burst,
+		Remaining:  burst - len(recent),
+		ResetAt:    now.Add(window),
+		RetryAfter: 0,
+	}, nil
 }
 
+// redisRateLimitStore implements sliding-window + block with Redis.
 type redisRateLimitStore struct {
 	client *redis.Client
 	prefix string
 }
 
-var slidingWindowScript = redis.NewScript(`
-local key = KEYS[1]
+// rateLimitScript checks the block flag, trims the window, counts entries, blocks
+// if the burst is consumed, and records the attempt atomically.
+// Returns: 1 if allowed, 0 if blocked. Also returns the remaining count and reset TTL.
+var rateLimitScript = redis.NewScript(`
+local windowKey = KEYS[1]
+local blockKey = KEYS[2]
 local now = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
-local limit = tonumber(ARGV[3])
-local member = ARGV[4]
-redis.call("ZREMRANGEBYSCORE", key, "-inf", now - window)
-local count = redis.call("ZCARD", key)
-if count >= limit then
-  redis.call("PEXPIRE", key, window)
-  return 0
+local block = tonumber(ARGV[3])
+local burst = tonumber(ARGV[4])
+local member = ARGV[5]
+
+local blockedTTL = redis.call("PTTL", blockKey)
+if blockedTTL > 0 then
+  return {0, 0, blockedTTL}
 end
-redis.call("ZADD", key, now, member)
-redis.call("PEXPIRE", key, window)
-return 1
+
+local cutoff = now - window
+redis.call("ZREMRANGEBYSCORE", windowKey, "-inf", cutoff)
+local count = redis.call("ZCARD", windowKey)
+if count >= burst then
+  redis.call("PSETEX", blockKey, block, "1")
+  redis.call("PEXPIRE", windowKey, window)
+  return {0, 0, block}
+end
+
+redis.call("ZADD", windowKey, now, member)
+redis.call("PEXPIRE", windowKey, window)
+return {1, burst - count - 1, window}
 `)
 
 func newRedisRateLimitStore(redisURL, prefix string) (*redisRateLimitStore, error) {
@@ -100,33 +184,57 @@ func newRedisRateLimitStore(redisURL, prefix string) (*redisRateLimitStore, erro
 	return &redisRateLimitStore{client: client, prefix: strings.TrimSpace(prefix)}, nil
 }
 
-func (s *redisRateLimitStore) Allow(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
+func (s *redisRateLimitStore) CheckAndRecord(ctx context.Context, key string, burst int, window, block time.Duration) (RateLimitResult, error) {
 	nowMillis := time.Now().UnixMilli()
 	member := strconv.FormatInt(time.Now().UnixNano(), 10)
-	redisKey := key
+	windowKey := key + ":window"
+	blockKey := key + ":blocked"
 	if s.prefix != "" {
-		redisKey = s.prefix + ":" + key
+		windowKey = s.prefix + ":" + windowKey
+		blockKey = s.prefix + ":" + blockKey
 	}
 
-	result, err := slidingWindowScript.Run(ctx, s.client, []string{redisKey}, nowMillis, window.Milliseconds(), limit, member).Int()
+	res, err := rateLimitScript.Run(ctx, s.client, []string{windowKey, blockKey}, nowMillis, window.Milliseconds(), block.Milliseconds(), burst, member).Result()
 	if err != nil {
-		return false, err
+		return RateLimitResult{}, err
 	}
 
-	return result == 1, nil
+	vals := res.([]interface{})
+	allowed := vals[0].(int64) == 1
+	remaining := int(vals[1].(int64))
+	resetMillis := vals[2].(int64)
+
+	now := time.Now()
+	result := RateLimitResult{
+		Allowed:   allowed,
+		Limit:     burst,
+		Remaining: remaining,
+	}
+	if allowed {
+		result.ResetAt = now.Add(window)
+	} else {
+		result.RetryAfter = time.Duration(resetMillis) * time.Millisecond
+		result.ResetAt = now.Add(result.RetryAfter)
+	}
+	return result, nil
 }
 
-// OrderRateLimiter tracks order creation and tracking attempts.
-// It prefers Redis for multi-instance deployments and falls back to in-memory limits.
+// OrderRateLimiter enforces configurable, phone-first public order limits.
 type OrderRateLimiter struct {
-	primary            rateLimitStore
-	fallback           rateLimitStore
-	maxOrdersPerHour   int
-	maxOrdersPerDay    int
-	maxTrackingPerHour int
+	settingsSvc *services.AdminSettingService
+	defaults    services.PublicOrderRateLimitConfig
+	tracking    services.PublicOrderRateLimitConfig // tracking uses burst/window only
+	primary     rateLimitStore
+	fallback    rateLimitStore
+	prefix      string
+
+	configMu      sync.RWMutex
+	cachedConfig  services.PublicOrderRateLimitConfig
+	configFetched time.Time
 }
 
-func NewOrderRateLimiter(maxPerHour, maxPerDay, maxTrackingPerHour int, redisURL, redisPrefix string) *OrderRateLimiter {
+// NewOrderRateLimiter builds a rate limiter driven by admin settings.
+func NewOrderRateLimiter(settingsSvc *services.AdminSettingService, defaults services.PublicOrderRateLimitConfig, trackingBurst int, trackingWindow time.Duration, redisURL, redisPrefix string) *OrderRateLimiter {
 	redisStore, err := newRedisRateLimitStore(redisURL, redisPrefix)
 	if err != nil {
 		log.Warn().Err(err).Msg("Rate limiter: Redis unavailable, using in-memory fallback")
@@ -137,87 +245,156 @@ func NewOrderRateLimiter(maxPerHour, maxPerDay, maxTrackingPerHour int, redisURL
 		primary = redisStore
 	}
 
+	tracking := services.PublicOrderRateLimitConfig{
+		IPBurst:         trackingBurst,
+		IPWindowMinutes: int(trackingWindow.Minutes()),
+	}
+	if tracking.IPBurst <= 0 {
+		tracking.IPBurst = defaultTrackingBurst
+	}
+	if tracking.IPWindowMinutes <= 0 {
+		tracking.IPWindowMinutes = int(defaultTrackingWindow.Minutes())
+	}
+
 	return &OrderRateLimiter{
-		primary:            primary,
-		fallback:           newMemoryRateLimitStore(),
-		maxOrdersPerHour:   maxPerHour,
-		maxOrdersPerDay:    maxPerDay,
-		maxTrackingPerHour: maxTrackingPerHour,
+		settingsSvc:  settingsSvc,
+		defaults:     defaults,
+		tracking:     tracking,
+		primary:      primary,
+		fallback:     newMemoryRateLimitStore(),
+		prefix:       strings.TrimSpace(redisPrefix),
+		cachedConfig: defaults,
 	}
 }
 
-func (rl *OrderRateLimiter) allow(key string, limit int, window time.Duration, logField, logValue, message string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func (rl *OrderRateLimiter) resolveConfig(ctx context.Context) services.PublicOrderRateLimitConfig {
+	rl.configMu.RLock()
+	if time.Since(rl.configFetched) < configCacheTTL {
+		cached := rl.cachedConfig
+		rl.configMu.RUnlock()
+		return cached
+	}
+	rl.configMu.RUnlock()
+
+	cfg := rl.defaults
+	if rl.settingsSvc != nil {
+		resolved, err := rl.settingsSvc.GetPublicOrderRateLimitConfig(ctx, rl.defaults)
+		if err == nil {
+			cfg = resolved
+		} else {
+			log.Warn().Err(err).Msg("Rate limiter: failed to load config from settings, using defaults")
+		}
+	}
+
+	rl.configMu.Lock()
+	rl.cachedConfig = cfg
+	rl.configFetched = time.Now()
+	rl.configMu.Unlock()
+	return cfg
+}
+
+func (rl *OrderRateLimiter) applyPrefix(key string) string {
+	if rl.prefix != "" {
+		return rl.prefix + ":" + key
+	}
+	return key
+}
+
+func (rl *OrderRateLimiter) check(ctx context.Context, key string, burst int, window, block time.Duration) RateLimitResult {
+	ctx, cancel := context.WithTimeout(ctx, rateLimitStoreTimeout)
 	defer cancel()
 
 	if rl.primary != nil {
-		allowed, err := rl.primary.Allow(ctx, key, limit, window)
+		res, err := rl.primary.CheckAndRecord(ctx, key, burst, window, block)
 		if err == nil {
-			if !allowed {
-				log.Warn().Str(logField, logValue).Msg(message)
-			}
-			return allowed
+			return res
 		}
-		log.Error().Err(err).Str(logField, logValue).Msg("Rate limiter: primary store failed, falling back to memory")
+		log.Error().Err(err).Str("key", key).Msg("Rate limiter: primary store failed, using fail-strict fallback")
 	}
 
-	allowed, err := rl.fallback.Allow(ctx, key, limit, window)
+	res, err := rl.fallback.CheckAndRecord(ctx, key, burst, window, block)
 	if err != nil {
-		log.Error().Err(err).Str(logField, logValue).Msg("Rate limiter: fallback store failed")
-		return true
+		log.Error().Err(err).Str("key", key).Msg("Rate limiter: fallback store failed")
+		return RateLimitResult{Allowed: false, Limit: burst, Remaining: 0}
 	}
-	if !allowed {
-		log.Warn().Str(logField, logValue).Msg(message)
-	}
-	return allowed
+	return res
 }
 
-// CheckOrderIP returns true when the IP is allowed to create another order.
-func (rl *OrderRateLimiter) CheckOrderIP(ip string) bool {
-	return rl.allow("orders:ip:"+ip, rl.maxOrdersPerHour, time.Hour, "ip", ip, "Order IP rate limit exceeded")
-}
-
-// CheckTrackingIP returns true when the IP is allowed to query order tracking.
-func (rl *OrderRateLimiter) CheckTrackingIP(ip string) bool {
-	return rl.allow("tracking:ip:"+ip, rl.maxTrackingPerHour, time.Hour, "ip", ip, "Tracking IP rate limit exceeded")
-}
-
-// CheckPhone returns true when the phone is allowed to make another order today.
-func (rl *OrderRateLimiter) CheckPhone(phone string) bool {
-	// Strip non-digits so different phone formats (e.g. "+52 123-456" and "52123456") share the same rate-limit bucket.
-	normalizedPhone := strings.Map(func(r rune) rune {
+func normalizePhone(phone string) string {
+	normalized := strings.Map(func(r rune) rune {
 		if r >= '0' && r <= '9' {
 			return r
 		}
 		return -1
 	}, phone)
-	if normalizedPhone == "" {
-		normalizedPhone = strings.TrimSpace(phone)
+	if normalized == "" {
+		return strings.TrimSpace(phone)
 	}
-	return rl.allow("orders:phone:"+normalizedPhone, rl.maxOrdersPerDay, 24*time.Hour, "phone", normalizedPhone, "Phone rate limit exceeded")
+	return normalized
 }
 
-// Middleware returns a Chi middleware that enforces IP-based rate limiting on order creation.
-// Place it only on the POST /api/v1/orders route.
-// Note: Phone-based rate limiting is enforced in the handler after parsing the request body.
+// CheckOrderIP checks the IP-level limit before the request body is parsed.
+func (rl *OrderRateLimiter) CheckOrderIP(ctx context.Context, ip string) RateLimitResult {
+	cfg := rl.resolveConfig(ctx)
+	return rl.check(ctx, rl.applyPrefix("orders:ip:"+ip), cfg.IPBurst, time.Duration(cfg.IPWindowMinutes)*time.Minute, time.Duration(cfg.IPBlockMinutes)*time.Minute)
+}
+
+// CheckPhone checks and records the phone-level limit.
+func (rl *OrderRateLimiter) CheckPhone(ctx context.Context, phone string) RateLimitResult {
+	cfg := rl.resolveConfig(ctx)
+	normalized := normalizePhone(phone)
+	return rl.check(ctx, rl.applyPrefix("orders:phone:"+normalized), cfg.PhoneBurst, time.Duration(cfg.PhoneWindowMinutes)*time.Minute, time.Duration(cfg.PhoneBlockMinutes)*time.Minute)
+}
+
+// CheckStaff checks the finite staff throttle.
+func (rl *OrderRateLimiter) CheckStaff(ctx context.Context, staffID string) RateLimitResult {
+	cfg := rl.resolveConfig(ctx)
+	return rl.check(ctx, rl.applyPrefix("orders:staff:"+staffID), cfg.StaffBurst, time.Duration(cfg.StaffWindowMinutes)*time.Minute, time.Duration(cfg.StaffWindowMinutes)*time.Minute)
+}
+
+// CheckTrackingIP checks the public tracking endpoint IP limit.
+func (rl *OrderRateLimiter) CheckTrackingIP(ctx context.Context, ip string) RateLimitResult {
+	return rl.check(ctx, rl.applyPrefix("tracking:ip:"+ip), rl.tracking.IPBurst, time.Duration(rl.tracking.IPWindowMinutes)*time.Minute, time.Duration(rl.tracking.IPWindowMinutes)*time.Minute)
+}
+
+// Middleware enforces IP-based rate limiting on order creation.
 func (rl *OrderRateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if record, ok := auth.GetRecord(r.Context()); ok && record != nil {
+			staffID := auth.RecordID(record)
+			res := rl.CheckStaff(r.Context(), staffID)
+			res.WriteHeaders(w)
+			if !res.Allowed {
+				log.Warn().Str("staff_id", staffID).Msg("Staff order rate limit exceeded")
+				responseRateLimited(w, res)
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
+
 		ip := auth.ClientIP(r)
-		if !rl.CheckOrderIP(ip) {
-			http.Error(w, `{"error":"too many orders from your IP, try later"}`,
-				http.StatusTooManyRequests)
+		res := rl.CheckOrderIP(r.Context(), ip)
+		res.WriteHeaders(w)
+		if !res.Allowed {
+			log.Warn().Str("ip", ip).Msg("Order IP rate limit exceeded")
+			responseRateLimited(w, res)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// CheckAndRecordPhone checks if a phone number can make an order and records the attempt.
-// This should be called from the order handler after parsing the request body.
-func (rl *OrderRateLimiter) CheckAndRecordPhone(phone string) bool {
-	return rl.CheckPhone(phone)
+// CheckAndRecordPhone checks the phone-level limit and records the attempt.
+// Call this from the order handler after basic validation passes so invalid
+// payloads do not consume the customer's burst quota.
+func (rl *OrderRateLimiter) CheckAndRecordPhone(ctx context.Context, phone string) RateLimitResult {
+	return rl.CheckPhone(ctx, phone)
+}
+
+func responseRateLimited(w http.ResponseWriter, res RateLimitResult) {
+	w.Header().Set("Content-Type", "application/json")
+	res.WriteHeaders(w)
+	w.WriteHeader(http.StatusTooManyRequests)
+	_, _ = w.Write([]byte(`{"error":"too many requests, try later"}`))
 }

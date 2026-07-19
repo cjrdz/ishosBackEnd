@@ -30,13 +30,32 @@ func NewProductBunRepository(db bun.IDB) *ProductBunRepository {
 
 // FindAll returns products, optionally filtered by category slug and availability.
 func (r *ProductBunRepository) FindAll(ctx context.Context, categorySlug string, onlyAvailable bool) ([]dto.Product, error) {
+	return r.findAll(ctx, categorySlug, onlyAvailable, 0, 0)
+}
+
+// FindAllPaginated returns a page of products plus the total count.
+func (r *ProductBunRepository) FindAllPaginated(ctx context.Context, categorySlug string, onlyAvailable bool, page, perPage int) ([]dto.Product, int, error) {
+	products, err := r.findAll(ctx, categorySlug, onlyAvailable, page, perPage)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total, err := r.countAll(ctx, categorySlug, onlyAvailable)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return products, total, nil
+}
+
+func (r *ProductBunRepository) buildProductQuery(ctx context.Context, categorySlug string, onlyAvailable bool) (*bun.SelectQuery, error) {
 	q := r.db.NewSelect().Model((*models.Product)(nil)).Order("created_at ASC")
 
 	if categorySlug != "" {
 		var category models.Category
 		if err := r.db.NewSelect().Model(&category).Where("slug = ?", categorySlug).Scan(ctx); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return []dto.Product{}, nil
+				return nil, sql.ErrNoRows
 			}
 			return nil, err
 		}
@@ -45,6 +64,34 @@ func (r *ProductBunRepository) FindAll(ctx context.Context, categorySlug string,
 
 	if onlyAvailable {
 		q = q.Where("is_available = ?", true)
+	}
+
+	return q, nil
+}
+
+func (r *ProductBunRepository) countAll(ctx context.Context, categorySlug string, onlyAvailable bool) (int, error) {
+	q, err := r.buildProductQuery(ctx, categorySlug, onlyAvailable)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return q.Count(ctx)
+}
+
+func (r *ProductBunRepository) findAll(ctx context.Context, categorySlug string, onlyAvailable bool, page, perPage int) ([]dto.Product, error) {
+	q, err := r.buildProductQuery(ctx, categorySlug, onlyAvailable)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []dto.Product{}, nil
+		}
+		return nil, err
+	}
+
+	if page > 0 && perPage > 0 {
+		offset := (page - 1) * perPage
+		q = q.Limit(perPage).Offset(offset)
 	}
 
 	var rows []models.Product

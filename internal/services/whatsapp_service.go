@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -26,6 +27,9 @@ type WhatsAppService struct {
 	baseURL string
 	enabled bool
 	queue   chan whatsappJob
+	closeMu sync.Mutex
+	closed  bool
+	wg      sync.WaitGroup
 }
 
 type whatsappJob struct {
@@ -42,12 +46,14 @@ func NewWhatsAppService(cfg *config.Config) *WhatsAppService {
 		queue:   make(chan whatsappJob, 256),
 	}
 
+	svc.wg.Add(1)
 	go svc.startWorker()
 
 	return svc
 }
 
 func (s *WhatsAppService) startWorker() {
+	defer s.wg.Done()
 	for job := range s.queue {
 		s.sendWithRetry(job.phone, job.message)
 	}
@@ -64,10 +70,51 @@ type whatsappPayload struct {
 }
 
 func (s *WhatsAppService) send(phone, message string) {
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+	if s.closed {
+		return
+	}
+
 	select {
 	case s.queue <- whatsappJob{phone: phone, message: message}:
 	default:
 		log.Warn().Str("to", maskPhone(phone)).Msg("WhatsApp queue full, dropping notification")
+	}
+}
+
+// Close stops accepting new jobs, drains the queue, and waits for the worker
+// to finish or for the context to expire. It is safe to call multiple times.
+func (s *WhatsAppService) Close(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+
+	s.closeMu.Lock()
+	if s.closed {
+		s.closeMu.Unlock()
+		return nil
+	}
+	s.closed = true
+	close(s.queue)
+	s.closeMu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	if ctx == nil {
+		<-done
+		return nil
+	}
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

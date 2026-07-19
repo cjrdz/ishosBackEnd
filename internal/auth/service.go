@@ -77,10 +77,16 @@ type Service interface {
 
 // ServiceImpl implements the Service interface using PocketBase.
 type ServiceImpl struct {
-	pb                *PBAuth
-	loginLimiter      *LoginLimitTracker
-	loginLockoutStore LoginLockoutStore
-	validationCache   *tokenValidationCache
+	pb                     *PBAuth
+	loginLimiter           loginLimitStore
+	loginLockout           loginLockoutStore
+	fallbackLoginLimiter   loginLimitStore
+	fallbackLoginLockout   loginLockoutStore
+	maxLoginAttemptsPerMin int
+	maxFailures            int
+	lockoutWindowMins      int
+	lockoutDurationMins    int
+	validationCache        *tokenValidationCache
 }
 
 // tokenValidationCache caches successful PocketBase token validations for a
@@ -98,7 +104,9 @@ type tokenValidationEntry struct {
 
 func newTokenValidationCache(ttl time.Duration) *tokenValidationCache {
 	if ttl <= 0 {
-		ttl = 60 * time.Second
+		// Short TTL limits how long a role change (e.g. admin -> employee) is
+		// delayed in the validation cache.
+		ttl = 5 * time.Second
 	}
 	return &tokenValidationCache{
 		entries: make(map[string]tokenValidationEntry),
@@ -128,32 +136,11 @@ func (c *tokenValidationCache) invalidate(token string) {
 	c.mu.Unlock()
 }
 
-// LoginLimitTracker tracks login attempts per IP.
-type LoginLimitTracker struct {
-	mu           sync.Mutex
-	attemptsByIP map[string][]time.Time
-	maxPerMin    int
-}
-
-// LoginLockoutStore tracks failed logins and lockouts per identifier (IP/email).
-type LoginLockoutStore struct {
-	mu           sync.Mutex
-	lockouts     map[string]Lockout
-	maxFailures  int
-	windowMins   int
-	durationMins int
-}
-
-// Lockout represents a failed login attempt tracker.
-type Lockout struct {
-	FailureCount int
-	LastFailure  time.Time
-	LockedUntil  time.Time
-	FirstFailure time.Time
-}
-
 // NewService creates a new auth service.
-func NewService(pb *PBAuth, maxLoginAttemptsPerMin, maxFailures, lockoutWindowMins, lockoutDurationMins int) *ServiceImpl {
+// When redisURL is provided, login rate limiting and lockout are backed by
+// Redis so multiple instances share state; otherwise an in-process fallback is
+// used.
+func NewService(pb *PBAuth, maxLoginAttemptsPerMin, maxFailures, lockoutWindowMins, lockoutDurationMins int, redisURL, redisPrefix string) *ServiceImpl {
 	if maxLoginAttemptsPerMin <= 0 {
 		maxLoginAttemptsPerMin = 10
 	}
@@ -167,19 +154,36 @@ func NewService(pb *PBAuth, maxLoginAttemptsPerMin, maxFailures, lockoutWindowMi
 		lockoutDurationMins = 15
 	}
 
+	fallbackLimiter := newMemoryLoginLimitStore()
+	fallbackLockout := newMemoryLoginLockoutStore()
+
+	var limiter loginLimitStore = fallbackLimiter
+	var lockout loginLockoutStore = fallbackLockout
+
+	if redisURL != "" {
+		if rl, err := newRedisLoginLimitStore(redisURL, redisPrefix); err == nil {
+			limiter = rl
+		} else {
+			log.Warn().Err(err).Msg("auth: Redis login limiter unavailable, using in-memory fallback")
+		}
+		if ls, err := newRedisLoginLockoutStore(redisURL, redisPrefix); err == nil {
+			lockout = ls
+		} else {
+			log.Warn().Err(err).Msg("auth: Redis login lockout unavailable, using in-memory fallback")
+		}
+	}
+
 	return &ServiceImpl{
-		pb: pb,
-		loginLimiter: &LoginLimitTracker{
-			attemptsByIP: make(map[string][]time.Time),
-			maxPerMin:    maxLoginAttemptsPerMin,
-		},
-		loginLockoutStore: LoginLockoutStore{
-			lockouts:     make(map[string]Lockout),
-			maxFailures:  maxFailures,
-			windowMins:   lockoutWindowMins,
-			durationMins: lockoutDurationMins,
-		},
-		validationCache: newTokenValidationCache(60 * time.Second),
+		pb:                     pb,
+		loginLimiter:           limiter,
+		loginLockout:           lockout,
+		fallbackLoginLimiter:   fallbackLimiter,
+		fallbackLoginLockout:   fallbackLockout,
+		maxLoginAttemptsPerMin: maxLoginAttemptsPerMin,
+		maxFailures:            maxFailures,
+		lockoutWindowMins:      lockoutWindowMins,
+		lockoutDurationMins:    lockoutDurationMins,
+		validationCache:        newTokenValidationCache(5 * time.Second),
 	}
 }
 
@@ -284,24 +288,35 @@ func (s *ServiceImpl) ListEmployees(ctx context.Context) ([]*core.Record, error)
 	return records, nil
 }
 
-// CheckLoginAttempt checks if an IP is rate limited.
+// CheckLoginAttempt checks if an IP is rate limited or locked out.
 func (s *ServiceImpl) CheckLoginAttempt(ctx context.Context, ip string) error {
-	if !s.loginLimiter.allow(ip) {
+	allowed, err := s.loginLimiter.allow(ctx, ip, s.maxLoginAttemptsPerMin)
+	if err != nil {
+		log.Error().Err(err).Str("ip", ip).Msg("auth: login limiter store failed, using fallback")
+		allowed, err = s.fallbackLoginLimiter.allow(ctx, ip, s.maxLoginAttemptsPerMin)
+		if err != nil {
+			return fmt.Errorf("login limiter unavailable: %w", err)
+		}
+	}
+	if !allowed {
+		log.Warn().Str("ip", ip).Msg("Login rate limit exceeded")
 		return &apperror.RateLimitError{
 			RetryAfter: 60, // 1 minute
 			Cause:      fmt.Errorf("login rate limit exceeded"),
 		}
 	}
 
-	// Check lockout status
-	lockout, _ := s.loginLockoutStore.get(ip)
-	now := time.Now()
-
-	// If locked, check if lockout period has expired
-	if !lockout.LockedUntil.IsZero() && now.Before(lockout.LockedUntil) {
-		remainingSecs := int(lockout.LockedUntil.Sub(now).Seconds())
+	locked, retryAfter, err := s.loginLockout.getLockout(ctx, ip)
+	if err != nil {
+		log.Error().Err(err).Str("identifier", ip).Msg("auth: login lockout store failed, using fallback")
+		locked, retryAfter, err = s.fallbackLoginLockout.getLockout(ctx, ip)
+		if err != nil {
+			return fmt.Errorf("login lockout unavailable: %w", err)
+		}
+	}
+	if locked {
 		return &apperror.RateLimitError{
-			RetryAfter: remainingSecs,
+			RetryAfter: int(retryAfter.Seconds()),
 			Cause:      fmt.Errorf("too many failed attempts, account locked"),
 		}
 	}
@@ -311,121 +326,45 @@ func (s *ServiceImpl) CheckLoginAttempt(ctx context.Context, ip string) error {
 
 // RecordLoginFailure records a failed login attempt for lockout tracking.
 func (s *ServiceImpl) RecordLoginFailure(ctx context.Context, ip string) error {
-	s.loginLimiter.recordAttempt(ip)
-	s.loginLockoutStore.recordFailure(ip)
-	return nil
+	_, _, err := s.loginLockout.recordFailure(ctx, ip, s.maxFailures, s.lockoutWindowMins, s.lockoutDurationMins)
+	if err != nil {
+		log.Error().Err(err).Str("identifier", ip).Msg("auth: login lockout store failed, using fallback")
+		_, _, err = s.fallbackLoginLockout.recordFailure(ctx, ip, s.maxFailures, s.lockoutWindowMins, s.lockoutDurationMins)
+	}
+	return err
 }
 
 // IsLoginLocked checks if an identifier is locked out.
 func (s *ServiceImpl) IsLoginLocked(ctx context.Context, identifier string) (bool, int, error) {
-	lockout, _ := s.loginLockoutStore.get(identifier)
-	now := time.Now()
-	if !lockout.LockedUntil.IsZero() && now.Before(lockout.LockedUntil) {
-		return true, int(lockout.LockedUntil.Sub(now).Seconds()), nil
+	locked, retryAfter, err := s.loginLockout.getLockout(ctx, identifier)
+	if err != nil {
+		log.Error().Err(err).Str("identifier", identifier).Msg("auth: login lockout store failed, using fallback")
+		locked, retryAfter, err = s.fallbackLoginLockout.getLockout(ctx, identifier)
+		if err != nil {
+			return false, 0, err
+		}
 	}
-	return false, 0, nil
+	return locked, int(retryAfter.Seconds()), nil
 }
 
 // RecordLoginLockoutFailure records a failed login attempt for lockout tracking.
 func (s *ServiceImpl) RecordLoginLockoutFailure(ctx context.Context, identifier string) error {
-	s.loginLockoutStore.recordFailure(identifier)
-	return nil
+	_, _, err := s.loginLockout.recordFailure(ctx, identifier, s.maxFailures, s.lockoutWindowMins, s.lockoutDurationMins)
+	if err != nil {
+		log.Error().Err(err).Str("identifier", identifier).Msg("auth: login lockout store failed, using fallback")
+		_, _, err = s.fallbackLoginLockout.recordFailure(ctx, identifier, s.maxFailures, s.lockoutWindowMins, s.lockoutDurationMins)
+	}
+	return err
 }
 
 // ResetLoginLockout clears the lockout for an identifier.
 func (s *ServiceImpl) ResetLoginLockout(ctx context.Context, identifier string) error {
-	s.loginLockoutStore.reset(identifier)
-	return nil
-}
-
-// --- LoginLimitTracker helpers ---
-
-func (lt *LoginLimitTracker) allow(ip string) bool {
-	lt.mu.Lock()
-	defer lt.mu.Unlock()
-
-	now := time.Now()
-	cutoff := now.Add(-time.Minute)
-
-	attempts := lt.attemptsByIP[ip]
-	recent := make([]time.Time, 0, len(attempts))
-	for _, t := range attempts {
-		if t.After(cutoff) {
-			recent = append(recent, t)
-		}
+	err := s.loginLockout.resetLockout(ctx, identifier)
+	if err != nil {
+		log.Error().Err(err).Str("identifier", identifier).Msg("auth: login lockout store failed, using fallback")
+		err = s.fallbackLoginLockout.resetLockout(ctx, identifier)
 	}
-
-	if len(recent) >= lt.maxPerMin {
-		log.Warn().Str("ip", ip).Msg("Login rate limit exceeded")
-		lt.attemptsByIP[ip] = recent
-		return false
-	}
-
-	lt.attemptsByIP[ip] = append(recent, now)
-	return true
-}
-
-func (lt *LoginLimitTracker) recordAttempt(ip string) {
-	lt.mu.Lock()
-	defer lt.mu.Unlock()
-
-	now := time.Now()
-	lt.attemptsByIP[ip] = append(lt.attemptsByIP[ip], now)
-}
-
-// --- LoginLockoutStore helpers ---
-
-func (ls *LoginLockoutStore) get(id string) (Lockout, bool) {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-	lockout, exists := ls.lockouts[id]
-	return lockout, exists
-}
-
-func (ls *LoginLockoutStore) recordFailure(id string) {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-
-	now := time.Now()
-	lockout, exists := ls.lockouts[id]
-
-	if !exists {
-		// First failure
-		lockout = Lockout{
-			FailureCount: 1,
-			FirstFailure: now,
-			LastFailure:  now,
-		}
-	} else {
-		// Check if window has expired
-		windowExpiry := lockout.FirstFailure.Add(time.Duration(ls.windowMins) * time.Minute)
-		if now.After(windowExpiry) {
-			// Reset counter
-			lockout = Lockout{
-				FailureCount: 1,
-				FirstFailure: now,
-				LastFailure:  now,
-			}
-		} else {
-			// Increment counter
-			lockout.FailureCount++
-			lockout.LastFailure = now
-
-			// Lock if max failures exceeded
-			if lockout.FailureCount >= ls.maxFailures {
-				lockout.LockedUntil = now.Add(time.Duration(ls.durationMins) * time.Minute)
-				log.Warn().Str("identifier", id).Int("failures", lockout.FailureCount).Msg("Login lockout triggered")
-			}
-		}
-	}
-
-	ls.lockouts[id] = lockout
-}
-
-func (ls *LoginLockoutStore) reset(id string) {
-	ls.mu.Lock()
-	defer ls.mu.Unlock()
-	delete(ls.lockouts, id)
+	return err
 }
 
 // ClientIP returns the client IP from the request context, as set by chi's

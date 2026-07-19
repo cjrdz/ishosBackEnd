@@ -2,23 +2,26 @@
 package handlers
 
 import (
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type InventoryHandler struct {
 	inventory *services.InventoryService
+	auditSvc  audit.Service
 }
 
-func NewInventoryHandler(inventory *services.InventoryService) *InventoryHandler {
-	return &InventoryHandler{inventory: inventory}
+func NewInventoryHandler(inventory *services.InventoryService, auditSvc audit.Service) *InventoryHandler {
+	return &InventoryHandler{inventory: inventory, auditSvc: auditSvc}
 }
 
 // List returns all inventory items.
@@ -72,18 +75,25 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 		QuantityContainers int       `json:"quantity_containers"`
 		BallsPerContainer  int       `json:"balls_per_container"` // optional for custom containers
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	createdByID := getUserIDFromContext(r)
+	createdByID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, createdByID)
 
-	movement, err := h.inventory.RecordEntry(r.Context(), id, body.ContainerTypeID, body.QuantityContainers, body.BallsPerContainer, createdByID)
+	movement, err := h.inventory.RecordEntry(ctx, id, body.ContainerTypeID, body.QuantityContainers, body.BallsPerContainer, createdByID)
 	if err != nil {
 		writeAppError(w, err, "Failed to record entry")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryEntryRecorded, createdByID, fmt.Sprintf("inventory_item:%s", id.String()), map[string]any{
+		"movement_id": movement.ID,
+		"quantity":    body.QuantityContainers,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, movement)
 }
@@ -100,7 +110,7 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 		Quantity int    `json:"quantity"`
 		Reason   string `json:"reason"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -110,13 +120,21 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	createdByID := getUserIDFromContext(r)
+	createdByID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, createdByID)
 
-	movement, err := h.inventory.RecordAdjustment(r.Context(), id, body.Quantity, body.Reason, createdByID)
+	movement, err := h.inventory.RecordAdjustment(ctx, id, body.Quantity, body.Reason, createdByID)
 	if err != nil {
 		writeAppError(w, err, "Failed to record adjustment")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryAdjustmentRecorded, createdByID, fmt.Sprintf("inventory_item:%s", id.String()), map[string]any{
+		"movement_id": movement.ID,
+		"quantity":    body.Quantity,
+		"reason":      body.Reason,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, movement)
 }
@@ -139,11 +157,16 @@ func (h *InventoryHandler) GetMovementHistory(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	const maxLimit = 200
+
 	limit := 50
 	offset := 0
 
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			if parsed > maxLimit {
+				parsed = maxLimit
+			}
 			limit = parsed
 		}
 	}
@@ -216,18 +239,25 @@ func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Reques
 	var body struct {
 		Quantity int `json:"quantity"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	createdByID := getUserIDFromContext(r)
+	createdByID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, createdByID)
 
-	movement, err := h.inventory.RecordUnitEntry(r.Context(), id, body.Quantity, createdByID)
+	movement, err := h.inventory.RecordUnitEntry(ctx, id, body.Quantity, createdByID)
 	if err != nil {
 		writeAppError(w, err, "Failed to record unit entry")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryUnitEntryRecorded, createdByID, fmt.Sprintf("inventory_item:%s", id.String()), map[string]any{
+		"movement_id": movement.ID,
+		"quantity":    body.Quantity,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, movement)
 }
@@ -239,7 +269,7 @@ func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *htt
 		ProductID         uuid.UUID `json:"product_id"`
 		LowStockThreshold int       `json:"low_stock_threshold"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -249,11 +279,21 @@ func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *htt
 		return
 	}
 
-	item, err := h.inventory.CreateUnitInventoryItem(r.Context(), body.Name, body.ProductID, body.LowStockThreshold)
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	item, err := h.inventory.CreateUnitInventoryItem(ctx, body.Name, body.ProductID, body.LowStockThreshold)
 	if err != nil {
 		writeAppError(w, err, "Failed to create inventory item")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryUnitItemCreated, actorID, fmt.Sprintf("inventory_item:%s", item.ID.String()), map[string]any{
+		"name":                item.Name,
+		"product_id":          body.ProductID.String(),
+		"low_stock_threshold": item.LowStockThreshold,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, item)
 }
@@ -282,11 +322,19 @@ func (h *InventoryHandler) LinkInventoryItemToProduct(w http.ResponseWriter, r *
 		return
 	}
 
-	item, err := h.inventory.LinkInventoryItemToProduct(r.Context(), inventoryItemID, productID)
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	item, err := h.inventory.LinkInventoryItemToProduct(ctx, inventoryItemID, productID)
 	if err != nil {
 		writeAppError(w, err, "Failed to link inventory item")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryItemLinked, actorID, fmt.Sprintf("inventory_item:%s", inventoryItemID.String()), map[string]any{
+		"product_id": productID.String(),
+	}, ip)
 
 	response.JSON(w, http.StatusOK, item)
 }
@@ -299,16 +347,17 @@ func (h *InventoryHandler) UnlinkInventoryItemFromProduct(w http.ResponseWriter,
 		return
 	}
 
-	item, err := h.inventory.UnlinkInventoryItemFromProduct(r.Context(), inventoryItemID)
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	item, err := h.inventory.UnlinkInventoryItemFromProduct(ctx, inventoryItemID)
 	if err != nil {
 		writeAppError(w, err, "Failed to unlink inventory item")
 		return
 	}
 
-	response.JSON(w, http.StatusOK, item)
-}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryItemUnlinked, actorID, fmt.Sprintf("inventory_item:%s", inventoryItemID.String()), nil, ip)
 
-func getUserIDFromContext(r *http.Request) string {
-	// This is a placeholder - implement based on your auth middleware
-	return ""
+	response.JSON(w, http.StatusOK, item)
 }

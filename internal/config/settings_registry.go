@@ -42,6 +42,20 @@ var SettingsRegistry = map[string]struct {
 			return json.Unmarshal(raw, &v)
 		},
 	},
+	// AdminTokenTTLSettingKey = "admin.tokens.ttl"
+	// Value shape: {"auth_cookie_ttl_hours": int, "auth_token_ttl_hours": int,
+	//               "tracking_token_ttl_hours": int, "inactivity_logout_seconds": int}
+	"admin.tokens.ttl": {
+		Validate: func(raw json.RawMessage) error {
+			var v struct {
+				AuthCookieTTLHours      int `json:"auth_cookie_ttl_hours"`
+				AuthTokenTTLHours       int `json:"auth_token_ttl_hours"`
+				TrackingTokenTTLHours   int `json:"tracking_token_ttl_hours"`
+				InactivityLogoutSeconds int `json:"inactivity_logout_seconds"`
+			}
+			return json.Unmarshal(raw, &v)
+		},
+	},
 }
 
 // Helper to check key and value

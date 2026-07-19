@@ -42,6 +42,11 @@ func (s *CategoryService) List(ctx context.Context, showAll bool) ([]dto.Categor
 	return result, err
 }
 
+// ListPaginated returns a page of categories plus the total count.
+func (s *CategoryService) ListPaginated(ctx context.Context, showAll bool, page, perPage int) ([]dto.Category, int, error) {
+	return s.repo.FindAllPaginated(ctx, showAll, page, perPage)
+}
+
 func (s *CategoryService) GetBySlug(ctx context.Context, slug string) (dto.Category, error) {
 	return s.repo.FindBySlugWithProducts(ctx, slug)
 }

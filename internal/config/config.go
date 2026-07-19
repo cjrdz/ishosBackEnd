@@ -50,6 +50,17 @@ type Config struct {
 	R2PublicBaseURL   string `env:"R2_PUBLIC_BASE_URL,required"`
 	// Maximum uploaded image size in MB.
 	AdminImageUploadMaxMB int `env:"ADMIN_IMAGE_UPLOAD_MAX_MB" envDefault:"15"`
+	// Maximum uploaded image dimensions in pixels.
+	AdminImageUploadMaxWidth  int `env:"ADMIN_IMAGE_UPLOAD_MAX_WIDTH" envDefault:"4096"`
+	AdminImageUploadMaxHeight int `env:"ADMIN_IMAGE_UPLOAD_MAX_HEIGHT" envDefault:"4096"`
+	// Comma-separated allowlist of upload folder names.
+	AllowedUploadFolders string `env:"ALLOWED_UPLOAD_FOLDERS" envDefault:"products,categories,flavors,addons,container-types,profile,general"`
+
+	// Database connection pool tuning.
+	DBMaxOpenConns           int `env:"DB_MAX_OPEN_CONNS" envDefault:"25"`
+	DBMaxIdleConns           int `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
+	DBConnMaxLifetimeMinutes int `env:"DB_CONN_MAX_LIFETIME_MINUTES" envDefault:"30"`
+	DBConnMaxIdleTimeMinutes int `env:"DB_CONN_MAX_IDLE_TIME_MINUTES" envDefault:"5"`
 
 	// WhatsApp Business API (optional, but all-or-nothing if set)
 	WhatsAppPhoneID string `env:"WHATSAPP_PHONE_ID"`
@@ -68,6 +79,15 @@ type Config struct {
 	// Rate Limiting
 	OrdersPerHour int `env:"ORDERS_PER_HOUR" envDefault:"5"`
 	OrdersPerDay  int `env:"ORDERS_PER_DAY" envDefault:"20"`
+	// Public order rate-limit defaults (phone-first, IP-secondary, staff throttle).
+	PublicOrderPhoneBurst         int `env:"PUBLIC_ORDER_PHONE_BURST" envDefault:"3"`
+	PublicOrderPhoneWindowMinutes int `env:"PUBLIC_ORDER_PHONE_WINDOW_MINUTES" envDefault:"60"`
+	PublicOrderPhoneBlockMinutes  int `env:"PUBLIC_ORDER_PHONE_BLOCK_MINUTES" envDefault:"120"`
+	PublicOrderIPBurst            int `env:"PUBLIC_ORDER_IP_BURST" envDefault:"10"`
+	PublicOrderIPWindowMinutes    int `env:"PUBLIC_ORDER_IP_WINDOW_MINUTES" envDefault:"60"`
+	PublicOrderIPBlockMinutes     int `env:"PUBLIC_ORDER_IP_BLOCK_MINUTES" envDefault:"120"`
+	PublicOrderStaffBurst         int `env:"PUBLIC_ORDER_STAFF_BURST" envDefault:"100"`
+	PublicOrderStaffWindowMinutes int `env:"PUBLIC_ORDER_STAFF_WINDOW_MINUTES" envDefault:"60"`
 	// Max login attempts per IP per minute
 	LoginAttemptsPerMinute int `env:"LOGIN_ATTEMPTS_PER_MINUTE" envDefault:"10"`
 	// Failed-login lockout controls
@@ -221,6 +241,30 @@ func (c *Config) Validate() error {
 	if c.OrdersPerDay <= 0 {
 		return fmt.Errorf("ORDERS_PER_DAY must be positive, got %d", c.OrdersPerDay)
 	}
+	if c.PublicOrderPhoneBurst <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_PHONE_BURST must be positive, got %d", c.PublicOrderPhoneBurst)
+	}
+	if c.PublicOrderPhoneWindowMinutes <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_PHONE_WINDOW_MINUTES must be positive, got %d", c.PublicOrderPhoneWindowMinutes)
+	}
+	if c.PublicOrderPhoneBlockMinutes <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_PHONE_BLOCK_MINUTES must be positive, got %d", c.PublicOrderPhoneBlockMinutes)
+	}
+	if c.PublicOrderIPBurst <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_IP_BURST must be positive, got %d", c.PublicOrderIPBurst)
+	}
+	if c.PublicOrderIPWindowMinutes <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_IP_WINDOW_MINUTES must be positive, got %d", c.PublicOrderIPWindowMinutes)
+	}
+	if c.PublicOrderIPBlockMinutes < 0 {
+		return fmt.Errorf("PUBLIC_ORDER_IP_BLOCK_MINUTES must be non-negative, got %d", c.PublicOrderIPBlockMinutes)
+	}
+	if c.PublicOrderStaffBurst <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_STAFF_BURST must be positive, got %d", c.PublicOrderStaffBurst)
+	}
+	if c.PublicOrderStaffWindowMinutes <= 0 {
+		return fmt.Errorf("PUBLIC_ORDER_STAFF_WINDOW_MINUTES must be positive, got %d", c.PublicOrderStaffWindowMinutes)
+	}
 	if c.LoginAttemptsPerMinute <= 0 {
 		return fmt.Errorf("LOGIN_ATTEMPTS_PER_MINUTE must be positive, got %d", c.LoginAttemptsPerMinute)
 	}
@@ -248,6 +292,32 @@ func (c *Config) Validate() error {
 	if c.AdminImageUploadMaxMB <= 0 {
 		return fmt.Errorf("ADMIN_IMAGE_UPLOAD_MAX_MB must be positive, got %d", c.AdminImageUploadMaxMB)
 	}
+	if c.AdminImageUploadMaxWidth <= 0 {
+		return fmt.Errorf("ADMIN_IMAGE_UPLOAD_MAX_WIDTH must be positive, got %d", c.AdminImageUploadMaxWidth)
+	}
+	if c.AdminImageUploadMaxHeight <= 0 {
+		return fmt.Errorf("ADMIN_IMAGE_UPLOAD_MAX_HEIGHT must be positive, got %d", c.AdminImageUploadMaxHeight)
+	}
+	if strings.TrimSpace(c.AllowedUploadFolders) == "" {
+		return fmt.Errorf("ALLOWED_UPLOAD_FOLDERS cannot be empty")
+	}
+
+	// Database pool tuning
+	if c.DBMaxOpenConns <= 0 {
+		return fmt.Errorf("DB_MAX_OPEN_CONNS must be positive, got %d", c.DBMaxOpenConns)
+	}
+	if c.DBMaxIdleConns <= 0 {
+		return fmt.Errorf("DB_MAX_IDLE_CONNS must be positive, got %d", c.DBMaxIdleConns)
+	}
+	if c.DBMaxIdleConns > c.DBMaxOpenConns {
+		return fmt.Errorf("DB_MAX_IDLE_CONNS (%d) cannot exceed DB_MAX_OPEN_CONNS (%d)", c.DBMaxIdleConns, c.DBMaxOpenConns)
+	}
+	if c.DBConnMaxLifetimeMinutes <= 0 {
+		return fmt.Errorf("DB_CONN_MAX_LIFETIME_MINUTES must be positive, got %d", c.DBConnMaxLifetimeMinutes)
+	}
+	if c.DBConnMaxIdleTimeMinutes <= 0 {
+		return fmt.Errorf("DB_CONN_MAX_IDLE_TIME_MINUTES must be positive, got %d", c.DBConnMaxIdleTimeMinutes)
+	}
 
 	// Tracking configuration
 	if c.TrackingTokenTTLHours <= 0 {
@@ -255,6 +325,18 @@ func (c *Config) Validate() error {
 	}
 	if c.TrackingRequestsPerHour <= 0 {
 		return fmt.Errorf("TRACKING_REQUESTS_PER_HOUR must be positive, got %d", c.TrackingRequestsPerHour)
+	}
+
+	// Bootstrap credentials must not be present in production; provisioning
+	// should use the explicit `make bootstrap-admin` command instead.
+	if c.Env == "production" && (c.BootstrapAdminEmail != "" || c.BootstrapAdminPassword != "") {
+		return fmt.Errorf("BOOTSTRAP_ADMIN_EMAIL/PASSWORD must not be set in production; use the bootstrap command instead")
+	}
+
+	// Redis is required in production for distributed rate limiting and
+	// login lockout state.
+	if c.Env == "production" && strings.TrimSpace(c.RedisURL) == "" {
+		return fmt.Errorf("REDIS_URL is required in production")
 	}
 
 	return nil

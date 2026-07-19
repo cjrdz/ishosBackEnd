@@ -33,6 +33,8 @@ type DispatcherConfig struct {
 
 type Dispatcher struct {
 	mu                     sync.RWMutex
+	closeMu                sync.Mutex
+	closed                 bool
 	orderStatusSubscribers []func(OrderStatusChanged)
 	queue                  chan OrderStatusChanged
 	once                   sync.Once
@@ -75,7 +77,13 @@ func (d *Dispatcher) SubscribeOrderStatusChanged(fn func(OrderStatusChanged)) {
 }
 
 func (d *Dispatcher) PublishOrderStatusChanged(evt OrderStatusChanged) {
-	if d == nil || d.queue == nil {
+	if d == nil {
+		return
+	}
+
+	d.closeMu.Lock()
+	defer d.closeMu.Unlock()
+	if d.closed || d.queue == nil {
 		return
 	}
 
@@ -91,6 +99,14 @@ func (d *Dispatcher) Close(ctx context.Context) error {
 	if d == nil || d.queue == nil {
 		return nil
 	}
+
+	d.closeMu.Lock()
+	if d.closed {
+		d.closeMu.Unlock()
+		return nil
+	}
+	d.closed = true
+	d.closeMu.Unlock()
 
 	d.once.Do(func() {
 		close(d.queue)

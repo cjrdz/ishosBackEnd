@@ -31,6 +31,15 @@ func (s *productRepoStub) FindAll(ctx context.Context, categorySlug string, only
 	return nil, nil
 }
 
+func (s *productRepoStub) FindAllPaginated(ctx context.Context, categorySlug string, onlyAvailable bool, page, perPage int) ([]dto.Product, int, error) {
+	s.listCalls++
+	if s.listFn != nil {
+		items, err := s.listFn(ctx, categorySlug, onlyAvailable)
+		return items, len(items), err
+	}
+	return nil, 0, nil
+}
+
 func (s *productRepoStub) FindByID(ctx context.Context, id uuid.UUID) (dto.Product, error) {
 	if s.findByID != nil {
 		return s.findByID(ctx, id)
@@ -90,6 +99,30 @@ func TestProductServiceList_UsesCacheOnSecondCall(t *testing.T) {
 
 	if repo.listCalls != 1 {
 		t.Fatalf("repo list calls = %d, want %d", repo.listCalls, 1)
+	}
+}
+
+func TestProductServiceListPaginated_ReturnsPageAndTotal(t *testing.T) {
+	repo := &productRepoStub{listFn: func(_ context.Context, _ string, onlyAvailable bool) ([]dto.Product, error) {
+		if onlyAvailable {
+			return []dto.Product{{Name: "Vanilla"}, {Name: "Chocolate"}, {Name: "Strawberry"}}, nil
+		}
+		return []dto.Product{}, nil
+	}}
+	svc := NewProductService(repo)
+
+	products, total, err := svc.ListPaginated(context.Background(), "", false, 1, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(products) != 3 {
+		t.Fatalf("expected 3 products from stub, got %d", len(products))
+	}
+	if total != 3 {
+		t.Fatalf("expected total 3, got %d", total)
+	}
+	if repo.listCalls != 1 {
+		t.Fatalf("expected 1 repo call, got %d", repo.listCalls)
 	}
 }
 

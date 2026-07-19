@@ -6,8 +6,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -16,6 +16,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -25,10 +27,11 @@ import (
 
 type CategoryHandler struct {
 	categorySvc services.CategoryServiceInterface
+	auditSvc    audit.Service
 }
 
-func NewCategoryHandler(svc services.CategoryServiceInterface) *CategoryHandler {
-	return &CategoryHandler{categorySvc: svc}
+func NewCategoryHandler(svc services.CategoryServiceInterface, auditSvc audit.Service) *CategoryHandler {
+	return &CategoryHandler{categorySvc: svc, auditSvc: auditSvc}
 }
 
 // categoryResponse is the JSON shape returned to the Astro frontend.
@@ -92,14 +95,30 @@ func toCategoryDetailResponse(c dto.Category) categoryDetailResponse {
 	return detail
 }
 
-// List returns active categories by default, ordered by display_order.
-// If ?all=true is sent, it returns all categories (including inactive).
+// List returns active categories by default, paginated. Use ?all=true for the
+// full list (backward-compatible admin behavior).
 //
 // GET /api/v1/categories
 func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	showAll := r.URL.Query().Get("all") == "true"
 
-	cats, err := h.categorySvc.List(r.Context(), showAll)
+	if showAll {
+		cats, err := h.categorySvc.List(r.Context(), true)
+		if err != nil {
+			response.WriteOrError(w, nil, err)
+			return
+		}
+
+		result := make([]categoryResponse, len(cats))
+		for i, c := range cats {
+			result[i] = toCategoryResponse(c)
+		}
+		response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
+		return
+	}
+
+	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
+	cats, total, err := h.categorySvc.ListPaginated(r.Context(), false, params.Page, params.PerPage)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -109,7 +128,7 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	for i, c := range cats {
 		result[i] = toCategoryResponse(c)
 	}
-	response.JSON(w, http.StatusOK, response.NewPaginated(result, 1, len(result), len(result)))
+	response.JSON(w, http.StatusOK, response.NewPaginated(result, params.Page, params.PerPage, total))
 }
 
 // GetBySlug returns a single category by its URL slug, with its products.
@@ -144,7 +163,7 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		ImagePath    *string `json:"image_path"`
 		DisplayOrder *int    `json:"display_order"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -154,7 +173,10 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.categorySvc.Create(r.Context(), repository.CreateCategoryInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	c, err := h.categorySvc.Create(ctx, repository.CreateCategoryInput{
 		Name:         body.Name,
 		Slug:         body.Slug,
 		Description:  body.Description,
@@ -166,6 +188,12 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to create category")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionCategoryCreated, actorID, fmt.Sprintf("category:%s", c.ID.String()), map[string]any{
+		"name": c.Name,
+		"slug": c.Slug,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, toCategoryResponse(c))
 }
@@ -188,7 +216,7 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		DisplayOrder *int    `json:"display_order"`
 		IsActive     *bool   `json:"is_active"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -198,7 +226,10 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.categorySvc.Update(r.Context(), id, repository.UpdateCategoryInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	c, err := h.categorySvc.Update(ctx, id, repository.UpdateCategoryInput{
 		Name:         body.Name,
 		Slug:         body.Slug,
 		Description:  body.Description,
@@ -216,6 +247,12 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionCategoryUpdated, actorID, fmt.Sprintf("category:%s", id.String()), map[string]any{
+		"name": c.Name,
+		"slug": c.Slug,
+	}, ip)
+
 	response.JSON(w, http.StatusOK, toCategoryResponse(c))
 }
 
@@ -230,7 +267,10 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.categorySvc.Delete(r.Context(), id); err != nil {
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	if err := h.categorySvc.Delete(ctx, id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Category not found")
 			return
@@ -239,6 +279,9 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete category")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionCategoryDeleted, actorID, fmt.Sprintf("category:%s", id.String()), nil, ip)
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Category deleted"})
 }

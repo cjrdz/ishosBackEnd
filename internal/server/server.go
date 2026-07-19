@@ -2,9 +2,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	stdsql "database/sql"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -22,10 +24,13 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/events"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers"
 	appmiddleware "github.com/cjrdz/ishosBackEnd/internal/middleware"
+	"github.com/cjrdz/ishosBackEnd/internal/openapi"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
+
+const maxJSONBodyBytes = 1 << 20 // 1 MiB
 
 // Server wraps the Chi router, database connection, and all handlers.
 type Server struct {
@@ -33,14 +38,18 @@ type Server struct {
 	router             chi.Router
 	cfg                *config.Config
 	trackingTokenStore *repository.TrackingTokenBunStore
+	revokedTokenStore  *repository.RevokedTokenBunStore
+	orderStore         *repository.OrderStore
 	archiver           *services.OrderArchiver
+	dispatcher         *events.Dispatcher
+	whatsapp           *services.WhatsAppService
 	cleanupCancel      context.CancelFunc
 	archiverCancel     context.CancelFunc
 }
 
 // New creates a new Server instance with all dependencies initialized.
 func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
-	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database client: %w", err)
 	}
@@ -50,19 +59,22 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		_ = rawDB.Close()
 		return nil, fmt.Errorf("failed to migrate database schema: %w", err)
 	}
-	auth.SetTokenRevocationBackend(repository.NewRevokedTokenBunStore(bunDB))
+	revokedTokenStore := repository.NewRevokedTokenBunStore(bunDB)
+	auth.SetTokenRevocationBackend(revokedTokenStore)
 	if err := repository.InitTrackingTokenStore(bunDB); err != nil {
 		_ = rawDB.Close()
 		return nil, fmt.Errorf("failed to initialize tracking token store: %w", err)
 	}
 	log.Info().Msg("Connected to PostgreSQL database and verified schema")
 
+	auditSvc := audit.NewService(repository.NewAuditLogBunRepository(bunDB))
+
 	// ── Repositories ─────────────────────────────────────────────────────
 	categoryRepo := repository.NewCategoryBunRepository(bunDB)
 	flavorRepo := repository.NewFlavorBunRepository(bunDB)
 	addonRepo := repository.NewAddonBunRepository(bunDB)
 	productRepo := repository.NewProductBunRepository(bunDB)
-	orderRepo := repository.NewOrderBunRepository(bunDB)
+	orderRepo := repository.NewOrderBunRepository(bunDB, auditSvc)
 	settingsRepo := repository.NewAdminSettingBunRepository(bunDB)
 	customerRepo := repository.NewCustomerBunRepository(bunDB)
 	containerTypeRepo := repository.NewContainerTypeBunRepository(bunDB)
@@ -77,13 +89,14 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	settingsSvc := services.NewAdminSettingService(settingsRepo)
 	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo, services.WithFlavorRepo(flavorRepo))
-	auditSvc := audit.NewService(repository.NewAuditLogBunRepository(bunDB))
 	authService := auth.NewService(
 		pb,
 		cfg.LoginAttemptsPerMinute,
 		cfg.LoginLockoutMaxFailures,
 		cfg.LoginLockoutWindowMinutes,
 		cfg.LoginLockoutDurationMinutes,
+		cfg.RedisURL,
+		cfg.RedisPrefix,
 	)
 	defaultTokenTTLs := services.TokenTTLConfig{
 		AuthCookieTTLHours:      cfg.AuthCookieTTLHours,
@@ -122,7 +135,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			whatsapp.SendOrderReady(evt.Phone, evt.OrderNumber, evt.TrackingURL)
 		}
 	})
-	orderStore := repository.NewOrderStore(bunDB, productRepo, services.NewOrderEnrichmentService())
+	orderStore := repository.NewOrderStore(bunDB, productRepo, services.NewOrderEnrichmentService(), auditSvc)
 	orderSvc := services.NewOrderService(
 		orderRepo,
 		orderStore,
@@ -132,7 +145,6 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		trackingTokenService,
 		orderDispatcher,
 		cfg.PublicStoreURL,
-		auditSvc,
 	)
 	archiveDefaults := services.ArchiveConfig{
 		Enabled:         cfg.OrderArchiveEnabled,
@@ -146,10 +158,15 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	// ── Handlers ─────────────────────────────────────────────────────────
 	authHandler := handlers.NewAuthHandler(pb, authService, cfg, settingsSvc)
 	employeeHandler := handlers.NewEmployeeHandler(pb, auditSvc)
-	categoryHandler := handlers.NewCategoryHandler(categorySvc)
-	productHandler := handlers.NewProductHandler(productSvc, cfg, inventoryService)
+	categoryHandler := handlers.NewCategoryHandler(categorySvc, auditSvc)
+	productHandler := handlers.NewProductHandler(productSvc, cfg, inventoryService, auditSvc)
 	// Pre-warm the product list cache so the first admin login request is fast.
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error().Interface("panic", r).Msg("Product cache pre-warm panic recovered")
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if _, err := productSvc.List(ctx, "", true); err != nil {
@@ -158,31 +175,43 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			log.Debug().Msg("Product cache pre-warmed")
 		}
 	}()
-	flavorHandler := handlers.NewFlavorHandler(flavorSvc)
-	addonHandler := handlers.NewAddonHandler(addonSvc)
-	uploadHandler := handlers.NewUploadHandler(cfg)
+	flavorHandler := handlers.NewFlavorHandler(flavorSvc, auditSvc)
+	addonHandler := handlers.NewAddonHandler(addonSvc, auditSvc)
+	uploadHandler := handlers.NewUploadHandler(cfg, auditSvc)
 	analyticsHandler := handlers.NewAnalyticsHandler(orderRepo, cfg)
 	exportHandler := handlers.NewExportHandler(orderRepo, auditSvc)
-	userHandler := handlers.NewUserHandler(customerSvc)
+	userHandler := handlers.NewUserHandler(customerSvc, auditSvc)
 	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc, auditSvc)
 
 	// Inventory handler
-	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
-	containerTypeHandler := handlers.NewContainerTypeHandler(containerTypeSvc)
+	inventoryHandler := handlers.NewInventoryHandler(inventoryService, auditSvc)
+	containerTypeHandler := handlers.NewContainerTypeHandler(containerTypeSvc, auditSvc)
 
 	// Order handler requires rate limiter
 	orderRateLimiter := appmiddleware.NewOrderRateLimiter(
-		cfg.OrdersPerHour,
-		cfg.OrdersPerDay,
+		settingsSvc,
+		services.PublicOrderRateLimitConfig{
+			PhoneBurst:         cfg.PublicOrderPhoneBurst,
+			PhoneWindowMinutes: cfg.PublicOrderPhoneWindowMinutes,
+			PhoneBlockMinutes:  cfg.PublicOrderPhoneBlockMinutes,
+			IPBurst:            cfg.PublicOrderIPBurst,
+			IPWindowMinutes:    cfg.PublicOrderIPWindowMinutes,
+			IPBlockMinutes:     cfg.PublicOrderIPBlockMinutes,
+			StaffBurst:         cfg.PublicOrderStaffBurst,
+			StaffWindowMinutes: cfg.PublicOrderStaffWindowMinutes,
+		},
 		cfg.TrackingRequestsPerHour,
+		time.Hour,
 		cfg.RedisURL,
 		cfg.RedisPrefix,
 	)
-	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, orderArchiver, publicStoreURL, orderRateLimiter)
+	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, orderArchiver, publicStoreURL, orderRateLimiter, auditSvc)
 
 	// ── Middleware ───────────────────────────────────────────────────────
 	loginRateLimiter := appmiddleware.NewLoginRateLimit(authService)
 	authMiddleware := appmiddleware.NewAuth(authService)
+	inactivityTracker := appmiddleware.NewInactivityTracker()
+	inactivityMiddleware := appmiddleware.NewInactivityMiddleware(inactivityTracker, settingsSvc, defaultTokenTTLs)
 
 	// ── Router setup ─────────────────────────────────────────────────────
 	r := chi.NewRouter()
@@ -194,6 +223,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	r.Use(appmiddleware.SecurityHeaders)
 	r.Use(appmiddleware.Logger)
 	r.Use(appmiddleware.Recovery)
+	r.Use(jsonBodySizeLimit)
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	// CORS configuration
@@ -213,6 +243,28 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// OpenAPI spec endpoints (Huma docs-only mode; real traffic still uses Chi routes)
+	r.Get("/openapi.json", func(w http.ResponseWriter, r *http.Request) {
+		data, err := openapi.GenerateJSON()
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "Failed to generate OpenAPI spec")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	})
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+		data, err := openapi.GenerateYAML()
+		if err != nil {
+			response.Error(w, http.StatusInternalServerError, "Failed to generate OpenAPI spec")
+			return
+		}
+		w.Header().Set("Content-Type", "application/yaml")
+		_, _ = w.Write(data)
+	})
+	// Interactive API docs (Scalar UI rendered from the live spec)
+	r.Get("/docs", openapi.DocsHandler)
 
 	// API routes
 	r.Route("/api/v1", func(api chi.Router) {
@@ -251,16 +303,22 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			// Protected settings (admin/employee)
 			settings.Group(func(protectedSettings chi.Router) {
 				protectedSettings.Use(authMiddleware.RequireSession)
+				protectedSettings.Use(inactivityMiddleware.Middleware)
 				protectedSettings.Get("/store", adminSettingsHandler.GetStoreSettings)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/store", adminSettingsHandler.UpdateStoreSettings)
 				protectedSettings.With(appmiddleware.RequireAdmin).Get("/archive", adminSettingsHandler.GetArchiveSettings)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/archive", adminSettingsHandler.UpdateArchiveSettings)
+				protectedSettings.With(appmiddleware.RequireAdmin).Get("/rate-limits", adminSettingsHandler.GetPublicOrderRateLimitConfig)
+				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/rate-limits", adminSettingsHandler.UpdatePublicOrderRateLimitConfig)
+				protectedSettings.With(appmiddleware.RequireAdmin).Get("/panel-config", adminSettingsHandler.GetPanelConfig)
+				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/panel-config", adminSettingsHandler.UpdatePanelConfig)
 			})
 		})
 
 		// ── Authenticated routes (admin/employee only) ───────────────
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware.RequireSession)
+			protected.Use(inactivityMiddleware.Middleware)
 			protected.With(appmiddleware.RequireAdmin).Post("/auth/lockout/reset", authHandler.ResetLoginLockout)
 
 			// Employees management
@@ -316,8 +374,11 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.Post("/orders/{id}/reject", orderHandler.Reject)
 			protected.Patch("/orders/{id}/status", orderHandler.UpdateStatus)
 			protected.Patch("/orders/{id}/notes", orderHandler.UpdateNotes)
-			protected.With(appmiddleware.RequireAdmin).Patch("/orders/{id}/archive", orderHandler.Archive)
-			protected.Delete("/orders/{id}", orderHandler.Delete)
+			protected.Patch("/orders/{id}/archive", orderHandler.Archive)
+			protected.With(appmiddleware.RequireAdmin).Delete("/orders/{id}", orderHandler.Delete)
+
+			// Internal order creation (staff/back-office, bypasses public rate limits)
+			protected.Post("/orders/internal", orderHandler.Create)
 
 			// Admin archive run
 			protected.With(appmiddleware.RequireAdmin).Post("/admin/orders/archive/run", orderHandler.RunArchive)
@@ -326,6 +387,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/overview", analyticsHandler.Overview)
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/orders-over-time", analyticsHandler.OrdersOverTime)
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/top-products", analyticsHandler.TopProducts)
+			protected.With(appmiddleware.RequireAdmin).Get("/analytics/dashboard", analyticsHandler.Dashboard)
 
 			// Inventory (admin only)
 			protected.With(appmiddleware.RequireAdmin).Route("/inventory", func(inv chi.Router) {
@@ -373,8 +435,37 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		router:             r,
 		cfg:                cfg,
 		trackingTokenStore: trackingTokenStore,
+		revokedTokenStore:  revokedTokenStore,
+		orderStore:         orderStore,
 		archiver:           orderArchiver,
+		dispatcher:         orderDispatcher,
+		whatsapp:           whatsapp,
 	}, nil
+}
+
+// jsonBodySizeLimit caps JSON request bodies at 1 MiB and returns 413 before the
+// handler runs. Upload endpoints manage their own larger limits, so they are
+// skipped to avoid rejecting image uploads.
+func jsonBodySizeLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/upload/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+		_ = r.Body.Close()
+		if len(body) > maxJSONBodyBytes {
+			response.Error(w, http.StatusRequestEntityTooLarge, "Request body too large")
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		next.ServeHTTP(w, r)
+	})
 }
 
 func parseAllowedOrigins(raw string) []string {
@@ -503,10 +594,6 @@ func (s *Server) Router() http.Handler {
 // cleanup of expired tracking tokens and order archiving). Call this after the
 // server is running.
 func (s *Server) StartBackgroundJobs(ctx context.Context) {
-	if s.trackingTokenStore == nil {
-		return
-	}
-
 	jobCtx, cancel := context.WithCancel(ctx)
 	s.cleanupCancel = cancel
 
@@ -514,19 +601,47 @@ func (s *Server) StartBackgroundJobs(ctx context.Context) {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 
-		// Run once shortly after startup to clean any backlog.
-		if err := s.trackingTokenStore.CleanupExpired(jobCtx); err != nil {
-			log.Warn().Err(err).Msg("Initial tracking-token cleanup failed")
+		cleanup := func() {
+			lockCtx, cancel := context.WithTimeout(jobCtx, 5*time.Second)
+			locked, release, err := database.TryAdvisoryLock(lockCtx, s.db, database.AdvisoryLockKey("ishos:hourly-cleanup"))
+			cancel()
+			if err != nil {
+				log.Warn().Err(err).Msg("Advisory lock attempt for cleanup failed")
+				return
+			}
+			if !locked {
+				log.Debug().Msg("Hourly cleanup skipped; advisory lock held by another instance")
+				return
+			}
+			defer release()
+
+			now := time.Now()
+			if s.trackingTokenStore != nil {
+				if err := s.trackingTokenStore.CleanupExpired(jobCtx); err != nil {
+					log.Warn().Err(err).Msg("Tracking-token cleanup failed")
+				}
+			}
+			if s.revokedTokenStore != nil {
+				if _, err := s.revokedTokenStore.CleanupExpired(jobCtx, now); err != nil {
+					log.Warn().Err(err).Msg("Revoked-token cleanup failed")
+				}
+			}
+			if s.orderStore != nil {
+				if _, err := s.orderStore.CleanupExpiredIdempotencyKeys(jobCtx, now); err != nil {
+					log.Warn().Err(err).Msg("Idempotency-key cleanup failed")
+				}
+			}
 		}
+
+		// Run once shortly after startup to clean any backlog.
+		cleanup()
 
 		for {
 			select {
 			case <-jobCtx.Done():
 				return
 			case <-ticker.C:
-				if err := s.trackingTokenStore.CleanupExpired(jobCtx); err != nil {
-					log.Warn().Err(err).Msg("Periodic tracking-token cleanup failed")
-				}
+				cleanup()
 			}
 		}
 	}()
@@ -538,7 +653,8 @@ func (s *Server) StartBackgroundJobs(ctx context.Context) {
 	}
 }
 
-// Close gracefully shuts down the database connection.
+// Close gracefully shuts down background jobs, the event dispatcher, the
+// WhatsApp worker, and the database connection.
 func (s *Server) Close() {
 	if s.cleanupCancel != nil {
 		s.cleanupCancel()
@@ -546,6 +662,23 @@ func (s *Server) Close() {
 	if s.archiverCancel != nil {
 		s.archiverCancel()
 	}
+
+	if s.dispatcher != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := s.dispatcher.Close(ctx); err != nil {
+			log.Warn().Err(err).Msg("Event dispatcher close timed out or failed")
+		}
+		cancel()
+	}
+
+	if s.whatsapp != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := s.whatsapp.Close(ctx); err != nil {
+			log.Warn().Err(err).Msg("WhatsApp service close timed out or failed")
+		}
+		cancel()
+	}
+
 	if s.db != nil {
 		if err := s.db.Close(); err != nil {
 			log.Error().Err(err).Msg("Error closing database connection")

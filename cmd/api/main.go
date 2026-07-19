@@ -26,6 +26,7 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
+	"github.com/cjrdz/ishosBackEnd/internal/openapi"
 	"github.com/cjrdz/ishosBackEnd/internal/server"
 )
 
@@ -33,6 +34,14 @@ func main() {
 	// ── Logging ──────────────────────────────────────────────────────────
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	// ── CLI subcommands ──────────────────────────────────────────────────
+	if len(os.Args) > 1 && os.Args[1] == "openapi" {
+		if err := generateOpenAPI(); err != nil {
+			log.Fatal().Err(err).Msg("Failed to generate OpenAPI spec")
+		}
+		return
+	}
 
 	// ── Configuration ────────────────────────────────────────────────────
 	cfg := config.Load()
@@ -49,36 +58,6 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialise PocketBase auth engine")
 	}
 	log.Info().Str("data_dir", cfg.PBDataDir).Msg("PocketBase auth engine ready")
-
-	// ── One-time bootstrap ────────────────────────────────────────────────
-	// When BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are set and no
-	// employee records exist yet, create the first admin automatically. This
-	// is the only way to seed the first admin in a distroless Docker image
-	// (e.g. Render) where there is no shell or Go runtime available.
-	// After the first successful run you can unset these env vars.
-	if cfg.BootstrapAdminEmail != "" && cfg.BootstrapAdminPassword != "" {
-		existing, listErr := pb.ListEmployees()
-		switch {
-		case listErr != nil:
-			log.Warn().Err(listErr).Msg("Bootstrap: could not list employees, skipping auto-bootstrap")
-		case len(existing) == 0:
-			_, createErr := pb.CreateEmployee(
-				cfg.BootstrapAdminEmail,
-				cfg.BootstrapAdminPassword,
-				cfg.BootstrapAdminName,
-				"",
-				"admin",
-				false,
-			)
-			if createErr != nil {
-				log.Error().Err(createErr).Str("email", cfg.BootstrapAdminEmail).Msg("Bootstrap: failed to create admin")
-			} else {
-				log.Info().Str("email", cfg.BootstrapAdminEmail).Msg("Bootstrap: first admin created successfully — remove BOOTSTRAP_ADMIN_* env vars")
-			}
-		default:
-			log.Info().Int("count", len(existing)).Msg("Bootstrap: employees already exist, skipping")
-		}
-	}
 
 	// ── PocketBase Admin UI (development only) ───────────────────────────
 	// When ENABLE_PB_ADMIN_UI=true, start PocketBase's built-in HTTP server
@@ -159,6 +138,15 @@ func main() {
 	srv.Close()
 	_ = pb.Close()
 	log.Info().Msg("Server exited cleanly")
+}
+
+func generateOpenAPI() error {
+	yaml, err := openapi.GenerateYAML()
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(yaml)
+	return err
 }
 
 func splitCSV(value string) []string {

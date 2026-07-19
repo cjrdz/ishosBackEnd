@@ -14,20 +14,20 @@ import (
 )
 
 type orderRepoStub struct {
-	listFn                    func(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
-	findByID                  func(ctx context.Context, id uuid.UUID) (dto.Order, error)
-	findByIDWithItems         func(ctx context.Context, id uuid.UUID) (dto.Order, error)
+	listFn                       func(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
+	findByID                     func(ctx context.Context, id uuid.UUID) (dto.Order, error)
+	findByIDWithItems            func(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	findByIDWithItemsAndProducts func(ctx context.Context, id uuid.UUID) (dto.Order, error)
-	findByOrderNumber         func(ctx context.Context, orderNumber string) (dto.Order, error)
-	findByOrderNumberAndPhone func(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
-	findRecentByPhone         func(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
-	createFn                  func(ctx context.Context, input repository.CreateOrderInput) (dto.Order, error)
-	approveFn                 func(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error)
-	rejectFn                  func(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error)
-	updateStatusFn            func(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
-	updateNotesFn             func(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
-	setArchivedFn             func(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
-	deleteFn                  func(ctx context.Context, id uuid.UUID) error
+	findByOrderNumber            func(ctx context.Context, orderNumber string) (dto.Order, error)
+	findByOrderNumberAndPhone    func(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
+	findRecentByPhone            func(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
+	createFn                     func(ctx context.Context, input repository.CreateOrderInput) (dto.Order, error)
+	approveFn                    func(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error)
+	rejectFn                     func(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error)
+	updateStatusFn               func(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	updateNotesFn                func(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
+	setArchivedFn                func(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
+	deleteFn                     func(ctx context.Context, id uuid.UUID) error
 }
 
 func (s *orderRepoStub) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
@@ -152,6 +152,22 @@ func (s *orderRepoStub) ArchiveOrders(ctx context.Context, ids []uuid.UUID) (int
 	return 0, nil
 }
 
+func (s *orderRepoStub) AnalyticsOverview(ctx context.Context, start, end time.Time) (dto.AnalyticsOverview, error) {
+	return dto.AnalyticsOverview{StatusBreakdown: map[string]int{}}, nil
+}
+
+func (s *orderRepoStub) AnalyticsOrdersOverTime(ctx context.Context, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error) {
+	return nil, nil
+}
+
+func (s *orderRepoStub) AnalyticsTopProducts(ctx context.Context, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error) {
+	return nil, nil
+}
+
+func (s *orderRepoStub) StreamOrderExportRows(ctx context.Context, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error {
+	return nil
+}
+
 type orderStoreStub struct {
 	createFn                     func(ctx context.Context, input repository.StoreOrderInput) (dto.Order, error)
 	findByIdempotencyKeyFn       func(ctx context.Context, key uuid.UUID) (dto.Order, error)
@@ -238,7 +254,7 @@ func TestOrderCommandService_Approve_InvalidState(t *testing.T) {
 		return dto.Order{Status: "cancelada"}, nil
 	}}
 	store := &orderStoreStub{}
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 
 	_, err := svc.Approve(context.Background(), uuid.New(), "staff-1", false)
 	if !errors.Is(err, ErrInvalidOrderState) {
@@ -251,7 +267,7 @@ func TestOrderCommandService_Reject_InvalidState(t *testing.T) {
 		return dto.Order{Status: "entregada"}, nil
 	}}
 	store := &orderStoreStub{}
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 
 	_, err := svc.Reject(context.Background(), uuid.New(), "out of stock", "staff-1")
 	if !errors.Is(err, ErrInvalidOrderState) {
@@ -264,7 +280,7 @@ func TestOrderCommandService_UpdateStatus_InvalidStatus(t *testing.T) {
 		return dto.Order{Status: "pendiente_revision"}, nil
 	}}
 	store := &orderStoreStub{}
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 
 	_, err := svc.UpdateStatus(context.Background(), uuid.New(), "not_a_status")
 	if !errors.Is(err, ErrInvalidOrderState) {
@@ -278,7 +294,7 @@ func TestOrderCommandService_Update_DelegatesToStore(t *testing.T) {
 		called = true
 		return dto.Order{OrderNumber: "ORD-UPDATED"}, nil
 	}}
-	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 
 	order, err := svc.Update(context.Background(), uuid.New(), UpdateOrderInput{
 		CustomerName:  "Jane",
@@ -306,7 +322,7 @@ func TestOrderCommandService_Delete(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewOrderCommandService(repo, &orderStoreStub{}, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, &orderStoreStub{}, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 
 	if err := svc.Delete(context.Background(), uuid.New()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -330,7 +346,7 @@ func TestOrderCommandService_Create_LinksExistingCustomer(t *testing.T) {
 		return dto.Order{OrderNumber: "ORD-001"}, nil
 	}}
 
-	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",
@@ -361,7 +377,7 @@ func TestOrderCommandService_Create_CreatesCustomerWhenMissing(t *testing.T) {
 		return dto.Order{OrderNumber: "ORD-002"}, nil
 	}}
 
-	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
 		CustomerName:  "John",
 		CustomerPhone: "5551111",
@@ -394,7 +410,7 @@ func TestOrderCommandService_Create_WithIdempotencyKey_ExistingOrder_ReturnsOrig
 		},
 	}
 
-	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 	got, err := svc.Create(context.Background(), CreateOrderInput{
 		IdempotencyKey: &key,
 		CustomerName:   "Jane",
@@ -433,7 +449,7 @@ func TestOrderCommandService_Create_WithIdempotencyKey_NoExisting_CreatesNormall
 		},
 	}
 
-	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
 		IdempotencyKey: &key,
 		CustomerName:   "Jane",
@@ -467,7 +483,7 @@ func TestOrderCommandService_Create_WithoutIdempotencyKey_Unaffected(t *testing.
 		},
 	}
 
-	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",
@@ -503,7 +519,7 @@ func TestOrderCommandService_Create_IdempotencyKeyRaceLoser_FetchesWinner(t *tes
 		},
 	}
 
-	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	got, err := svc.Create(context.Background(), CreateOrderInput{
 		IdempotencyKey: &key,
 		CustomerName:   "Jane",
@@ -545,7 +561,7 @@ func TestOrderCommandService_Update_ReLinksWhenPhoneChanges(t *testing.T) {
 		return dto.Order{OrderNumber: "ORD-UPDATED"}, nil
 	}}
 
-	svc := NewOrderCommandService(repo, store, customerRepo, &productRepoStub{}, nil, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
 		CustomerName:  "Jane",
 		CustomerPhone: "5552222",
@@ -599,7 +615,7 @@ func TestOrderCommandService_UpdateStatus_EnProceso_RoutesToAtomicStore(t *testi
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil)
 	_, err := svc.UpdateStatus(context.Background(), orderID, "en_proceso")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -631,7 +647,7 @@ func TestOrderCommandService_UpdateStatus_EnProceso_PropagatesStockError(t *test
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil)
 	_, err := svc.UpdateStatus(context.Background(), orderID, "en_proceso")
 	if !errors.Is(err, stockErr) {
 		t.Fatalf("expected stock error to propagate, got %v", err)
@@ -666,7 +682,7 @@ func TestOrderCommandService_UpdateStatus_Cancelada_RoutesToAtomicStore(t *testi
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil)
 	_, err := svc.UpdateStatus(context.Background(), orderID, "cancelada")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -695,7 +711,7 @@ func TestOrderCommandService_UpdateStatus_Cancelada_PropagatesStockError(t *test
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil)
 	_, err := svc.UpdateStatus(context.Background(), orderID, "cancelada")
 	if !errors.Is(err, stockErr) {
 		t.Fatalf("expected stock error to propagate, got %v", err)
@@ -724,7 +740,7 @@ func TestOrderCommandService_UpdateStatus_NonStockTransition_UsesPlainUpdate(t *
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil)
 	// en_proceso → lista is a valid transition that does not affect stock.
 	_, err := svc.UpdateStatus(context.Background(), orderID, "lista")
 	if err != nil {
@@ -775,7 +791,7 @@ func TestOrderCommandService_Update_EnProcesoWithItems_RoutesToAtomicStore(t *te
 		},
 	}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil)
 	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",
@@ -818,7 +834,7 @@ func TestOrderCommandService_Update_EnProcesoWithItems_PropagatesStockError(t *t
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil)
 	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",
@@ -861,7 +877,7 @@ func TestOrderCommandService_Update_PendienteStatusWithItems_UsesPlainUpdate(t *
 	}
 	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
 
-	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil, nil)
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil)
 	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",

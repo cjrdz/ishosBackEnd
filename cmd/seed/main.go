@@ -174,7 +174,7 @@ func main() {
 	}
 
 	cfg := config.Load()
-	rawDB, err := database.OpenRawDB(cfg.DatabaseURL)
+	rawDB, err := database.OpenRawDB(cfg)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to connect to PostgreSQL")
 		return
@@ -238,14 +238,14 @@ func main() {
 				imgPath = &sc.Image
 			}
 
-		displayOrder := i
-		created, createErr := categoryRepo.Create(ctx, repository.CreateCategoryInput{
-			Name:         sc.Name,
-			Slug:         sc.Slug,
-			Description:  sc.Description,
-			ImagePath:    imgPath,
-			DisplayOrder: &displayOrder,
-		})
+			displayOrder := i
+			created, createErr := categoryRepo.Create(ctx, repository.CreateCategoryInput{
+				Name:         sc.Name,
+				Slug:         sc.Slug,
+				Description:  sc.Description,
+				ImagePath:    imgPath,
+				DisplayOrder: &displayOrder,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sc.Name).Msg("Failed to create category")
 				continue
@@ -377,13 +377,13 @@ func main() {
 				active = *sf.IsActive
 			}
 
-		flavorOrder := sf.DisplayOrder
-		created, createErr := flavorRepo.Create(ctx, repository.CreateFlavorInput{
-			Name:         sf.Name,
-			DisplayOrder: &flavorOrder,
-			IsSeasonal:   sf.IsSeasonal,
-			IsActive:     active,
-		})
+			flavorOrder := sf.DisplayOrder
+			created, createErr := flavorRepo.Create(ctx, repository.CreateFlavorInput{
+				Name:         sf.Name,
+				DisplayOrder: &flavorOrder,
+				IsSeasonal:   sf.IsSeasonal,
+				IsActive:     active,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sf.Name).Msg("Failed to create flavor")
 				continue
@@ -422,14 +422,14 @@ func main() {
 				groupName = "extras"
 			}
 
-		addonOrder := sa.DisplayOrder
-		created, createErr := addonRepo.Create(ctx, repository.CreateAddonInput{
-			Name:         sa.Name,
-			Price:        sa.Price,
-			GroupName:    groupName,
-			DisplayOrder: &addonOrder,
-			IsActive:     active,
-		})
+			addonOrder := sa.DisplayOrder
+			created, createErr := addonRepo.Create(ctx, repository.CreateAddonInput{
+				Name:         sa.Name,
+				Price:        sa.Price,
+				GroupName:    groupName,
+				DisplayOrder: &addonOrder,
+				IsActive:     active,
+			})
 			if createErr != nil {
 				log.Error().Err(createErr).Str("name", sa.Name).Msg("Failed to create addon")
 				continue
