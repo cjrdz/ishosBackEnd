@@ -32,6 +32,11 @@ func newTestBunDB(t *testing.T) *bun.DB {
 		t.Skipf("postgres not reachable (%v); skipping repository integration test", err)
 	}
 
+	// Use a single connection so SET search_path applies to every query and
+	// transaction in this test.
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
+
 	ctx := context.Background()
 	schemaName := "flavor_test_" + strconvItoa(int(timeNow().UnixNano()))
 	_, err = rawDB.ExecContext(ctx, "CREATE SCHEMA "+schemaName)
