@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -15,11 +16,17 @@ import (
 
 func createTestProduct(t *testing.T, ctx context.Context, db *bun.DB, name string, price float64) (models.Product, models.Category) {
 	t.Helper()
-	category := models.Category{Name: name + " Category", Slug: name + "-category", Description: strPtr("")}
+	category := models.Category{
+		ID:          uuid.New(),
+		Name:        name + " Category",
+		Slug:        name + "-category",
+		Description: strPtr(""),
+	}
 	_, err := db.NewInsert().Model(&category).Exec(ctx)
 	require.NoError(t, err)
 
 	product := models.Product{
+		ID:          uuid.New(),
 		Name:        name,
 		Description: "test",
 		Price:       price,

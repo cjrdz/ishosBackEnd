@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -98,11 +99,12 @@ func TestCustomerBunRepository_ListOrdersByCustomerID(t *testing.T) {
 	customer, err := repo.Create(ctx, CreateCustomerInput{Name: "Frank", UserType: "user", Phone: "555-0006", Status: "active"})
 	require.NoError(t, err)
 
-	category := models.Category{Name: "Test Category", Slug: "test-category"}
+	category := models.Category{ID: uuid.New(), Name: "Test Category", Slug: "test-category"}
 	_, err = db.NewInsert().Model(&category).Exec(ctx)
 	require.NoError(t, err)
 
 	product := models.Product{
+		ID:          uuid.New(),
 		Name:        "Product A",
 		Description: "Test product",
 		Price:       10.0,
@@ -112,6 +114,7 @@ func TestCustomerBunRepository_ListOrdersByCustomerID(t *testing.T) {
 	require.NoError(t, err)
 
 	order := models.Order{
+		ID:            uuid.New(),
 		OrderNumber:   "ORD-001",
 		CustomerID:    &customer.ID,
 		CustomerName:  customer.Name,
@@ -126,6 +129,7 @@ func TestCustomerBunRepository_ListOrdersByCustomerID(t *testing.T) {
 	require.NoError(t, err)
 
 	item := models.OrderItem{
+		ID:          uuid.New(),
 		ProductName: "Product A",
 		Quantity:    1,
 		UnitPrice:   10.0,
