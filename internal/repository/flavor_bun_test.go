@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"os"
 	"testing"
 
@@ -24,7 +25,25 @@ func newTestBunDB(t *testing.T) *bun.DB {
 		databaseURL = "postgres://postgres:postgres@localhost:5432/ishosFactory?sslmode=disable"
 	}
 
-	rawDB, err := sql.Open("pgx", databaseURL)
+	// Open a temporary connection just to create the isolated schema.
+	setupDB, err := sql.Open("pgx", databaseURL)
+	require.NoError(t, err)
+	if err := setupDB.Ping(); err != nil {
+		t.Skipf("postgres not reachable (%v); skipping repository integration test", err)
+	}
+
+	ctx := context.Background()
+	schemaName := "test_" + strconvItoa(int(timeNow().UnixNano()))
+	_, err = setupDB.ExecContext(ctx, "CREATE SCHEMA "+schemaName)
+	require.NoError(t, err)
+	require.NoError(t, setupDB.Close())
+
+	// Re-open the pool with the test schema baked into the connection string so
+	// every connection uses it automatically.
+	databaseURLWithSchema, err := withSearchPath(databaseURL, schemaName)
+	require.NoError(t, err)
+
+	rawDB, err := sql.Open("pgx", databaseURLWithSchema)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = rawDB.Close() })
 
@@ -32,21 +51,22 @@ func newTestBunDB(t *testing.T) *bun.DB {
 		t.Skipf("postgres not reachable (%v); skipping repository integration test", err)
 	}
 
-	// Use a single connection so SET search_path applies to every query and
-	// transaction in this test.
-	rawDB.SetMaxOpenConns(1)
-	rawDB.SetMaxIdleConns(1)
-
-	ctx := context.Background()
-	schemaName := "flavor_test_" + strconvItoa(int(timeNow().UnixNano()))
-	_, err = rawDB.ExecContext(ctx, "CREATE SCHEMA "+schemaName)
-	require.NoError(t, err)
-	_, err = rawDB.ExecContext(ctx, "SET search_path TO "+schemaName)
-	require.NoError(t, err)
-
 	db := bun.NewDB(rawDB, pgdialect.New())
 	require.NoError(t, database.EnsureBunSchema(ctx, db))
 	return db
+}
+
+// withSearchPath returns a PostgreSQL connection string with search_path set to
+// the given schema. It supports URI-style connection strings.
+func withSearchPath(databaseURL, schema string) (string, error) {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	q.Set("search_path", schema)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func TestFlavorBunRepository_CreateAndFind(t *testing.T) {
