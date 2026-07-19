@@ -11,7 +11,6 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
-	"github.com/cjrdz/ishosBackEnd/internal/models"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
@@ -23,6 +22,9 @@ var (
 // defaultFlavorLowStockThreshold is used when a flavor inventory item is
 // auto-created on the first stock entry.
 const defaultFlavorLowStockThreshold = 100
+
+// inventoryTypeBallBased matches the database value for ball-based inventory.
+const inventoryTypeBallBased = "ball_based"
 
 // InventoryService handles all inventory-related business logic.
 type InventoryService struct {
@@ -276,7 +278,7 @@ func (s *InventoryService) RecordEntry(ctx context.Context, flavorID, containerT
 
 		created, createErr := s.repo.Create(ctx, repository.CreateInventoryItemInput{
 			Name:              flavor.Name,
-			Type:              string(models.InventoryItemTypeBallBased),
+			Type:              inventoryTypeBallBased,
 			CurrentStock:      0,
 			LowStockThreshold: defaultFlavorLowStockThreshold,
 			FlavorID:          &flavorID,

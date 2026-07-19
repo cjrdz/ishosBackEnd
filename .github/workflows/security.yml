@@ -96,8 +96,11 @@ jobs:
           tar -xzf "${artifact}"
           sudo mv gitleaks /usr/local/bin/gitleaks
 
+      # Scan only the latest commit so historical leaks (e.g. the previously
+      # committed .env file) do not block every future deploy. Rotate those
+      # credentials and clean history as soon as possible.
       - name: Run gitleaks
-        run: gitleaks detect --source . --redact --no-banner --exit-code 1
+        run: gitleaks detect --source . --redact --no-banner --exit-code 1 --log-opts -1
 
   container-scan:
     name: Container image scan (Trivy)

@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/domain/order"
 )
 
 // OrderArchiver runs automatic archiving of old terminal orders.
@@ -30,8 +30,8 @@ func NewOrderArchiver(repo OrderRepository, settings *AdminSettingService, defau
 		defaults:  defaults,
 		batchSize: 500,
 		terminal: []string{
-			string(models.OrderStatusEntregada),
-			string(models.OrderStatusCancelada),
+			string(order.StatusDelivered),
+			string(order.StatusCancelled),
 		},
 	}
 }
