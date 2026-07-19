@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.2"
+  GO_VERSION: "1.26.5"
 
 jobs:
   build-and-test:
@@ -23,7 +23,8 @@ jobs:
         env:
           POSTGRES_DB: ishosFactory
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          # Local test-only database; no sensitive data.
+          POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
         options: >-

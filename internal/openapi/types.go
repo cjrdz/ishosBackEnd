@@ -421,7 +421,7 @@ type RejectOrderInput struct {
 type UpdateOrderStatusInput struct {
 	OrderIDInput
 	Body struct {
-		Status string `json:"status" example:"en_preparacion" doc:"New order status"`
+		Status string `json:"status" example:"in_preparation" doc:"New order status"`
 	}
 }
 

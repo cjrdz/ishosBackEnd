@@ -6,13 +6,15 @@ import (
 	"database/sql"
 	"fmt"
 	"hash/fnv"
+	"math"
 )
 
 // AdvisoryLockKey derives a 64-bit advisory-lock key from an arbitrary string.
 func AdvisoryLockKey(name string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(name))
-	return int64(h.Sum64())
+	sum := h.Sum64()
+	return int64(sum & math.MaxInt64)
 }
 
 // TryAdvisoryLock attempts to acquire a PostgreSQL session-level advisory lock

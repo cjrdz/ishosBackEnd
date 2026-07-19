@@ -169,7 +169,7 @@ func (c *Config) applyDevelopmentTrackingTokenSecretFallback() {
 	// across server restarts. Stored inside PBDataDir so it is kept with the rest
 	// of the local state and ignored in production.
 	secretPath := filepath.Join(c.PBDataDir, ".tracking_token_secret")
-	//nolint:gosec // Path is derived from operator-controlled PBDataDir config, not user input.
+	// #nosec G304 -- Path is derived from operator-controlled PBDataDir config, not user input.
 	if data, err := os.ReadFile(secretPath); err == nil && len(data) > 0 {
 		c.TrackingTokenSecret = strings.TrimSpace(string(data))
 		log.Println("TRACKING_TOKEN_SECRET not set; using persisted development fallback")

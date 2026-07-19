@@ -1,2747 +1,3 @@
-openapi: 3.0.3
-info:
-  title: ishos API
-  version: 1.0.0
-servers:
-- url: /api/v1
-paths:
-  /addons:
-    get:
-      description: Returns a list of active addons.
-      operationId: list-addons
-      parameters:
-      - description: Return all addons
-        explode: false
-        in: query
-        name: all
-        schema:
-          default: false
-          description: Return all addons
-          type: boolean
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseAddon'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List addons
-      tags:
-      - Public catalog
-    post:
-      description: Creates a new addon. Admin only.
-      operationId: create-addon
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateAddonInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Addon'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create addon
-      tags:
-      - Addons
-  /addons/{id}:
-    delete:
-      description: Removes an addon. Admin only.
-      operationId: delete-addon
-      parameters:
-      - description: Addon ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Addon ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete addon
-      tags:
-      - Addons
-    get:
-      description: Returns a single addon by ID.
-      operationId: get-addon
-      parameters:
-      - description: Addon ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Addon ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Addon'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get addon
-      tags:
-      - Public catalog
-    patch:
-      description: Updates an existing addon. Admin only.
-      operationId: update-addon
-      parameters:
-      - description: Addon ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Addon ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateAddonInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Addon'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update addon
-      tags:
-      - Addons
-  /admin/orders/archive/run:
-    post:
-      description: Triggers an immediate auto-archive pass. Admin only.
-      operationId: run-order-archive
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Run order archive
-      tags:
-      - Orders
-  /analytics/dashboard:
-    get:
-      description: Returns overview, orders-over-time, and top-products in a single
-        response.
-      operationId: analytics-dashboard
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: start
-        schema:
-          description: Start date (YYYY-MM-DD)
-          example: '2026-06-01'
-          type: string
-      - description: End date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: end
-        schema:
-          description: End date (YYYY-MM-DD)
-          example: '2026-07-01'
-          type: string
-      - description: Bucket granularity
-        explode: false
-        in: query
-        name: groupBy
-        schema:
-          default: day
-          description: Bucket granularity
-          enum:
-          - day
-          - week
-          - month
-          type: string
-      - description: Number of products to return
-        explode: false
-        in: query
-        name: limit
-        schema:
-          default: 10
-          description: Number of products to return
-          format: int64
-          type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AnalyticsDashboardOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Analytics dashboard
-      tags:
-      - Analytics
-  /analytics/orders-over-time:
-    get:
-      description: Returns order counts and revenue over a date range.
-      operationId: analytics-orders-over-time
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: start
-        schema:
-          description: Start date (YYYY-MM-DD)
-          example: '2026-06-01'
-          type: string
-      - description: End date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: end
-        schema:
-          description: End date (YYYY-MM-DD)
-          example: '2026-07-01'
-          type: string
-      - description: Bucket granularity
-        explode: false
-        in: query
-        name: groupBy
-        schema:
-          default: day
-          description: Bucket granularity
-          enum:
-          - day
-          - week
-          - month
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/AnalyticsTimelinePoint'
-                nullable: true
-                type: array
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Orders over time
-      tags:
-      - Analytics
-  /analytics/overview:
-    get:
-      description: Returns aggregate order metrics for a period.
-      operationId: analytics-overview
-      parameters:
-      - description: Report period
-        explode: false
-        in: query
-        name: period
-        schema:
-          default: month
-          description: Report period
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AnalyticsOverview'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Analytics overview
-      tags:
-      - Analytics
-  /analytics/top-products:
-    get:
-      description: Returns the best-selling products for a date range.
-      operationId: analytics-top-products
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: start
-        schema:
-          description: Start date (YYYY-MM-DD)
-          example: '2026-06-01'
-          type: string
-      - description: End date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: end
-        schema:
-          description: End date (YYYY-MM-DD)
-          example: '2026-07-01'
-          type: string
-      - description: Number of products to return
-        explode: false
-        in: query
-        name: limit
-        schema:
-          default: 10
-          description: Number of products to return
-          format: int64
-          type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                items:
-                  $ref: '#/components/schemas/AnalyticsTopProduct'
-                nullable: true
-                type: array
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Top products
-      tags:
-      - Analytics
-  /auth/lockout/reset:
-    post:
-      description: Resets the login rate-limit/lockout state for an email.
-      operationId: reset-login-lockout
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Reset-login-lockoutRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Reset login lockout
-      tags:
-      - Auth
-  /auth/login:
-    post:
-      description: Authenticates an employee and sets an HttpOnly auth cookie.
-      operationId: login
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/LoginInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoginOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Employee login
-      tags:
-      - Auth
-  /auth/logout:
-    post:
-      description: Revokes the current session and clears the auth cookie.
-      operationId: logout
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Logout
-      tags:
-      - Auth
-  /auth/session:
-    get:
-      description: Returns the currently authenticated employee session.
-      operationId: get-session
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SessionOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get current session
-      tags:
-      - Auth
-  /categories:
-    get:
-      description: Returns a paginated list of active categories.
-      operationId: list-categories
-      parameters:
-      - description: Page number
-        explode: false
-        in: query
-        name: page
-        schema:
-          default: 1
-          description: Page number
-          format: int64
-          type: integer
-      - description: Items per page
-        explode: false
-        in: query
-        name: per_page
-        schema:
-          default: 20
-          description: Items per page
-          format: int64
-          type: integer
-      - description: Return all categories (admin fallback)
-        explode: false
-        in: query
-        name: all
-        schema:
-          default: false
-          description: Return all categories (admin fallback)
-          type: boolean
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseCategory'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List categories
-      tags:
-      - Public catalog
-    post:
-      description: Creates a new category. Admin only.
-      operationId: create-category
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateCategoryInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Category'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create category
-      tags:
-      - Categories
-  /categories/{id}:
-    delete:
-      description: Removes a category. Admin only.
-      operationId: delete-category
-      parameters:
-      - description: Category ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Category ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete category
-      tags:
-      - Categories
-    patch:
-      description: Updates an existing category. Admin only.
-      operationId: update-category
-      parameters:
-      - description: Category ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Category ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateCategoryInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Category'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update category
-      tags:
-      - Categories
-  /categories/{slug}:
-    get:
-      description: Returns a category and its products by URL slug.
-      operationId: get-category-by-slug
-      parameters:
-      - description: Category slug
-        in: path
-        name: slug
-        required: true
-        schema:
-          description: Category slug
-          example: gelatos
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CategoryDetail'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get category by slug
-      tags:
-      - Public catalog
-  /container-types:
-    get:
-      description: Returns all container types.
-      operationId: list-container-types
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseContainerType'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List container types
-      tags:
-      - Container types
-    post:
-      description: Creates a new container type. Admin only.
-      operationId: create-container-type
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateContainerTypeInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ContainerType'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create container type
-      tags:
-      - Container types
-  /container-types/{id}:
-    delete:
-      description: Removes a container type. Admin only.
-      operationId: delete-container-type
-      parameters:
-      - description: Container type ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Container type ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete container type
-      tags:
-      - Container types
-    get:
-      description: Returns a single container type.
-      operationId: get-container-type
-      parameters:
-      - description: Container type ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Container type ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ContainerType'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get container type
-      tags:
-      - Container types
-    patch:
-      description: Updates an existing container type. Admin only.
-      operationId: update-container-type
-      parameters:
-      - description: Container type ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Container type ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateContainerTypeInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ContainerType'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update container type
-      tags:
-      - Container types
-  /employees:
-    get:
-      description: Returns all employee/admin records.
-      operationId: list-employees
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseEmployee'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List employees
-      tags:
-      - Employees
-    post:
-      description: Registers a new employee in the auth collection. Admin only.
-      operationId: create-employee
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateEmployeeInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Employee'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create employee
-      tags:
-      - Employees
-  /employees/{id}:
-    delete:
-      description: Permanently removes an employee account. Admin only.
-      operationId: delete-employee
-      parameters:
-      - description: Employee ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Employee ID
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete employee
-      tags:
-      - Employees
-    patch:
-      description: Updates an employee account. Admin only.
-      operationId: update-employee
-      parameters:
-      - description: Employee ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Employee ID
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateEmployeeInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Employee'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update employee
-      tags:
-      - Employees
-  /employees/{id}/deactivate:
-    patch:
-      description: Disables an employee account. Admin only.
-      operationId: deactivate-employee
-      parameters:
-      - description: Employee ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Employee ID
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Deactivate employee
-      tags:
-      - Employees
-  /export/orders:
-    delete:
-      description: Deletes completed/cancelled orders in a date range. Admin only.
-      operationId: purge-orders
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: start
-        schema:
-          description: Start date (YYYY-MM-DD)
-          example: '2026-01-01'
-          type: string
-      - description: End date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: end
-        schema:
-          description: End date (YYYY-MM-DD)
-          example: '2026-06-01'
-          type: string
-      - description: Comma-separated statuses to purge
-        explode: false
-        in: query
-        name: statuses
-        schema:
-          description: Comma-separated statuses to purge
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PurgeOrdersOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Purge orders
-      tags:
-      - Export
-    get:
-      description: Exports orders to CSV or JSON. Admin only.
-      operationId: export-orders
-      parameters:
-      - description: Start date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: start
-        schema:
-          description: Start date (YYYY-MM-DD)
-          example: '2026-06-01'
-          type: string
-      - description: End date (YYYY-MM-DD)
-        explode: false
-        in: query
-        name: end
-        schema:
-          description: End date (YYYY-MM-DD)
-          example: '2026-07-01'
-          type: string
-      - description: Export format
-        explode: false
-        in: query
-        name: format
-        schema:
-          default: csv
-          description: Export format
-          enum:
-          - csv
-          - json
-          type: string
-      - description: Comma-separated order statuses
-        explode: false
-        in: query
-        name: statuses
-        schema:
-          description: Comma-separated order statuses
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExportOrdersOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Export orders
-      tags:
-      - Export
-  /flavors:
-    get:
-      description: Returns a list of active flavors.
-      operationId: list-flavors
-      parameters:
-      - description: Return all flavors
-        explode: false
-        in: query
-        name: all
-        schema:
-          default: false
-          description: Return all flavors
-          type: boolean
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseFlavor'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List flavors
-      tags:
-      - Public catalog
-    post:
-      description: Creates a new flavor. Admin only.
-      operationId: create-flavor
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateFlavorInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Flavor'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create flavor
-      tags:
-      - Flavors
-  /flavors/{id}:
-    delete:
-      description: Removes a flavor. Admin only.
-      operationId: delete-flavor
-      parameters:
-      - description: Flavor ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Flavor ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete flavor
-      tags:
-      - Flavors
-    get:
-      description: Returns a single flavor by ID.
-      operationId: get-flavor
-      parameters:
-      - description: Flavor ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Flavor ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Flavor'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get flavor
-      tags:
-      - Public catalog
-    patch:
-      description: Updates an existing flavor. Admin only.
-      operationId: update-flavor
-      parameters:
-      - description: Flavor ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Flavor ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateFlavorInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Flavor'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update flavor
-      tags:
-      - Flavors
-  /inventory:
-    get:
-      description: Returns all inventory items.
-      operationId: list-inventory
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List inventory
-      tags:
-      - Inventory
-  /inventory/dashboard:
-    get:
-      description: Returns flavor inventory, unit inventory and stats in one response.
-      operationId: get-inventory-dashboard
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryDashboardOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Inventory dashboard
-      tags:
-      - Inventory
-  /inventory/flavors:
-    get:
-      description: Returns ball-based inventory items linked to flavors.
-      operationId: list-flavor-inventory
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List flavor inventory
-      tags:
-      - Inventory
-  /inventory/flavors/{id}/stock:
-    get:
-      description: Returns stock status for a flavor.
-      operationId: get-flavor-stock
-      parameters:
-      - description: Flavor ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Flavor ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FlavorStockOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get flavor stock
-      tags:
-      - Inventory
-  /inventory/low-stock:
-    get:
-      description: Returns inventory items below their low-stock threshold.
-      operationId: get-low-stock
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Low stock items
-      tags:
-      - Inventory
-  /inventory/stats:
-    get:
-      description: Returns aggregate inventory statistics.
-      operationId: get-inventory-stats
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryStats'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Inventory stats
-      tags:
-      - Inventory
-  /inventory/unit-products:
-    get:
-      description: Returns unit-based inventory items linked to products.
-      operationId: list-unit-inventory
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List unit inventory
-      tags:
-      - Inventory
-    post:
-      description: Creates a new unit-based inventory item.
-      operationId: create-unit-inventory-item
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateUnitInventoryItemInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create unit inventory item
-      tags:
-      - Inventory
-  /inventory/{id}:
-    get:
-      description: Returns a single inventory item.
-      operationId: get-inventory-item
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get inventory item
-      tags:
-      - Inventory
-  /inventory/{id}/adjustments:
-    post:
-      description: Records a manual stock adjustment.
-      operationId: record-inventory-adjustment
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RecordAdjustmentInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StockMovement'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Record inventory adjustment
-      tags:
-      - Inventory
-  /inventory/{id}/entries:
-    post:
-      description: Records a flavor stock entry.
-      operationId: record-inventory-entry
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RecordEntryInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StockMovement'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Record inventory entry
-      tags:
-      - Inventory
-  /inventory/{id}/movements:
-    get:
-      description: Returns stock movements for an inventory item.
-      operationId: get-inventory-movements
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryMovementsOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get inventory movement history
-      tags:
-      - Inventory
-  /inventory/{id}/products/{productId}:
-    delete:
-      description: Removes the product link from an inventory item.
-      operationId: unlink-inventory-product
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      - description: Product ID
-        in: path
-        name: productId
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Unlink inventory item from product
-      tags:
-      - Inventory
-    post:
-      description: Links an inventory item to a product.
-      operationId: link-inventory-product
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      - description: Product ID
-        in: path
-        name: productId
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryItem'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Link inventory item to product
-      tags:
-      - Inventory
-  /inventory/{id}/unit-entries:
-    post:
-      description: Records a unit-based stock entry.
-      operationId: record-inventory-unit-entry
-      parameters:
-      - description: Inventory item ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Inventory item ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RecordUnitEntryInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StockMovement'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Record unit inventory entry
-      tags:
-      - Inventory
-  /orders:
-    get:
-      description: Returns a paginated list of orders.
-      operationId: list-orders
-      parameters:
-      - description: Filter by status
-        explode: false
-        in: query
-        name: status
-        schema:
-          description: Filter by status
-          type: string
-      - description: Return lightweight order rows
-        explode: false
-        in: query
-        name: lite
-        schema:
-          default: false
-          description: Return lightweight order rows
-          type: boolean
-      - description: Include archived orders
-        explode: false
-        in: query
-        name: archived
-        schema:
-          default: false
-          description: Include archived orders
-          type: boolean
-      - description: Page number
-        explode: false
-        in: query
-        name: page
-        schema:
-          default: 1
-          description: Page number
-          format: int64
-          type: integer
-      - description: Items per page
-        explode: false
-        in: query
-        name: per_page
-        schema:
-          default: 20
-          description: Items per page
-          format: int64
-          type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseOrder'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List orders
-      tags:
-      - Orders
-    post:
-      description: Creates a new order from the public storefront.
-      operationId: create-order
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrderInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create a public order
-      tags:
-      - Public orders
-  /orders/internal:
-    post:
-      description: Creates a new order from the staff panel. Requires an authenticated
-        employee or admin session and bypasses public storefront rate limits.
-      operationId: create-internal-order
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrderInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create internal order
-      tags:
-      - Orders
-  /orders/track:
-    get:
-      description: Returns the current status of an order using its tracking token.
-      operationId: track-order
-      parameters:
-      - description: Order number
-        explode: false
-        in: query
-        name: order_number
-        schema:
-          description: Order number
-          type: string
-      - description: Tracking token
-        explode: false
-        in: query
-        name: tracking_token
-        schema:
-          description: Tracking token
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrderTrackingOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Track an order
-      tags:
-      - Public orders
-  /orders/{id}:
-    delete:
-      description: Deletes an editable order.
-      operationId: delete-order
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete order
-      tags:
-      - Orders
-    get:
-      description: Returns a single order by ID.
-      operationId: get-order
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get order
-      tags:
-      - Orders
-    patch:
-      description: Updates an editable order.
-      operationId: update-order
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateOrderInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update order
-      tags:
-      - Orders
-  /orders/{id}/approve:
-    post:
-      description: Approves an order for preparation.
-      operationId: approve-order
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Approve order
-      tags:
-      - Orders
-  /orders/{id}/archive:
-    patch:
-      description: Toggles the archive flag of an order. Admin only.
-      operationId: archive-order
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ArchiveOrderInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Archive order
-      tags:
-      - Orders
-  /orders/{id}/notes:
-    patch:
-      description: Updates the notes of an order.
-      operationId: update-order-notes
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateOrderNotesInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update order notes
-      tags:
-      - Orders
-  /orders/{id}/reject:
-    post:
-      description: Rejects an order with a reason.
-      operationId: reject-order
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RejectOrderInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Reject order
-      tags:
-      - Orders
-  /orders/{id}/status:
-    patch:
-      description: Transitions an order to a new status.
-      operationId: update-order-status
-      parameters:
-      - description: Order ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Order ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateOrderStatusInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update order status
-      tags:
-      - Orders
-  /products:
-    get:
-      description: Returns a paginated list of available products.
-      operationId: list-products
-      parameters:
-      - description: Filter by category slug
-        explode: false
-        in: query
-        name: category
-        schema:
-          description: Filter by category slug
-          type: string
-      - description: Page number
-        explode: false
-        in: query
-        name: page
-        schema:
-          default: 1
-          description: Page number
-          format: int64
-          type: integer
-      - description: Items per page
-        explode: false
-        in: query
-        name: per_page
-        schema:
-          default: 20
-          description: Items per page
-          format: int64
-          type: integer
-      - description: Return all products (admin fallback)
-        explode: false
-        in: query
-        name: all
-        schema:
-          default: false
-          description: Return all products (admin fallback)
-          type: boolean
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseProduct'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List products
-      tags:
-      - Public catalog
-    post:
-      description: Creates a new product. Admin only.
-      operationId: create-product
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateProductInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create product
-      tags:
-      - Products
-  /products/{id}:
-    delete:
-      description: Removes a product. Admin only.
-      operationId: delete-product
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete product
-      tags:
-      - Products
-    get:
-      description: Returns a single product by ID.
-      operationId: get-product
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get product
-      tags:
-      - Public catalog
-    patch:
-      description: Updates an existing product. Admin only.
-      operationId: update-product
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateProductInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update product
-      tags:
-      - Products
-  /products/{id}/addons/{addonId}:
-    delete:
-      description: Unlinks an addon from a product. Admin only.
-      operationId: unlink-product-addon
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      - description: Addon ID
-        in: path
-        name: addonId
-        required: true
-        schema:
-          description: Addon ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Unlink addon from product
-      tags:
-      - Products
-    post:
-      description: Links an addon to a product. Admin only.
-      operationId: link-product-addon
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      - description: Addon ID
-        in: path
-        name: addonId
-        required: true
-        schema:
-          description: Addon ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Link addon to product
-      tags:
-      - Products
-  /products/{id}/availability:
-    patch:
-      description: Flips the availability flag of a product. Admin only.
-      operationId: toggle-product-availability
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Toggle product availability
-      tags:
-      - Products
-  /products/{id}/flavors/{flavorId}:
-    delete:
-      description: Unlinks a flavor from a product. Admin only.
-      operationId: unlink-product-flavor
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      - description: Flavor ID
-        in: path
-        name: flavorId
-        required: true
-        schema:
-          description: Flavor ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Unlink flavor from product
-      tags:
-      - Products
-    post:
-      description: Links a flavor to a product. Admin only.
-      operationId: link-product-flavor
-      parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: Product ID
-          format: uuid
-          type: string
-      - description: Flavor ID
-        in: path
-        name: flavorId
-        required: true
-        schema:
-          description: Flavor ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Link flavor to product
-      tags:
-      - Products
-  /settings/archive:
-    get:
-      description: Returns the order archive configuration.
-      operationId: get-archive-settings
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ArchiveConfig'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get archive settings
-      tags:
-      - Settings
-    patch:
-      description: Updates the order archive configuration.
-      operationId: update-archive-settings
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ArchiveConfig'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ArchiveConfig'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update archive settings
-      tags:
-      - Settings
-  /settings/panel-config:
-    get:
-      description: Returns the panel/session token TTL configuration.
-      operationId: get-panel-config
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenTTLConfig'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get panel configuration
-      tags:
-      - Settings
-    patch:
-      description: Updates the panel/session token TTL configuration.
-      operationId: update-panel-config
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenTTLConfig'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenTTLConfig'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update panel configuration
-      tags:
-      - Settings
-  /settings/rate-limits:
-    get:
-      description: Returns the public order rate-limit configuration.
-      operationId: get-rate-limit-settings
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PublicOrderRateLimitConfig'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get rate-limit settings
-      tags:
-      - Settings
-    patch:
-      description: Updates the public order rate-limit configuration.
-      operationId: update-rate-limit-settings
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublicOrderRateLimitConfig'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PublicOrderRateLimitConfig'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update rate-limit settings
-      tags:
-      - Settings
-  /settings/store:
-    get:
-      description: Returns the full store settings.
-      operationId: get-store-settings
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StoreSettings'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get store settings
-      tags:
-      - Settings
-    patch:
-      description: Updates the store orders-enabled flag and special offers.
-      operationId: update-store-settings
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StoreSettings'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StoreSettings'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update store settings
-      tags:
-      - Settings
-  /settings/store/public:
-    get:
-      description: Returns whether public orders are enabled and active offers.
-      operationId: get-public-store-status
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StoreStatusOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get public store status
-      tags:
-      - Settings
-  /upload/image:
-    post:
-      description: Uploads an image to object storage.
-      operationId: upload-image
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UploadImageInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UploadImageOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Upload image
-      tags:
-      - Upload
-  /users:
-    get:
-      description: Returns a paginated list of customers.
-      operationId: list-users
-      parameters:
-      - description: Filter by status
-        explode: false
-        in: query
-        name: status
-        schema:
-          description: Filter by status
-          type: string
-      - description: Search by name or phone
-        explode: false
-        in: query
-        name: search
-        schema:
-          description: Search by name or phone
-          type: string
-      - description: Page number
-        explode: false
-        in: query
-        name: page
-        schema:
-          default: 1
-          description: Page number
-          format: int64
-          type: integer
-      - description: Items per page
-        explode: false
-        in: query
-        name: per_page
-        schema:
-          default: 20
-          description: Items per page
-          format: int64
-          type: integer
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedResponseUser'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: List users
-      tags:
-      - Users
-    post:
-      description: Creates a new customer. Admin only.
-      operationId: create-user
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateUserInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Create user
-      tags:
-      - Users
-  /users/upsert:
-    post:
-      description: Creates or updates a customer by phone. Admin only.
-      operationId: upsert-user
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateUserInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Upsert user
-      tags:
-      - Users
-  /users/{id}:
-    delete:
-      description: Removes a customer. Admin only.
-      operationId: delete-user
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: User ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MessageResponse'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Delete user
-      tags:
-      - Users
-    get:
-      description: Returns a single customer by ID.
-      operationId: get-user
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: User ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get user
-      tags:
-      - Users
-    patch:
-      description: Updates an existing customer. Admin only.
-      operationId: update-user
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: User ID
-          format: uuid
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateUserInputBody'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Update user
-      tags:
-      - Users
-  /users/{id}/orders:
-    get:
-      description: Returns order history for a customer. Admin only.
-      operationId: get-user-orders
-      parameters:
-      - description: User ID
-        in: path
-        name: id
-        required: true
-        schema:
-          description: User ID
-          format: uuid
-          type: string
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserOrdersOutputBody'
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorModel'
-          description: Error
-      summary: Get user orders
-      tags:
-      - Users
 components:
   schemas:
     ActiveOffer:
@@ -2773,9 +29,9 @@ components:
           description: Product ID
           type: string
       required:
-      - product_id
-      - label
-      - expires_at
+        - product_id
+        - label
+        - expires_at
       type: object
     Addon:
       additionalProperties: false
@@ -2817,13 +73,13 @@ components:
           format: double
           type: number
       required:
-      - id
-      - name
-      - price
-      - group_name
-      - display_order
-      - is_active
-      - created_at
+        - id
+        - name
+        - price
+        - group_name
+        - display_order
+        - is_active
+        - created_at
       type: object
     AnalyticsDashboardOutputBody:
       additionalProperties: false
@@ -2837,22 +93,22 @@ components:
         orders_over_time:
           description: Order counts and revenue over the date range
           items:
-            $ref: '#/components/schemas/AnalyticsTimelinePoint'
+            $ref: "#/components/schemas/AnalyticsTimelinePoint"
           nullable: true
           type: array
         overview:
-          $ref: '#/components/schemas/AnalyticsOverview'
+          $ref: "#/components/schemas/AnalyticsOverview"
           description: Aggregate metrics for the date range
         top_products:
           description: Best-selling products for the date range
           items:
-            $ref: '#/components/schemas/AnalyticsTopProduct'
+            $ref: "#/components/schemas/AnalyticsTopProduct"
           nullable: true
           type: array
       required:
-      - overview
-      - orders_over_time
-      - top_products
+        - overview
+        - orders_over_time
+        - top_products
       type: object
     AnalyticsOverview:
       additionalProperties: false
@@ -2889,11 +145,11 @@ components:
           format: double
           type: number
       required:
-      - period
-      - total_orders
-      - total_revenue
-      - avg_order_value
-      - status_breakdown
+        - period
+        - total_orders
+        - total_revenue
+        - avg_order_value
+        - status_breakdown
       type: object
     AnalyticsTimelinePoint:
       additionalProperties: false
@@ -2905,7 +161,7 @@ components:
           type: integer
         date:
           description: Bucket date
-          example: '2026-07-01'
+          example: "2026-07-01"
           type: string
         revenue:
           description: Revenue
@@ -2913,9 +169,9 @@ components:
           format: double
           type: number
       required:
-      - date
-      - count
-      - revenue
+        - date
+        - count
+        - revenue
       type: object
     AnalyticsTopProduct:
       additionalProperties: false
@@ -2935,9 +191,9 @@ components:
           format: double
           type: number
       required:
-      - name
-      - total_sold
-      - total_value
+        - name
+        - total_sold
+        - total_value
       type: object
     ArchiveConfig:
       additionalProperties: false
@@ -2963,9 +219,9 @@ components:
           format: int64
           type: integer
       required:
-      - enabled
-      - age_days
-      - interval_minutes
+        - enabled
+        - age_days
+        - interval_minutes
       type: object
     ArchiveOrderInputBody:
       additionalProperties: false
@@ -2981,7 +237,7 @@ components:
           example: true
           type: boolean
       required:
-      - archived
+        - archived
       type: object
     Category:
       additionalProperties: false
@@ -3024,13 +280,13 @@ components:
           example: gelatos
           type: string
       required:
-      - id
-      - name
-      - slug
-      - description
-      - display_order
-      - is_active
-      - created_at
+        - id
+        - name
+        - slug
+        - description
+        - display_order
+        - is_active
+        - created_at
       type: object
     CategoryDetail:
       additionalProperties: false
@@ -3071,7 +327,7 @@ components:
         products:
           description: Products in this category
           items:
-            $ref: '#/components/schemas/ProductSummary'
+            $ref: "#/components/schemas/ProductSummary"
           nullable: true
           type: array
         slug:
@@ -3079,14 +335,14 @@ components:
           example: gelatos
           type: string
       required:
-      - products
-      - id
-      - name
-      - slug
-      - description
-      - display_order
-      - is_active
-      - created_at
+        - products
+        - id
+        - name
+        - slug
+        - description
+        - display_order
+        - is_active
+        - created_at
       type: object
     ContainerType:
       additionalProperties: false
@@ -3123,12 +379,12 @@ components:
           example: Small cup
           type: string
       required:
-      - id
-      - name
-      - balls_per_container
-      - is_custom
-      - is_active
-      - created_at
+        - id
+        - name
+        - balls_per_container
+        - is_custom
+        - is_active
+        - created_at
       type: object
     CreateAddonInputBody:
       additionalProperties: false
@@ -3158,9 +414,9 @@ components:
           format: double
           type: number
       required:
-      - name
-      - price
-      - group_name
+        - name
+        - price
+        - group_name
       type: object
     CreateCategoryInputBody:
       additionalProperties: false
@@ -3191,9 +447,9 @@ components:
           example: gelatos
           type: string
       required:
-      - name
-      - slug
-      - description
+        - name
+        - slug
+        - description
       type: object
     CreateContainerTypeInputBody:
       additionalProperties: false
@@ -3218,9 +474,9 @@ components:
           example: Small cup
           type: string
       required:
-      - name
-      - balls_per_container
-      - is_custom
+        - name
+        - balls_per_container
+        - is_custom
       type: object
     CreateEmployeeInputBody:
       additionalProperties: false
@@ -3245,7 +501,7 @@ components:
           type: string
         phone:
           description: Employee phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         role:
           description: Employee role
@@ -3256,12 +512,12 @@ components:
           example: active
           type: string
       required:
-      - email
-      - password
-      - name
-      - phone
-      - role
-      - state
+        - email
+        - password
+        - name
+        - phone
+        - role
+        - state
       type: object
     CreateFlavorInputBody:
       additionalProperties: false
@@ -3286,8 +542,8 @@ components:
           example: Chocolate
           type: string
       required:
-      - name
-      - is_seasonal
+        - name
+        - is_seasonal
       type: object
     CreateOrderInputBody:
       additionalProperties: false
@@ -3308,12 +564,12 @@ components:
           type: string
         customer_phone:
           description: Customer phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         items:
           description: Order items
           items:
-            $ref: '#/components/schemas/OrderItem'
+            $ref: "#/components/schemas/OrderItem"
           nullable: true
           type: array
         notes:
@@ -3322,27 +578,27 @@ components:
         order_type:
           description: Order type
           enum:
-          - en_local
-          - para_llevar
+            - en_local
+            - para_llevar
           type: string
         payment_method:
           description: Payment method
           enum:
-          - efectivo
-          - tarjeta
-          - transferencia
-          - otro
+            - efectivo
+            - tarjeta
+            - transferencia
+            - otro
           type: string
         table_number:
           description: Table number
           format: int64
           type: integer
       required:
-      - customer_name
-      - customer_phone
-      - payment_method
-      - order_type
-      - items
+        - customer_name
+        - customer_phone
+        - payment_method
+        - order_type
+        - items
       type: object
     CreateProductInputBody:
       additionalProperties: false
@@ -3402,10 +658,10 @@ components:
           example: in_stock
           type: string
       required:
-      - name
-      - description
-      - price
-      - category_id
+        - name
+        - description
+        - price
+        - category_id
       type: object
     CreateUnitInventoryItemInputBody:
       additionalProperties: false
@@ -3430,9 +686,9 @@ components:
           format: uuid
           type: string
       required:
-      - name
-      - product_id
-      - low_stock_threshold
+        - name
+        - product_id
+        - low_stock_threshold
       type: object
     CreateUserInputBody:
       additionalProperties: false
@@ -3453,7 +709,7 @@ components:
           type: string
         phone:
           description: User phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         status:
           description: User status
@@ -3464,10 +720,10 @@ components:
           example: regular
           type: string
       required:
-      - name
-      - user_type
-      - phone
-      - status
+        - name
+        - user_type
+        - phone
+        - status
       type: object
     Employee:
       additionalProperties: false
@@ -3495,7 +751,7 @@ components:
           type: string
         phone:
           description: Employee phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         role:
           description: Employee role
@@ -3506,13 +762,13 @@ components:
           example: active
           type: string
       required:
-      - id
-      - email
-      - name
-      - phone
-      - role
-      - state
-      - active
+        - id
+        - email
+        - name
+        - phone
+        - role
+        - state
+        - active
       type: object
     EmployeeStruct:
       additionalProperties: false
@@ -3536,12 +792,12 @@ components:
           description: Employee role
           type: string
       required:
-      - id
-      - email
-      - name
-      - phone
-      - role
-      - active
+        - id
+        - email
+        - name
+        - phone
+        - role
+        - active
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -3565,19 +821,17 @@ components:
           readOnly: true
           type: string
         detail:
-          description: A human-readable explanation specific to this occurrence of
-            the problem.
+          description: A human-readable explanation specific to this occurrence of the problem.
           example: Property foo is required but is missing.
           type: string
         errors:
           description: Optional list of individual error details
           items:
-            $ref: '#/components/schemas/ErrorDetail'
+            $ref: "#/components/schemas/ErrorDetail"
           nullable: true
           type: array
         instance:
-          description: A URI reference that identifies the specific occurrence of
-            the problem.
+          description: A URI reference that identifies the specific occurrence of the problem.
           example: https://example.com/error-log/abc123
           format: uri
           type: string
@@ -3587,8 +841,7 @@ components:
           format: int64
           type: integer
         title:
-          description: A short, human-readable summary of the problem type. This value
-            should not change between occurrences of the error.
+          description: A short, human-readable summary of the problem type. This value should not change between occurrences of the error.
           example: Bad Request
           type: string
         type:
@@ -3611,7 +864,7 @@ components:
           type: string
         customer_phone:
           description: Customer phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         id:
           description: Order ID
@@ -3663,19 +916,19 @@ components:
           format: date-time
           type: string
       required:
-      - id
-      - order_number
-      - customer_name
-      - customer_phone
-      - status
-      - payment_method
-      - payment_status
-      - order_type
-      - total_amount
-      - items_count
-      - items_summary
-      - created_at
-      - updated_at
+        - id
+        - order_number
+        - customer_name
+        - customer_phone
+        - status
+        - payment_method
+        - payment_status
+        - order_type
+        - total_amount
+        - items_count
+        - items_summary
+        - created_at
+        - updated_at
       type: object
     ExportOrdersOutputBody:
       additionalProperties: false
@@ -3697,17 +950,17 @@ components:
         orders:
           description: Exported orders
           items:
-            $ref: '#/components/schemas/ExportOrderRow'
+            $ref: "#/components/schemas/ExportOrderRow"
           nullable: true
           type: array
         start:
           description: Start date
           type: string
       required:
-      - start
-      - end
-      - count
-      - orders
+        - start
+        - end
+        - count
+        - orders
       type: object
     Flavor:
       additionalProperties: false
@@ -3744,12 +997,12 @@ components:
           example: Chocolate
           type: string
       required:
-      - id
-      - name
-      - display_order
-      - is_seasonal
-      - is_active
-      - created_at
+        - id
+        - name
+        - display_order
+        - is_seasonal
+        - is_active
+        - created_at
       type: object
     FlavorStockOutputBody:
       additionalProperties: false
@@ -3774,9 +1027,9 @@ components:
           example: false
           type: boolean
       required:
-      - flavor_id
-      - current_stock
-      - low_stock
+        - flavor_id
+        - current_stock
+        - low_stock
       type: object
     FormFile:
       additionalProperties: false
@@ -3791,10 +1044,10 @@ components:
           format: int64
           type: integer
       required:
-      - ContentType
-      - IsSet
-      - Size
-      - Filename
+        - ContentType
+        - IsSet
+        - Size
+        - Filename
       type: object
     InventoryDashboardOutputBody:
       additionalProperties: false
@@ -3808,22 +1061,22 @@ components:
         flavor_inventory:
           description: Flavor inventory items
           items:
-            $ref: '#/components/schemas/InventoryItem'
+            $ref: "#/components/schemas/InventoryItem"
           nullable: true
           type: array
         stats:
-          $ref: '#/components/schemas/InventoryStats'
+          $ref: "#/components/schemas/InventoryStats"
           description: Inventory statistics
         unit_inventory:
           description: Unit inventory items
           items:
-            $ref: '#/components/schemas/InventoryItem'
+            $ref: "#/components/schemas/InventoryItem"
           nullable: true
           type: array
       required:
-      - flavor_inventory
-      - unit_inventory
-      - stats
+        - flavor_inventory
+        - unit_inventory
+        - stats
       type: object
     InventoryItem:
       additionalProperties: false
@@ -3869,12 +1122,12 @@ components:
           example: flavor
           type: string
       required:
-      - id
-      - name
-      - type
-      - current_stock
-      - low_stock_threshold
-      - created_at
+        - id
+        - name
+        - type
+        - current_stock
+        - low_stock_threshold
+        - created_at
       type: object
     InventoryMovementsOutputBody:
       additionalProperties: false
@@ -3888,7 +1141,7 @@ components:
         data:
           description: Movement records
           items:
-            $ref: '#/components/schemas/StockMovement'
+            $ref: "#/components/schemas/StockMovement"
           nullable: true
           type: array
         limit:
@@ -3912,11 +1165,11 @@ components:
           format: int64
           type: integer
       required:
-      - data
-      - total
-      - limit
-      - offset
-      - total_pages
+        - data
+        - total
+        - limit
+        - offset
+        - total_pages
       type: object
     InventoryStats:
       additionalProperties: false
@@ -3943,9 +1196,9 @@ components:
           format: int64
           type: integer
       required:
-      - total_items
-      - low_stock_items
-      - out_of_stock_items
+        - total_items
+        - low_stock_items
+        - out_of_stock_items
       type: object
     LoginInputBody:
       additionalProperties: false
@@ -3965,8 +1218,8 @@ components:
           example: secret
           type: string
       required:
-      - email
-      - password
+        - email
+        - password
       type: object
     LoginOutputBody:
       additionalProperties: false
@@ -3978,10 +1231,10 @@ components:
           readOnly: true
           type: string
         employee:
-          $ref: '#/components/schemas/EmployeeStruct'
+          $ref: "#/components/schemas/EmployeeStruct"
           description: Employee record
       required:
-      - employee
+        - employee
       type: object
     MessageResponse:
       additionalProperties: false
@@ -3996,7 +1249,7 @@ components:
           description: Response message
           type: string
       required:
-      - message
+        - message
       type: object
     OfferItem:
       additionalProperties: false
@@ -4008,7 +1261,7 @@ components:
           type: number
         expires_at:
           description: Offer expiration (RFC 3339)
-          example: '2026-12-31T23:59:59Z'
+          example: "2026-12-31T23:59:59Z"
           type: string
         flavor_id:
           description: Flavor ID
@@ -4033,9 +1286,9 @@ components:
           format: uuid
           type: string
       required:
-      - product_id
-      - label
-      - expires_at
+        - product_id
+        - label
+        - expires_at
       type: object
     Order:
       additionalProperties: false
@@ -4067,7 +1320,7 @@ components:
           type: string
         customer_phone:
           description: Customer phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         id:
           description: Order ID
@@ -4080,7 +1333,7 @@ components:
         items:
           description: Order items
           items:
-            $ref: '#/components/schemas/OrderItem'
+            $ref: "#/components/schemas/OrderItem"
           nullable: true
           type: array
         notes:
@@ -4135,18 +1388,18 @@ components:
           format: date-time
           type: string
       required:
-      - id
-      - order_number
-      - customer_name
-      - customer_phone
-      - total_amount
-      - status
-      - payment_method
-      - payment_status
-      - order_type
-      - is_archived
-      - created_at
-      - updated_at
+        - id
+        - order_number
+        - customer_name
+        - customer_phone
+        - total_amount
+        - status
+        - payment_method
+        - payment_status
+        - order_type
+        - is_archived
+        - created_at
+        - updated_at
       type: object
     OrderItem:
       additionalProperties: false
@@ -4165,8 +1418,8 @@ components:
           format: int64
           type: integer
       required:
-      - product_id
-      - quantity
+        - product_id
+        - quantity
       type: object
     OrderOutputBody:
       additionalProperties: false
@@ -4201,12 +1454,12 @@ components:
           description: Tracking token
           type: string
       required:
-      - order_number
-      - status
-      - total
-      - tracking_token
-      - tracking_expires_at
-      - message
+        - order_number
+        - status
+        - total
+        - tracking_token
+        - tracking_expires_at
+        - message
       type: object
     OrderTrackingOutputBody:
       additionalProperties: false
@@ -4228,9 +1481,9 @@ components:
           format: double
           type: number
       required:
-      - order_number
-      - status
-      - total_amount
+        - order_number
+        - status
+        - total_amount
       type: object
     PaginatedResponseAddon:
       additionalProperties: false
@@ -4244,15 +1497,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/Addon'
+            $ref: "#/components/schemas/Addon"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseCategory:
       additionalProperties: false
@@ -4266,15 +1519,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/Category'
+            $ref: "#/components/schemas/Category"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseContainerType:
       additionalProperties: false
@@ -4288,15 +1541,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/ContainerType'
+            $ref: "#/components/schemas/ContainerType"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseEmployee:
       additionalProperties: false
@@ -4310,15 +1563,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/Employee'
+            $ref: "#/components/schemas/Employee"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseFlavor:
       additionalProperties: false
@@ -4332,15 +1585,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/Flavor'
+            $ref: "#/components/schemas/Flavor"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseInventoryItem:
       additionalProperties: false
@@ -4354,15 +1607,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/InventoryItem'
+            $ref: "#/components/schemas/InventoryItem"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseOrder:
       additionalProperties: false
@@ -4376,15 +1629,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/Order'
+            $ref: "#/components/schemas/Order"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseProduct:
       additionalProperties: false
@@ -4398,15 +1651,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/Product'
+            $ref: "#/components/schemas/Product"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginatedResponseUser:
       additionalProperties: false
@@ -4420,15 +1673,15 @@ components:
         data:
           description: Page items
           items:
-            $ref: '#/components/schemas/User'
+            $ref: "#/components/schemas/User"
           nullable: true
           type: array
         pagination:
-          $ref: '#/components/schemas/PaginationMetadata'
+          $ref: "#/components/schemas/PaginationMetadata"
           description: Pagination metadata
       required:
-      - data
-      - pagination
+        - data
+        - pagination
       type: object
     PaginationMetadata:
       additionalProperties: false
@@ -4454,10 +1707,10 @@ components:
           format: int64
           type: integer
       required:
-      - page
-      - per_page
-      - total
-      - total_pages
+        - page
+        - per_page
+        - total
+        - total_pages
       type: object
     Product:
       additionalProperties: false
@@ -4471,7 +1724,7 @@ components:
         addons:
           description: Product addons
           items:
-            $ref: '#/components/schemas/Addon'
+            $ref: "#/components/schemas/Addon"
           nullable: true
           type: array
         allows_mixed_flavors:
@@ -4513,7 +1766,7 @@ components:
         flavors:
           description: Product flavors
           items:
-            $ref: '#/components/schemas/Flavor'
+            $ref: "#/components/schemas/Flavor"
           nullable: true
           type: array
         id:
@@ -4544,12 +1797,12 @@ components:
           example: in_stock
           type: string
       required:
-      - id
-      - name
-      - description
-      - price
-      - is_available
-      - created_at
+        - id
+        - name
+        - description
+        - price
+        - is_available
+        - created_at
       type: object
     ProductSummary:
       additionalProperties: false
@@ -4582,12 +1835,12 @@ components:
           format: double
           type: number
       required:
-      - id
-      - name
-      - description
-      - price
-      - is_available
-      - created_at
+        - id
+        - name
+        - description
+        - price
+        - is_available
+        - created_at
       type: object
     PublicOrderRateLimitConfig:
       additionalProperties: false
@@ -4639,14 +1892,14 @@ components:
           format: int64
           type: integer
       required:
-      - phone_burst
-      - phone_window_minutes
-      - phone_block_minutes
-      - ip_burst
-      - ip_window_minutes
-      - ip_block_minutes
-      - staff_burst
-      - staff_window_minutes
+        - phone_burst
+        - phone_window_minutes
+        - phone_block_minutes
+        - ip_burst
+        - ip_window_minutes
+        - ip_block_minutes
+        - staff_burst
+        - staff_window_minutes
       type: object
     PurgeOrdersOutputBody:
       additionalProperties: false
@@ -4672,9 +1925,9 @@ components:
           example: Orders purged successfully
           type: string
       required:
-      - deleted_orders
-      - deleted_items
-      - message
+        - deleted_orders
+        - deleted_items
+        - message
       type: object
     RecordAdjustmentInputBody:
       additionalProperties: false
@@ -4695,8 +1948,8 @@ components:
           example: Spoilage
           type: string
       required:
-      - quantity
-      - reason
+        - quantity
+        - reason
       type: object
     RecordEntryInputBody:
       additionalProperties: false
@@ -4722,8 +1975,8 @@ components:
           format: int64
           type: integer
       required:
-      - container_type_id
-      - quantity_containers
+        - container_type_id
+        - quantity_containers
       type: object
     RecordUnitEntryInputBody:
       additionalProperties: false
@@ -4740,7 +1993,7 @@ components:
           format: int64
           type: integer
       required:
-      - quantity
+        - quantity
       type: object
     RejectOrderInputBody:
       additionalProperties: false
@@ -4756,7 +2009,7 @@ components:
           example: Out of stock
           type: string
       required:
-      - reason
+        - reason
       type: object
     Reset-login-lockoutRequest:
       additionalProperties: false
@@ -4772,7 +2025,7 @@ components:
           example: admin@example.com
           type: string
       required:
-      - email
+        - email
       type: object
     SessionOutputBody:
       additionalProperties: false
@@ -4802,12 +2055,12 @@ components:
           description: Employee role
           type: string
       required:
-      - id
-      - email
-      - name
-      - phone
-      - role
-      - active
+        - id
+        - email
+        - name
+        - phone
+        - role
+        - active
       type: object
     StockMovement:
       additionalProperties: false
@@ -4864,11 +2117,11 @@ components:
           example: entry
           type: string
       required:
-      - id
-      - type
-      - quantity
-      - inventory_item_id
-      - created_at
+        - id
+        - type
+        - quantity
+        - inventory_item_id
+        - created_at
       type: object
     StoreSettings:
       additionalProperties: false
@@ -4882,7 +2135,7 @@ components:
         offers:
           description: Active offers
           items:
-            $ref: '#/components/schemas/OfferItem'
+            $ref: "#/components/schemas/OfferItem"
           nullable: true
           type: array
         orders_enabled:
@@ -4890,8 +2143,8 @@ components:
           example: true
           type: boolean
       required:
-      - orders_enabled
-      - offers
+        - orders_enabled
+        - offers
       type: object
     StoreStatusOutputBody:
       additionalProperties: false
@@ -4905,15 +2158,15 @@ components:
         offers:
           description: Active offers
           items:
-            $ref: '#/components/schemas/ActiveOffer'
+            $ref: "#/components/schemas/ActiveOffer"
           nullable: true
           type: array
         orders_enabled:
           description: Whether public orders are enabled
           type: boolean
       required:
-      - orders_enabled
-      - offers
+        - orders_enabled
+        - offers
       type: object
     TokenTTLConfig:
       additionalProperties: false
@@ -4945,10 +2198,10 @@ components:
           format: int64
           type: integer
       required:
-      - auth_cookie_ttl_hours
-      - auth_token_ttl_hours
-      - tracking_token_ttl_hours
-      - inactivity_logout_seconds
+        - auth_cookie_ttl_hours
+        - auth_token_ttl_hours
+        - tracking_token_ttl_hours
+        - inactivity_logout_seconds
       type: object
     UpdateAddonInputBody:
       additionalProperties: false
@@ -5065,7 +2318,7 @@ components:
           type: string
         phone:
           description: Employee phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         role:
           description: Employee role
@@ -5122,12 +2375,12 @@ components:
           type: string
         customer_phone:
           description: Customer phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         items:
           description: Order items
           items:
-            $ref: '#/components/schemas/OrderItem'
+            $ref: "#/components/schemas/OrderItem"
           nullable: true
           type: array
         notes:
@@ -5136,28 +2389,28 @@ components:
         order_type:
           description: Order type
           enum:
-          - en_local
-          - para_llevar
+            - en_local
+            - para_llevar
           type: string
         payment_method:
           description: Payment method
           enum:
-          - efectivo
-          - tarjeta
-          - transferencia
-          - otro
+            - efectivo
+            - tarjeta
+            - transferencia
+            - otro
           type: string
         table_number:
           description: Table number
           format: int64
           type: integer
       required:
-      - customer_name
-      - customer_phone
-      - payment_method
-      - order_type
-      - notes
-      - items
+        - customer_name
+        - customer_phone
+        - payment_method
+        - order_type
+        - notes
+        - items
       type: object
     UpdateOrderNotesInputBody:
       additionalProperties: false
@@ -5174,7 +2427,7 @@ components:
           nullable: true
           type: string
       required:
-      - notes
+        - notes
       type: object
     UpdateOrderStatusInputBody:
       additionalProperties: false
@@ -5187,10 +2440,10 @@ components:
           type: string
         status:
           description: New order status
-          example: en_preparacion
+          example: in_preparation
           type: string
       required:
-      - status
+        - status
       type: object
     UpdateProductInputBody:
       additionalProperties: false
@@ -5265,7 +2518,7 @@ components:
           type: string
         phone:
           description: User phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         status:
           description: User status
@@ -5286,10 +2539,10 @@ components:
           readOnly: true
           type: string
         Image:
-          $ref: '#/components/schemas/FormFile'
+          $ref: "#/components/schemas/FormFile"
           description: Image file (JPEG, PNG, WebP)
       required:
-      - Image
+        - Image
       type: object
     UploadImageOutputBody:
       additionalProperties: false
@@ -5309,8 +2562,8 @@ components:
           example: products/abc123.png
           type: string
       required:
-      - path
-      - message
+        - path
+        - message
       type: object
     User:
       additionalProperties: false
@@ -5339,7 +2592,7 @@ components:
           type: string
         phone:
           description: User phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         status:
           description: User status
@@ -5354,13 +2607,13 @@ components:
           example: regular
           type: string
       required:
-      - id
-      - name
-      - user_type
-      - phone
-      - status
-      - created_at
-      - updated_at
+        - id
+        - name
+        - user_type
+        - phone
+        - status
+        - created_at
+        - updated_at
       type: object
     UserOrder:
       additionalProperties: false
@@ -5375,7 +2628,7 @@ components:
           type: string
         customer_phone:
           description: Customer phone
-          example: '+50688881234'
+          example: "+50688881234"
           type: string
         id:
           description: Order ID
@@ -5395,13 +2648,13 @@ components:
           format: double
           type: number
       required:
-      - id
-      - order_number
-      - customer_name
-      - customer_phone
-      - total_amount
-      - status
-      - created_at
+        - id
+        - order_number
+        - customer_name
+        - customer_phone
+        - total_amount
+        - status
+        - created_at
       type: object
     UserOrdersOutputBody:
       additionalProperties: false
@@ -5415,9 +2668,2751 @@ components:
         orders:
           description: User orders
           items:
-            $ref: '#/components/schemas/UserOrder'
+            $ref: "#/components/schemas/UserOrder"
           nullable: true
           type: array
       required:
-      - orders
+        - orders
       type: object
+info:
+  title: ishos API
+  version: 1.0.0
+openapi: 3.0.3
+paths:
+  /addons:
+    get:
+      description: Returns a list of active addons.
+      operationId: list-addons
+      parameters:
+        - description: Return all addons
+          explode: false
+          in: query
+          name: all
+          schema:
+            default: false
+            description: Return all addons
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseAddon"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List addons
+      tags:
+        - Public catalog
+    post:
+      description: Creates a new addon. Admin only.
+      operationId: create-addon
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAddonInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Addon"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create addon
+      tags:
+        - Addons
+  /addons/{id}:
+    delete:
+      description: Removes an addon. Admin only.
+      operationId: delete-addon
+      parameters:
+        - description: Addon ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Addon ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete addon
+      tags:
+        - Addons
+    get:
+      description: Returns a single addon by ID.
+      operationId: get-addon
+      parameters:
+        - description: Addon ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Addon ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Addon"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get addon
+      tags:
+        - Public catalog
+    patch:
+      description: Updates an existing addon. Admin only.
+      operationId: update-addon
+      parameters:
+        - description: Addon ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Addon ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAddonInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Addon"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update addon
+      tags:
+        - Addons
+  /admin/orders/archive/run:
+    post:
+      description: Triggers an immediate auto-archive pass. Admin only.
+      operationId: run-order-archive
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Run order archive
+      tags:
+        - Orders
+  /analytics/dashboard:
+    get:
+      description: Returns overview, orders-over-time, and top-products in a single response.
+      operationId: analytics-dashboard
+      parameters:
+        - description: Start date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: start
+          schema:
+            description: Start date (YYYY-MM-DD)
+            example: "2026-06-01"
+            type: string
+        - description: End date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: end
+          schema:
+            description: End date (YYYY-MM-DD)
+            example: "2026-07-01"
+            type: string
+        - description: Bucket granularity
+          explode: false
+          in: query
+          name: groupBy
+          schema:
+            default: day
+            description: Bucket granularity
+            enum:
+              - day
+              - week
+              - month
+            type: string
+        - description: Number of products to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 10
+            description: Number of products to return
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsDashboardOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Analytics dashboard
+      tags:
+        - Analytics
+  /analytics/orders-over-time:
+    get:
+      description: Returns order counts and revenue over a date range.
+      operationId: analytics-orders-over-time
+      parameters:
+        - description: Start date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: start
+          schema:
+            description: Start date (YYYY-MM-DD)
+            example: "2026-06-01"
+            type: string
+        - description: End date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: end
+          schema:
+            description: End date (YYYY-MM-DD)
+            example: "2026-07-01"
+            type: string
+        - description: Bucket granularity
+          explode: false
+          in: query
+          name: groupBy
+          schema:
+            default: day
+            description: Bucket granularity
+            enum:
+              - day
+              - week
+              - month
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/AnalyticsTimelinePoint"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Orders over time
+      tags:
+        - Analytics
+  /analytics/overview:
+    get:
+      description: Returns aggregate order metrics for a period.
+      operationId: analytics-overview
+      parameters:
+        - description: Report period
+          explode: false
+          in: query
+          name: period
+          schema:
+            default: month
+            description: Report period
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsOverview"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Analytics overview
+      tags:
+        - Analytics
+  /analytics/top-products:
+    get:
+      description: Returns the best-selling products for a date range.
+      operationId: analytics-top-products
+      parameters:
+        - description: Start date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: start
+          schema:
+            description: Start date (YYYY-MM-DD)
+            example: "2026-06-01"
+            type: string
+        - description: End date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: end
+          schema:
+            description: End date (YYYY-MM-DD)
+            example: "2026-07-01"
+            type: string
+        - description: Number of products to return
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 10
+            description: Number of products to return
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/AnalyticsTopProduct"
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Top products
+      tags:
+        - Analytics
+  /auth/lockout/reset:
+    post:
+      description: Resets the login rate-limit/lockout state for an email.
+      operationId: reset-login-lockout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Reset-login-lockoutRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Reset login lockout
+      tags:
+        - Auth
+  /auth/login:
+    post:
+      description: Authenticates an employee and sets an HttpOnly auth cookie.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Employee login
+      tags:
+        - Auth
+  /auth/logout:
+    post:
+      description: Revokes the current session and clears the auth cookie.
+      operationId: logout
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Logout
+      tags:
+        - Auth
+  /auth/session:
+    get:
+      description: Returns the currently authenticated employee session.
+      operationId: get-session
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get current session
+      tags:
+        - Auth
+  /categories:
+    get:
+      description: Returns a paginated list of active categories.
+      operationId: list-categories
+      parameters:
+        - description: Page number
+          explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            description: Page number
+            format: int64
+            type: integer
+        - description: Items per page
+          explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 20
+            description: Items per page
+            format: int64
+            type: integer
+        - description: Return all categories (admin fallback)
+          explode: false
+          in: query
+          name: all
+          schema:
+            default: false
+            description: Return all categories (admin fallback)
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseCategory"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List categories
+      tags:
+        - Public catalog
+    post:
+      description: Creates a new category. Admin only.
+      operationId: create-category
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create category
+      tags:
+        - Categories
+  /categories/{id}:
+    delete:
+      description: Removes a category. Admin only.
+      operationId: delete-category
+      parameters:
+        - description: Category ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Category ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete category
+      tags:
+        - Categories
+    patch:
+      description: Updates an existing category. Admin only.
+      operationId: update-category
+      parameters:
+        - description: Category ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Category ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update category
+      tags:
+        - Categories
+  /categories/{slug}:
+    get:
+      description: Returns a category and its products by URL slug.
+      operationId: get-category-by-slug
+      parameters:
+        - description: Category slug
+          in: path
+          name: slug
+          required: true
+          schema:
+            description: Category slug
+            example: gelatos
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoryDetail"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get category by slug
+      tags:
+        - Public catalog
+  /container-types:
+    get:
+      description: Returns all container types.
+      operationId: list-container-types
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseContainerType"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List container types
+      tags:
+        - Container types
+    post:
+      description: Creates a new container type. Admin only.
+      operationId: create-container-type
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContainerTypeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContainerType"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create container type
+      tags:
+        - Container types
+  /container-types/{id}:
+    delete:
+      description: Removes a container type. Admin only.
+      operationId: delete-container-type
+      parameters:
+        - description: Container type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Container type ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete container type
+      tags:
+        - Container types
+    get:
+      description: Returns a single container type.
+      operationId: get-container-type
+      parameters:
+        - description: Container type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Container type ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContainerType"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get container type
+      tags:
+        - Container types
+    patch:
+      description: Updates an existing container type. Admin only.
+      operationId: update-container-type
+      parameters:
+        - description: Container type ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Container type ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContainerTypeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContainerType"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update container type
+      tags:
+        - Container types
+  /employees:
+    get:
+      description: Returns all employee/admin records.
+      operationId: list-employees
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseEmployee"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List employees
+      tags:
+        - Employees
+    post:
+      description: Registers a new employee in the auth collection. Admin only.
+      operationId: create-employee
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEmployeeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create employee
+      tags:
+        - Employees
+  /employees/{id}:
+    delete:
+      description: Permanently removes an employee account. Admin only.
+      operationId: delete-employee
+      parameters:
+        - description: Employee ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Employee ID
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete employee
+      tags:
+        - Employees
+    patch:
+      description: Updates an employee account. Admin only.
+      operationId: update-employee
+      parameters:
+        - description: Employee ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Employee ID
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEmployeeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update employee
+      tags:
+        - Employees
+  /employees/{id}/deactivate:
+    patch:
+      description: Disables an employee account. Admin only.
+      operationId: deactivate-employee
+      parameters:
+        - description: Employee ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Employee ID
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Deactivate employee
+      tags:
+        - Employees
+  /export/orders:
+    delete:
+      description: Deletes completed/cancelled orders in a date range. Admin only.
+      operationId: purge-orders
+      parameters:
+        - description: Start date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: start
+          schema:
+            description: Start date (YYYY-MM-DD)
+            example: "2026-01-01"
+            type: string
+        - description: End date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: end
+          schema:
+            description: End date (YYYY-MM-DD)
+            example: "2026-06-01"
+            type: string
+        - description: Comma-separated statuses to purge
+          explode: false
+          in: query
+          name: statuses
+          schema:
+            description: Comma-separated statuses to purge
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurgeOrdersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Purge orders
+      tags:
+        - Export
+    get:
+      description: Exports orders to CSV or JSON. Admin only.
+      operationId: export-orders
+      parameters:
+        - description: Start date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: start
+          schema:
+            description: Start date (YYYY-MM-DD)
+            example: "2026-06-01"
+            type: string
+        - description: End date (YYYY-MM-DD)
+          explode: false
+          in: query
+          name: end
+          schema:
+            description: End date (YYYY-MM-DD)
+            example: "2026-07-01"
+            type: string
+        - description: Export format
+          explode: false
+          in: query
+          name: format
+          schema:
+            default: csv
+            description: Export format
+            enum:
+              - csv
+              - json
+            type: string
+        - description: Comma-separated order statuses
+          explode: false
+          in: query
+          name: statuses
+          schema:
+            description: Comma-separated order statuses
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportOrdersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Export orders
+      tags:
+        - Export
+  /flavors:
+    get:
+      description: Returns a list of active flavors.
+      operationId: list-flavors
+      parameters:
+        - description: Return all flavors
+          explode: false
+          in: query
+          name: all
+          schema:
+            default: false
+            description: Return all flavors
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseFlavor"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List flavors
+      tags:
+        - Public catalog
+    post:
+      description: Creates a new flavor. Admin only.
+      operationId: create-flavor
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFlavorInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flavor"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create flavor
+      tags:
+        - Flavors
+  /flavors/{id}:
+    delete:
+      description: Removes a flavor. Admin only.
+      operationId: delete-flavor
+      parameters:
+        - description: Flavor ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Flavor ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete flavor
+      tags:
+        - Flavors
+    get:
+      description: Returns a single flavor by ID.
+      operationId: get-flavor
+      parameters:
+        - description: Flavor ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Flavor ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flavor"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get flavor
+      tags:
+        - Public catalog
+    patch:
+      description: Updates an existing flavor. Admin only.
+      operationId: update-flavor
+      parameters:
+        - description: Flavor ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Flavor ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFlavorInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Flavor"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update flavor
+      tags:
+        - Flavors
+  /inventory:
+    get:
+      description: Returns all inventory items.
+      operationId: list-inventory
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseInventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List inventory
+      tags:
+        - Inventory
+  /inventory/dashboard:
+    get:
+      description: Returns flavor inventory, unit inventory and stats in one response.
+      operationId: get-inventory-dashboard
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDashboardOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Inventory dashboard
+      tags:
+        - Inventory
+  /inventory/flavors:
+    get:
+      description: Returns ball-based inventory items linked to flavors.
+      operationId: list-flavor-inventory
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseInventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List flavor inventory
+      tags:
+        - Inventory
+  /inventory/flavors/{id}/stock:
+    get:
+      description: Returns stock status for a flavor.
+      operationId: get-flavor-stock
+      parameters:
+        - description: Flavor ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Flavor ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlavorStockOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get flavor stock
+      tags:
+        - Inventory
+  /inventory/low-stock:
+    get:
+      description: Returns inventory items below their low-stock threshold.
+      operationId: get-low-stock
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseInventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Low stock items
+      tags:
+        - Inventory
+  /inventory/stats:
+    get:
+      description: Returns aggregate inventory statistics.
+      operationId: get-inventory-stats
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryStats"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Inventory stats
+      tags:
+        - Inventory
+  /inventory/unit-products:
+    get:
+      description: Returns unit-based inventory items linked to products.
+      operationId: list-unit-inventory
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseInventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List unit inventory
+      tags:
+        - Inventory
+    post:
+      description: Creates a new unit-based inventory item.
+      operationId: create-unit-inventory-item
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUnitInventoryItemInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create unit inventory item
+      tags:
+        - Inventory
+  /inventory/{id}:
+    get:
+      description: Returns a single inventory item.
+      operationId: get-inventory-item
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get inventory item
+      tags:
+        - Inventory
+  /inventory/{id}/adjustments:
+    post:
+      description: Records a manual stock adjustment.
+      operationId: record-inventory-adjustment
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordAdjustmentInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record inventory adjustment
+      tags:
+        - Inventory
+  /inventory/{id}/entries:
+    post:
+      description: Records a flavor stock entry.
+      operationId: record-inventory-entry
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordEntryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record inventory entry
+      tags:
+        - Inventory
+  /inventory/{id}/movements:
+    get:
+      description: Returns stock movements for an inventory item.
+      operationId: get-inventory-movements
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMovementsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get inventory movement history
+      tags:
+        - Inventory
+  /inventory/{id}/products/{productId}:
+    delete:
+      description: Removes the product link from an inventory item.
+      operationId: unlink-inventory-product
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+        - description: Product ID
+          in: path
+          name: productId
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Unlink inventory item from product
+      tags:
+        - Inventory
+    post:
+      description: Links an inventory item to a product.
+      operationId: link-inventory-product
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+        - description: Product ID
+          in: path
+          name: productId
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Link inventory item to product
+      tags:
+        - Inventory
+  /inventory/{id}/unit-entries:
+    post:
+      description: Records a unit-based stock entry.
+      operationId: record-inventory-unit-entry
+      parameters:
+        - description: Inventory item ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Inventory item ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordUnitEntryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovement"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record unit inventory entry
+      tags:
+        - Inventory
+  /orders:
+    get:
+      description: Returns a paginated list of orders.
+      operationId: list-orders
+      parameters:
+        - description: Filter by status
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Filter by status
+            type: string
+        - description: Return lightweight order rows
+          explode: false
+          in: query
+          name: lite
+          schema:
+            default: false
+            description: Return lightweight order rows
+            type: boolean
+        - description: Include archived orders
+          explode: false
+          in: query
+          name: archived
+          schema:
+            default: false
+            description: Include archived orders
+            type: boolean
+        - description: Page number
+          explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            description: Page number
+            format: int64
+            type: integer
+        - description: Items per page
+          explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 20
+            description: Items per page
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseOrder"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List orders
+      tags:
+        - Orders
+    post:
+      description: Creates a new order from the public storefront.
+      operationId: create-order
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create a public order
+      tags:
+        - Public orders
+  /orders/internal:
+    post:
+      description: Creates a new order from the staff panel. Requires an authenticated employee or admin session and bypasses public storefront rate limits.
+      operationId: create-internal-order
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create internal order
+      tags:
+        - Orders
+  /orders/track:
+    get:
+      description: Returns the current status of an order using its tracking token.
+      operationId: track-order
+      parameters:
+        - description: Order number
+          explode: false
+          in: query
+          name: order_number
+          schema:
+            description: Order number
+            type: string
+        - description: Tracking token
+          explode: false
+          in: query
+          name: tracking_token
+          schema:
+            description: Tracking token
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderTrackingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Track an order
+      tags:
+        - Public orders
+  /orders/{id}:
+    delete:
+      description: Deletes an editable order.
+      operationId: delete-order
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete order
+      tags:
+        - Orders
+    get:
+      description: Returns a single order by ID.
+      operationId: get-order
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get order
+      tags:
+        - Orders
+    patch:
+      description: Updates an editable order.
+      operationId: update-order
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update order
+      tags:
+        - Orders
+  /orders/{id}/approve:
+    post:
+      description: Approves an order for preparation.
+      operationId: approve-order
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve order
+      tags:
+        - Orders
+  /orders/{id}/archive:
+    patch:
+      description: Toggles the archive flag of an order. Admin only.
+      operationId: archive-order
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveOrderInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Archive order
+      tags:
+        - Orders
+  /orders/{id}/notes:
+    patch:
+      description: Updates the notes of an order.
+      operationId: update-order-notes
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderNotesInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update order notes
+      tags:
+        - Orders
+  /orders/{id}/reject:
+    post:
+      description: Rejects an order with a reason.
+      operationId: reject-order
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectOrderInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Reject order
+      tags:
+        - Orders
+  /orders/{id}/status:
+    patch:
+      description: Transitions an order to a new status.
+      operationId: update-order-status
+      parameters:
+        - description: Order ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Order ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update order status
+      tags:
+        - Orders
+  /products:
+    get:
+      description: Returns a paginated list of available products.
+      operationId: list-products
+      parameters:
+        - description: Filter by category slug
+          explode: false
+          in: query
+          name: category
+          schema:
+            description: Filter by category slug
+            type: string
+        - description: Page number
+          explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            description: Page number
+            format: int64
+            type: integer
+        - description: Items per page
+          explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 20
+            description: Items per page
+            format: int64
+            type: integer
+        - description: Return all products (admin fallback)
+          explode: false
+          in: query
+          name: all
+          schema:
+            default: false
+            description: Return all products (admin fallback)
+            type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseProduct"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List products
+      tags:
+        - Public catalog
+    post:
+      description: Creates a new product. Admin only.
+      operationId: create-product
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create product
+      tags:
+        - Products
+  /products/{id}:
+    delete:
+      description: Removes a product. Admin only.
+      operationId: delete-product
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete product
+      tags:
+        - Products
+    get:
+      description: Returns a single product by ID.
+      operationId: get-product
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get product
+      tags:
+        - Public catalog
+    patch:
+      description: Updates an existing product. Admin only.
+      operationId: update-product
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update product
+      tags:
+        - Products
+  /products/{id}/addons/{addonId}:
+    delete:
+      description: Unlinks an addon from a product. Admin only.
+      operationId: unlink-product-addon
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+        - description: Addon ID
+          in: path
+          name: addonId
+          required: true
+          schema:
+            description: Addon ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Unlink addon from product
+      tags:
+        - Products
+    post:
+      description: Links an addon to a product. Admin only.
+      operationId: link-product-addon
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+        - description: Addon ID
+          in: path
+          name: addonId
+          required: true
+          schema:
+            description: Addon ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Link addon to product
+      tags:
+        - Products
+  /products/{id}/availability:
+    patch:
+      description: Flips the availability flag of a product. Admin only.
+      operationId: toggle-product-availability
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Toggle product availability
+      tags:
+        - Products
+  /products/{id}/flavors/{flavorId}:
+    delete:
+      description: Unlinks a flavor from a product. Admin only.
+      operationId: unlink-product-flavor
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+        - description: Flavor ID
+          in: path
+          name: flavorId
+          required: true
+          schema:
+            description: Flavor ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Unlink flavor from product
+      tags:
+        - Products
+    post:
+      description: Links a flavor to a product. Admin only.
+      operationId: link-product-flavor
+      parameters:
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Product ID
+            format: uuid
+            type: string
+        - description: Flavor ID
+          in: path
+          name: flavorId
+          required: true
+          schema:
+            description: Flavor ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Link flavor to product
+      tags:
+        - Products
+  /settings/archive:
+    get:
+      description: Returns the order archive configuration.
+      operationId: get-archive-settings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveConfig"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get archive settings
+      tags:
+        - Settings
+    patch:
+      description: Updates the order archive configuration.
+      operationId: update-archive-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArchiveConfig"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchiveConfig"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update archive settings
+      tags:
+        - Settings
+  /settings/panel-config:
+    get:
+      description: Returns the panel/session token TTL configuration.
+      operationId: get-panel-config
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenTTLConfig"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get panel configuration
+      tags:
+        - Settings
+    patch:
+      description: Updates the panel/session token TTL configuration.
+      operationId: update-panel-config
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenTTLConfig"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenTTLConfig"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update panel configuration
+      tags:
+        - Settings
+  /settings/rate-limits:
+    get:
+      description: Returns the public order rate-limit configuration.
+      operationId: get-rate-limit-settings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicOrderRateLimitConfig"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get rate-limit settings
+      tags:
+        - Settings
+    patch:
+      description: Updates the public order rate-limit configuration.
+      operationId: update-rate-limit-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicOrderRateLimitConfig"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicOrderRateLimitConfig"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update rate-limit settings
+      tags:
+        - Settings
+  /settings/store:
+    get:
+      description: Returns the full store settings.
+      operationId: get-store-settings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreSettings"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get store settings
+      tags:
+        - Settings
+    patch:
+      description: Updates the store orders-enabled flag and special offers.
+      operationId: update-store-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoreSettings"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreSettings"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update store settings
+      tags:
+        - Settings
+  /settings/store/public:
+    get:
+      description: Returns whether public orders are enabled and active offers.
+      operationId: get-public-store-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreStatusOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get public store status
+      tags:
+        - Settings
+  /upload/image:
+    post:
+      description: Uploads an image to object storage.
+      operationId: upload-image
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadImageInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadImageOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Upload image
+      tags:
+        - Upload
+  /users:
+    get:
+      description: Returns a paginated list of customers.
+      operationId: list-users
+      parameters:
+        - description: Filter by status
+          explode: false
+          in: query
+          name: status
+          schema:
+            description: Filter by status
+            type: string
+        - description: Search by name or phone
+          explode: false
+          in: query
+          name: search
+          schema:
+            description: Search by name or phone
+            type: string
+        - description: Page number
+          explode: false
+          in: query
+          name: page
+          schema:
+            default: 1
+            description: Page number
+            format: int64
+            type: integer
+        - description: Items per page
+          explode: false
+          in: query
+          name: per_page
+          schema:
+            default: 20
+            description: Items per page
+            format: int64
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponseUser"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List users
+      tags:
+        - Users
+    post:
+      description: Creates a new customer. Admin only.
+      operationId: create-user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Create user
+      tags:
+        - Users
+  /users/upsert:
+    post:
+      description: Creates or updates a customer by phone. Admin only.
+      operationId: upsert-user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Upsert user
+      tags:
+        - Users
+  /users/{id}:
+    delete:
+      description: Removes a customer. Admin only.
+      operationId: delete-user
+      parameters:
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: User ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Delete user
+      tags:
+        - Users
+    get:
+      description: Returns a single customer by ID.
+      operationId: get-user
+      parameters:
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: User ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get user
+      tags:
+        - Users
+    patch:
+      description: Updates an existing customer. Admin only.
+      operationId: update-user
+      parameters:
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: User ID
+            format: uuid
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Update user
+      tags:
+        - Users
+  /users/{id}/orders:
+    get:
+      description: Returns order history for a customer. Admin only.
+      operationId: get-user-orders
+      parameters:
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          schema:
+            description: User ID
+            format: uuid
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserOrdersOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get user orders
+      tags:
+        - Users
+servers:
+  - url: /api/v1

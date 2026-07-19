@@ -352,6 +352,7 @@ func (r *ProductBunRepository) attachEffectiveGlobalOptions(ctx context.Context,
 		Int("product_count", len(products)).
 		Msg("attachEffectiveGlobalOptions: attaching global options")
 
+	// #nosec G602 -- loop uses range, so the index is always within bounds.
 	for i := range products {
 		if products[i].ExcludeGlobalFlavors {
 			products[i].Flavors = []dto.Flavor{}

@@ -214,7 +214,13 @@ func TestInactivityMiddlewareExpiresIdleSession(t *testing.T) {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.AddCookie(&http.Cookie{Name: "auth_token", Value: "token-xyz"})
+			r.AddCookie(&http.Cookie{
+				Name:     "auth_token",
+				Value:    "token-xyz",
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Secure:   true,
+			})
 			next.ServeHTTP(w, r)
 		})
 	})
