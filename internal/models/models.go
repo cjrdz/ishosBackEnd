@@ -238,6 +238,7 @@ type IdempotencyKey struct {
 	Key           uuid.UUID `bun:",pk,type:uuid"`
 	OrderID       uuid.UUID `bun:"order_id,notnull,type:uuid"`
 	CreatedAt     time.Time `bun:"created_at,notnull"`
+	ExpiresAt     time.Time `bun:"expires_at,notnull"`
 }
 
 // Product mirrors the products table.

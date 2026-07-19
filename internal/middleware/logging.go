@@ -1,11 +1,9 @@
-// logging.go — Structured logging with slog + request ID context helpers.
+// logging.go — Request ID context helpers.
 package middleware
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
-	"os"
 
 	"github.com/google/uuid"
 )
@@ -33,8 +31,8 @@ func withRequestID(ctx context.Context, id string) context.Context {
 }
 
 // RequestIDMiddleware adds a unique request ID to each request for tracing and logging.
-// The request ID is stored in context and exposed as X-Request-ID header.
-// Used by slog handlers to correlate log lines across a single request.
+// The request ID is stored in context and exposed as X-Request-ID header,
+// so log lines can be correlated across a single request.
 func RequestIDMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,16 +42,4 @@ func RequestIDMiddleware() func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
-}
-
-// SetupSlog initializes the default slog logger with JSON output to stderr.
-// Configures appropriate log level and formatting for structured logging.
-// Call this once during server startup.
-func SetupSlog() {
-	opts := &slog.HandlerOptions{
-		AddSource: true,
-		Level:     slog.LevelInfo,
-	}
-	handler := slog.NewJSONHandler(os.Stderr, opts)
-	slog.SetDefault(slog.New(handler))
 }

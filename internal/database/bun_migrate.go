@@ -27,9 +27,12 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 	}
 	if initialized {
 		log.Debug().Msg("schema already initialized; skipping migration")
-		// Indexes added after the initial schema rollout must still be created
-		// idempotently on warm databases.
-		return ensureOrderArchiveIndex(ctx, db)
+		// Indexes and columns added after the initial schema rollout must still
+		// be created idempotently on warm databases.
+		if err := ensureOrderArchiveIndex(ctx, db); err != nil {
+			return err
+		}
+		return ensureIdempotencyKeyExpiresAt(ctx, db)
 	}
 
 	if err := createTables(ctx, db); err != nil {
@@ -205,6 +208,26 @@ func ensureOrderArchiveIndex(ctx context.Context, db *bun.DB) error {
 	_, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_orders_is_archived_created_at ON orders (is_archived, created_at DESC)`)
 	if err != nil {
 		return fmt.Errorf("create order archive index: %w", err)
+	}
+	return nil
+}
+
+func ensureIdempotencyKeyExpiresAt(ctx context.Context, db *bun.DB) error {
+	_, err := db.ExecContext(ctx, `ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`)
+	if err != nil {
+		return fmt.Errorf("add idempotency_keys.expires_at column: %w", err)
+	}
+	_, err = db.ExecContext(ctx, `UPDATE idempotency_keys SET expires_at = created_at + INTERVAL '30 days' WHERE expires_at IS NULL`)
+	if err != nil {
+		return fmt.Errorf("backfill idempotency_keys.expires_at: %w", err)
+	}
+	_, err = db.ExecContext(ctx, `ALTER TABLE idempotency_keys ALTER COLUMN expires_at SET NOT NULL`)
+	if err != nil {
+		return fmt.Errorf("set idempotency_keys.expires_at not null: %w", err)
+	}
+	_, err = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idempotencykey_expires_at ON idempotency_keys (expires_at)`)
+	if err != nil {
+		return fmt.Errorf("create idempotency_keys expires_at index: %w", err)
 	}
 	return nil
 }

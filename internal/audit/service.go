@@ -5,6 +5,8 @@ package audit
 import (
 	"context"
 	"time"
+
+	"github.com/uptrace/bun"
 )
 
 // serviceImpl implements audit.Service by delegating to a LogRepository.
@@ -20,6 +22,11 @@ func NewService(repo LogRepository) Service {
 // Log creates an audit entry for a sensitive action.
 func (s *serviceImpl) Log(ctx context.Context, action, actorID, resource string, changes map[string]any, ip string) error {
 	return s.repo.Log(ctx, action, actorID, resource, changes, ip)
+}
+
+// LogWithDB creates an audit entry inside the provided bun transaction or DB.
+func (s *serviceImpl) LogWithDB(ctx context.Context, db bun.IDB, action, actorID, resource string, changes map[string]any, ip string) error {
+	return s.repo.LogWithDB(ctx, db, action, actorID, resource, changes, ip)
 }
 
 // GetByResource retrieves audit entries for a specific resource.

@@ -15,15 +15,25 @@ Minimum production configuration:
 - `R2_SECRET_ACCESS_KEY`
 - `R2_PUBLIC_BASE_URL`
 - `ALLOWED_ORIGINS`
+- `REDIS_URL` — required in production for distributed rate limiting and login lockout state
+- `TRACKING_TOKEN_SECRET` — required in production (do not derive from `DATABASE_URL`)
 
 Operationally important values:
 
 - `PB_DATA_DIR` for embedded PocketBase state
 - `AUTH_TOKEN_TTL_HOURS`
 - `AUTH_COOKIE_TTL_HOURS`
-- `TRACKING_TOKEN_SECRET`
 - `TRACKING_TOKEN_TTL_HOURS`
-- `REDIS_URL` and `REDIS_PREFIX` when using shared rate limiting
+- `REDIS_PREFIX`
+- `INACTIVITY_LOGOUT_SECONDS`
+- `DB_MAX_OPEN_CONNS` (default 25)
+- `DB_MAX_IDLE_CONNS` (default 10)
+- `DB_CONN_MAX_LIFETIME_MINUTES` (default 30)
+- `DB_CONN_MAX_IDLE_TIME_MINUTES` (default 5)
+- `ADMIN_IMAGE_UPLOAD_MAX_MB` (default 15)
+- `ADMIN_IMAGE_UPLOAD_MAX_WIDTH` (default 4096)
+- `ADMIN_IMAGE_UPLOAD_MAX_HEIGHT` (default 4096)
+- `ALLOWED_UPLOAD_FOLDERS` (default `products,categories,flavors,addons,container-types,profile,general`)
 
 ## Database guidance
 

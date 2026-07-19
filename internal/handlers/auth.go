@@ -180,15 +180,23 @@ func (h *AuthHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout clears the auth token cookie and returns a confirmation message.
-//
-// With PocketBase token-based auth the token validity is time-based.
-// This endpoint clears the HttpOnly cookie on the client side.
+// Logout validates the current token, revokes it, and clears the auth cookie.
 //
 // POST /api/v1/auth/logout
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	if token := extractAuthToken(r); token != "" {
-		auth.RevokeToken(token)
+	token := extractAuthToken(r)
+	if token == "" {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if _, err := h.authService.Validate(r.Context(), token); err != nil {
+		response.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.authService.Revoke(r.Context(), token); err != nil {
+		log.Warn().Err(err).Msg("auth: failed to revoke token during logout")
 	}
 
 	// Clear the auth_token cookie by setting MaxAge to -1

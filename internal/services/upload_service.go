@@ -6,6 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -24,8 +27,13 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
-var ErrInvalidImageType = errors.New("invalid image type")
-var ErrInvalidFolder = errors.New("invalid upload folder")
+var (
+	ErrInvalidImageType        = errors.New("invalid image type")
+	ErrInvalidFolder           = errors.New("invalid upload folder")
+	ErrImageDecodeFailed       = errors.New("failed to decode image")
+	ErrImageDimensionsExceeded = errors.New("image dimensions exceed maximum allowed size")
+	ErrExtensionMismatch       = errors.New("file extension does not match detected image type")
+)
 
 var uploadFolderRe = regexp.MustCompile(`^[a-z0-9][a-z0-9/_-]{0,63}$`)
 var fileNameSanitizeRe = regexp.MustCompile(`[^a-z0-9._-]`)
@@ -60,7 +68,7 @@ func NewUploadService(cfg *config.Config) *UploadService {
 	}
 }
 
-func (s *UploadService) UploadImage(ctx context.Context, file multipart.File, header *multipart.FileHeader, folder string) (string, error) {
+func (s *UploadService) UploadImage(ctx context.Context, file multipart.File, header *multipart.FileHeader, folder string, maxWidth, maxHeight int, allowedFolders []string) (string, error) {
 	data, err := io.ReadAll(file)
 	if err != nil {
 		return "", err
@@ -71,10 +79,23 @@ func (s *UploadService) UploadImage(ctx context.Context, file multipart.File, he
 		return "", ErrInvalidImageType
 	}
 
+	if err := validateExtensionMatchesContentType(header.Filename, contentType); err != nil {
+		return "", err
+	}
+
+	if err := validateImageDimensions(data, contentType, maxWidth, maxHeight); err != nil {
+		return "", err
+	}
+
 	folder, err = normalizeUploadFolder(folder)
 	if err != nil {
 		return "", err
 	}
+
+	if err := validateUploadFolderAllowed(folder, allowedFolders); err != nil {
+		return "", err
+	}
+
 	// Guard against files landing at the bucket root when the folder matches the bucket name.
 	if folder == strings.ToLower(strings.TrimSpace(s.bucket)) {
 		folder = ""
@@ -122,13 +143,25 @@ func (s *UploadService) DeleteImage(ctx context.Context, path string) error {
 	return err
 }
 
-func (s *UploadService) ListImages(ctx context.Context) ([]map[string]any, error) {
-	resp, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+func (s *UploadService) ListImagesPaginated(ctx context.Context, continuationToken string, maxKeys int32) ([]map[string]any, string, error) {
+	if maxKeys <= 0 {
+		maxKeys = 100
+	}
+	if maxKeys > 1000 {
+		maxKeys = 1000
+	}
+
+	input := &s3.ListObjectsV2Input{
 		Bucket:  &s.bucket,
-		MaxKeys: int32Ptr(1000),
-	})
+		MaxKeys: int32Ptr(maxKeys),
+	}
+	if continuationToken != "" {
+		input.ContinuationToken = &continuationToken
+	}
+
+	resp, err := s.client.ListObjectsV2(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	images := make([]map[string]any, 0, len(resp.Contents))
@@ -158,7 +191,12 @@ func (s *UploadService) ListImages(ctx context.Context) ([]map[string]any, error
 		})
 	}
 
-	return images, nil
+	nextToken := ""
+	if resp.IsTruncated != nil && *resp.IsTruncated && resp.NextContinuationToken != nil {
+		nextToken = *resp.NextContinuationToken
+	}
+
+	return images, nextToken, nil
 }
 
 func isAllowedImageType(ct string) bool {
@@ -194,22 +232,85 @@ func extensionFromContentType(contentType string) string {
 	}
 }
 
+func contentTypeFromExtension(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	default:
+		return ""
+	}
+}
+
+func validateExtensionMatchesContentType(filename, contentType string) error {
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" {
+		return nil
+	}
+
+	expected := contentTypeFromExtension(ext)
+	if expected == "" || expected != contentType {
+		return ErrExtensionMismatch
+	}
+	return nil
+}
+
+func validateImageDimensions(data []byte, contentType string, maxWidth, maxHeight int) error {
+	// The standard library image package does not include a WebP decoder.
+	// For WebP uploads we rely on magic-byte content-type detection and skip
+	// dimension validation rather than pulling in a non-stdlib dependency.
+	if contentType == "image/webp" {
+		return nil
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrImageDecodeFailed, err)
+	}
+
+	if cfg.Width > maxWidth || cfg.Height > maxHeight {
+		return fmt.Errorf("%w: %dx%d exceeds maximum %dx%d", ErrImageDimensionsExceeded, cfg.Width, cfg.Height, maxWidth, maxHeight)
+	}
+	return nil
+}
+
 func normalizeUploadFolder(folder string) (string, error) {
 	folder = strings.TrimSpace(strings.ToLower(folder))
 	if folder == "" {
 		return "", nil
 	}
 
-	if !uploadFolderRe.MatchString(folder) {
+	// Reject path traversal before cleaning resolves it away.
+	if strings.Contains(folder, "..") {
 		return "", ErrInvalidFolder
 	}
 
 	cleaned := strings.TrimPrefix(path.Clean("/"+folder), "/")
-	if cleaned == "." || cleaned == "" || strings.Contains(cleaned, "..") {
+	if cleaned == "." || cleaned == "" {
+		return "", ErrInvalidFolder
+	}
+
+	if !uploadFolderRe.MatchString(cleaned) {
 		return "", ErrInvalidFolder
 	}
 
 	return cleaned, nil
+}
+
+func validateUploadFolderAllowed(folder string, allowed []string) error {
+	if folder == "" {
+		return nil
+	}
+	folder = strings.ToLower(strings.TrimSpace(folder))
+	for _, a := range allowed {
+		if folder == strings.ToLower(strings.TrimSpace(a)) {
+			return nil
+		}
+	}
+	return ErrInvalidFolder
 }
 
 func sanitize(s string) string {

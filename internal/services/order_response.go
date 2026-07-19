@@ -25,31 +25,28 @@ type OrderItemResponse struct {
 
 // OrderResponse is the public shape of an order.
 type OrderResponse struct {
-	ID                     uuid.UUID            `json:"id"`
-	OrderNumber            string               `json:"order_number"`
-	CustomerID             *uuid.UUID           `json:"customer_id,omitempty"`
-	CustomerName           string               `json:"customer_name"`
-	CustomerPhone          string               `json:"customer_phone"`
-	CustomerEmail          *string              `json:"customer_email,omitempty"`
-	Status                 string               `json:"status"`
-	PaymentMethod          string               `json:"payment_method"`
-	PaymentStatus          string               `json:"payment_status"`
-	OrderType              string               `json:"order_type"`
-	TableNumber            *int                 `json:"table_number,omitempty"`
-	TotalAmount            float64              `json:"total_amount"`
-	Notes                  *string              `json:"notes,omitempty"`
-	RejectionReason        *string              `json:"rejection_reason,omitempty"`
-	CreatedByUserID        *string              `json:"created_by_user_id,omitempty"`
-	CreatedByName          string               `json:"created_by_name"`
-	CreatedByRole          string               `json:"created_by_role"`
-	CreatedAt              time.Time            `json:"created_at"`
-	UpdatedAt              time.Time            `json:"updated_at"`
-	StatusTimestamps       map[string]time.Time `json:"status_timestamps,omitempty"`
-	Items                  []OrderItemResponse  `json:"items"`
-	TrackingToken          *string              `json:"tracking_token,omitempty"`
-	TrackingTokenExpiresAt *time.Time           `json:"tracking_token_expires_at,omitempty"`
-	TrackingURL            *string              `json:"tracking_url,omitempty"`
-	IsArchived             bool                 `json:"is_archived"`
+	ID               uuid.UUID            `json:"id"`
+	OrderNumber      string               `json:"order_number"`
+	CustomerID       *uuid.UUID           `json:"customer_id,omitempty"`
+	CustomerName     string               `json:"customer_name"`
+	CustomerPhone    string               `json:"customer_phone"`
+	CustomerEmail    *string              `json:"customer_email,omitempty"`
+	Status           string               `json:"status"`
+	PaymentMethod    string               `json:"payment_method"`
+	PaymentStatus    string               `json:"payment_status"`
+	OrderType        string               `json:"order_type"`
+	TableNumber      *int                 `json:"table_number,omitempty"`
+	TotalAmount      float64              `json:"total_amount"`
+	Notes            *string              `json:"notes,omitempty"`
+	RejectionReason  *string              `json:"rejection_reason,omitempty"`
+	CreatedByUserID  *string              `json:"created_by_user_id,omitempty"`
+	CreatedByName    string               `json:"created_by_name"`
+	CreatedByRole    string               `json:"created_by_role"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	StatusTimestamps map[string]time.Time `json:"status_timestamps,omitempty"`
+	Items            []OrderItemResponse  `json:"items"`
+	IsArchived       bool                 `json:"is_archived"`
 }
 
 type employeeCacheEntry struct {
@@ -73,7 +70,7 @@ func NewOrderResponseMapper(pb *auth.PBAuth) *OrderResponseMapper {
 
 // Map converts a dto.Order to an OrderResponse.
 func (m *OrderResponseMapper) Map(order dto.Order) OrderResponse {
-	return m.mapInternal(order, nil)
+	return m.mapInternal(order)
 }
 
 // OrderLiteResponse is a minimal list-view representation of an order.
@@ -86,6 +83,7 @@ type OrderLiteResponse struct {
 	Status       string    `json:"status"`
 	TotalAmount  float64   `json:"total_amount"`
 	CreatedAt    time.Time `json:"created_at"`
+	IsArchived   bool      `json:"is_archived"`
 }
 
 // MapLite converts a dto.Order to an OrderLiteResponse.
@@ -97,12 +95,8 @@ func (m *OrderResponseMapper) MapLite(order dto.Order) OrderLiteResponse {
 		Status:       order.Status,
 		TotalAmount:  order.TotalAmount,
 		CreatedAt:    order.CreatedAt,
+		IsArchived:   order.IsArchived,
 	}
-}
-
-// MapWithTracking converts a dto.Order to an OrderResponse including tracking access.
-func (m *OrderResponseMapper) MapWithTracking(order dto.Order, access *TrackingAccess) OrderResponse {
-	return m.mapInternal(order, access)
 }
 
 // PreloadEmployees fetches all employees from PocketBase and warms the cache
@@ -159,7 +153,7 @@ func (m *OrderResponseMapper) lookupEmployee(id string) employeeCacheEntry {
 	return entry
 }
 
-func (m *OrderResponseMapper) mapInternal(order dto.Order, access *TrackingAccess) OrderResponse {
+func (m *OrderResponseMapper) mapInternal(order dto.Order) OrderResponse {
 	items := make([]OrderItemResponse, 0, len(order.Items))
 	for _, item := range order.Items {
 		items = append(items, OrderItemResponse{
@@ -211,14 +205,6 @@ func (m *OrderResponseMapper) mapInternal(order dto.Order, access *TrackingAcces
 		StatusTimestamps: order.StatusTimestamps,
 		Items:            items,
 		IsArchived:       order.IsArchived,
-	}
-
-	if access != nil {
-		resp.TrackingToken = &access.Token
-		resp.TrackingTokenExpiresAt = &access.ExpiresAt
-		if access.URL != "" {
-			resp.TrackingURL = &access.URL
-		}
 	}
 
 	return resp

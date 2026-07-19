@@ -3,7 +3,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
+	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers/requests"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -35,6 +35,7 @@ type OrderHandler struct {
 	publicStoreURL string
 	listCache      *cache.TTLCache
 	detailCache    *cache.TTLCache
+	auditSvc       audit.Service
 }
 
 func NewOrderHandler(
@@ -45,6 +46,7 @@ func NewOrderHandler(
 	archiver *services.OrderArchiver,
 	publicStoreURL string,
 	rl *middleware.OrderRateLimiter,
+	auditSvc audit.Service,
 ) *OrderHandler {
 	return &OrderHandler{
 		rateLimiter:    rl,
@@ -54,12 +56,13 @@ func NewOrderHandler(
 		settingsSvc:    settingsSvc,
 		archiver:       archiver,
 		publicStoreURL: publicStoreURL,
-		// The frontend polls the orders list every 15 s; a 25 s TTL means most
+		// The frontend polls the orders list every 25 s; a 25 s TTL means most
 		// polls are served from memory instead of hitting Neon.
 		listCache: cache.New(25 * time.Second),
 		// Detail views are read-heavy and invalidated on mutation, so cache a
 		// bit longer to make reopening/reprinting the same order fast.
 		detailCache: cache.New(60 * time.Second),
+		auditSvc:    auditSvc,
 	}
 }
 
@@ -71,10 +74,46 @@ func (h *OrderHandler) invalidateOrderCache(id uuid.UUID) {
 	h.detailCache.Delete(fmt.Sprintf("order:%s", id.String()))
 }
 
+type cachedOrderList struct {
+	data         any
+	lastModified time.Time
+}
+
+func maxOrderUpdatedAt(orders []dto.Order) time.Time {
+	var max time.Time
+	for i := range orders {
+		if orders[i].UpdatedAt.After(max) {
+			max = orders[i].UpdatedAt
+		}
+	}
+	return max.UTC().Truncate(time.Second)
+}
+
+func formatHTTPTime(t time.Time) string {
+	return t.UTC().Format(http.TimeFormat)
+}
+
+// isNotModified reports whether the client's If-Modified-Since value is
+// at or after the resource's last modification time.
+func isNotModified(r *http.Request, lastModified time.Time) bool {
+	if lastModified.IsZero() {
+		return false
+	}
+	ifModifiedSince := r.Header.Get("If-Modified-Since")
+	if ifModifiedSince == "" {
+		return false
+	}
+	clientTime, err := http.ParseTime(ifModifiedSince)
+	if err != nil {
+		return false
+	}
+	return !lastModified.After(clientTime)
+}
+
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body requests.CreateOrderRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.WriteOrError(w, nil, err)
+	if err := decodeJSON(r, &body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -119,8 +158,11 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: "Los pedidos están temporalmente desactivados"})
 			return
 		}
-		if !h.rateLimiter.CheckAndRecordPhone(body.CustomerPhone) {
-			response.WriteOrError(w, nil, &apperror.RateLimitError{})
+		res := h.rateLimiter.CheckAndRecordPhone(r.Context(), body.CustomerPhone)
+		res.WriteHeaders(w)
+		if !res.Allowed {
+			log.Warn().Str("phone", body.CustomerPhone).Msg("Phone order rate limit exceeded")
+			response.Error(w, http.StatusTooManyRequests, "too many orders from this phone, try later")
 			return
 		}
 	}
@@ -191,7 +233,14 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	cacheKey := fmt.Sprintf("orders:%s:%t:%t:%d:%d", status, lite, archived, params.Page, params.PerPage)
 
 	if cached, ok := h.listCache.Get(cacheKey); ok {
-		response.JSON(w, http.StatusOK, cached)
+		entry := cached.(cachedOrderList)
+		if isNotModified(r, entry.lastModified) {
+			w.Header().Set("Last-Modified", formatHTTPTime(entry.lastModified))
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Last-Modified", formatHTTPTime(entry.lastModified))
+		response.JSON(w, http.StatusOK, entry.data)
 		return
 	}
 
@@ -201,25 +250,33 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lastModified := maxOrderUpdatedAt(orders)
+
+	if isNotModified(r, lastModified) {
+		w.Header().Set("Last-Modified", formatHTTPTime(lastModified))
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	var paginated any
 	if lite {
 		responses := make([]services.OrderLiteResponse, len(orders))
 		for i, o := range orders {
 			responses[i] = h.mapper.MapLite(o)
 		}
-		paginated := response.NewPaginated(responses, params.Page, params.PerPage, total)
-		h.listCache.Set(cacheKey, paginated)
-		response.JSON(w, http.StatusOK, paginated)
-		return
+		paginated = response.NewPaginated(responses, params.Page, params.PerPage, total)
+	} else {
+		// Preload employee cache in one query to avoid N+1 PocketBase lookups.
+		h.mapper.PreloadEmployees()
+		responses := make([]services.OrderResponse, len(orders))
+		for i, o := range orders {
+			responses[i] = h.mapper.Map(o)
+		}
+		paginated = response.NewPaginated(responses, params.Page, params.PerPage, total)
 	}
 
-	// Preload employee cache in one query to avoid N+1 PocketBase lookups.
-	h.mapper.PreloadEmployees()
-	responses := make([]services.OrderResponse, len(orders))
-	for i, o := range orders {
-		responses[i] = h.mapper.Map(o)
-	}
-	paginated := response.NewPaginated(responses, params.Page, params.PerPage, total)
-	h.listCache.Set(cacheKey, paginated)
+	h.listCache.Set(cacheKey, cachedOrderList{data: paginated, lastModified: lastModified})
+	w.Header().Set("Last-Modified", formatHTTPTime(lastModified))
 	response.JSON(w, http.StatusOK, paginated)
 }
 
@@ -254,7 +311,9 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
-	if !h.rateLimiter.CheckTrackingIP(auth.ClientIP(r)) {
+	res := h.rateLimiter.CheckTrackingIP(r.Context(), auth.ClientIP(r))
+	res.WriteHeaders(w)
+	if !res.Allowed {
 		response.Error(w, http.StatusTooManyRequests, "too many tracking attempts, try later")
 		return
 	}
@@ -321,10 +380,6 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *OrderHandler) TrackPublicHistory(w http.ResponseWriter, r *http.Request) {
-	response.Error(w, http.StatusGone, "tracking history endpoint has been removed")
-}
-
 func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
@@ -341,7 +396,8 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		allowOverride = true
 	}
 
-	updated, err := h.orderSvc.Approve(audit.ContextFromRequest(r, reviewerID), id, reviewerID, allowOverride)
+	ctx := audit.ContextFromRequest(r, reviewerID)
+	updated, err := h.orderSvc.Approve(ctx, id, reviewerID, allowOverride)
 	if err != nil {
 		writeAppError(w, err, "Failed to approve order")
 		return
@@ -362,7 +418,7 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Reason string `json:"reason"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -377,7 +433,8 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		reviewerID = auth.RecordID(record)
 	}
 
-	updated, err := h.orderSvc.Reject(audit.ContextFromRequest(r, reviewerID), id, body.Reason, reviewerID)
+	ctx := audit.ContextFromRequest(r, reviewerID)
+	updated, err := h.orderSvc.Reject(ctx, id, body.Reason, reviewerID)
 	if err != nil {
 		writeAppError(w, err, "Failed to reject order")
 		return
@@ -398,8 +455,8 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid body")
+	if err := decodeJSON(r, &body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -428,7 +485,8 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(record)
 	}
 
-	updated, err := h.orderSvc.UpdateStatus(audit.ContextFromRequest(r, actorID), id, body.Status)
+	ctx := audit.ContextFromRequest(r, actorID)
+	updated, err := h.orderSvc.UpdateStatus(ctx, id, body.Status)
 	if err != nil {
 		writeAppError(w, err, "Failed to update status")
 		return
@@ -461,7 +519,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body requests.UpdateOrderRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -507,7 +565,8 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(record)
 	}
 
-	updated, err := h.orderSvc.Update(audit.ContextFromRequest(r, actorID), id, services.UpdateOrderInput{
+	ctx := audit.ContextFromRequest(r, actorID)
+	updated, err := h.orderSvc.Update(ctx, id, services.UpdateOrderInput{
 		CustomerName:  body.CustomerName,
 		CustomerPhone: body.CustomerPhone,
 		CustomerEmail: nilIfEmpty(body.CustomerEmail),
@@ -537,8 +596,8 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Notes *string `json:"notes"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid body")
+	if err := decodeJSON(r, &body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -554,7 +613,8 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(record)
 	}
 
-	updated, err := h.orderSvc.UpdateNotes(audit.ContextFromRequest(r, actorID), id, normalized)
+	ctx := audit.ContextFromRequest(r, actorID)
+	updated, err := h.orderSvc.UpdateNotes(ctx, id, normalized)
 	if err != nil {
 		writeAppError(w, err, "Failed to update notes")
 		return
@@ -591,7 +651,8 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(record)
 	}
 
-	if err := h.orderSvc.Delete(audit.ContextFromRequest(r, actorID), id); err != nil {
+	ctx := audit.ContextFromRequest(r, actorID)
+	if err := h.orderSvc.Delete(ctx, id); err != nil {
 		writeAppError(w, err, "Failed to delete order")
 		return
 	}
@@ -615,8 +676,8 @@ func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Archived bool `json:"archived"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid body")
+	if err := decodeJSON(r, &body); err != nil {
+		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
@@ -625,7 +686,8 @@ func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		actorID = auth.RecordID(record)
 	}
 
-	updated, err := h.orderSvc.SetArchived(audit.ContextFromRequest(r, actorID), id, body.Archived)
+	ctx := audit.ContextFromRequest(r, actorID)
+	updated, err := h.orderSvc.SetArchived(ctx, id, body.Archived)
 	if err != nil {
 		writeAppError(w, err, "Failed to update archive status")
 		return

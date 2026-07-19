@@ -30,7 +30,6 @@ type OrderCommandService struct {
 	inventory    *InventoryService
 	dispatcher   *events.Dispatcher
 	tracker      *TrackingTokenService
-	auditSvc     audit.Service
 }
 
 // NewOrderCommandService creates a new command service.
@@ -42,7 +41,6 @@ func NewOrderCommandService(
 	inventory *InventoryService,
 	dispatcher *events.Dispatcher,
 	tracker *TrackingTokenService,
-	auditSvc audit.Service,
 ) *OrderCommandService {
 	return &OrderCommandService{
 		orderRepo:    orderRepo,
@@ -52,7 +50,6 @@ func NewOrderCommandService(
 		inventory:    inventory,
 		dispatcher:   dispatcher,
 		tracker:      tracker,
-		auditSvc:     auditSvc,
 	}
 }
 
@@ -94,7 +91,12 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		Items:          toStoreOrderItemInputs(input.Items),
 	}
 
-	createdOrder, err := s.createOrderWithRetry(ctx, storeInput)
+	createCtx := auditContext(ctx, audit.ActionOrderCreated, map[string]any{
+		"order_number":   storeInput.OrderNumber,
+		"customer_phone": storeInput.CustomerPhone,
+		"items_count":    len(storeInput.Items),
+	})
+	createdOrder, err := s.createOrderWithRetry(createCtx, storeInput)
 	if err != nil {
 		// If we lost a concurrent race on the idempotency key itself, the
 		// winning order already exists — fetch and return it instead of
@@ -117,24 +119,6 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 			Total:       createdOrder.TotalAmount,
 			TrackingURL: trackingURL,
 		})
-
-		customerEmail := ""
-		if input.CustomerEmail != nil {
-			customerEmail = *input.CustomerEmail
-		}
-		domainEvent := orderDomain.NewOrderCreated(
-			createdOrder.ID,
-			createdOrder.OrderNumber,
-			input.CustomerName,
-			input.CustomerPhone,
-			customerEmail,
-			input.PaymentMethod,
-			input.OrderType,
-			createdOrder.TotalAmount,
-			len(input.Items),
-			trackingURL,
-		)
-		s.publishDomainEvent(ctx, domainEvent)
 	}
 	return createdOrder, nil
 }
@@ -193,7 +177,10 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 		return dto.Order{}, ErrInvalidOrderState
 	}
 
-	updated, err := s.orderRepo.Approve(ctx, id, &reviewerID)
+	approveCtx := auditContext(ctx, audit.ActionOrderApproved, map[string]any{
+		"order_number": order.OrderNumber,
+	})
+	updated, err := s.orderRepo.Approve(approveCtx, id, &reviewerID)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -206,15 +193,6 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 			Phone:       updated.CustomerPhone,
 			TrackingURL: trackingURL,
 		})
-
-		domainEvent := orderDomain.NewOrderApproved(
-			id,
-			updated.OrderNumber,
-			updated.CustomerPhone,
-			reviewerID,
-			trackingURL,
-		)
-		s.publishDomainEvent(ctx, domainEvent)
 	}
 	return updated, nil
 }
@@ -234,7 +212,11 @@ func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, 
 		return dto.Order{}, ErrInvalidOrderState
 	}
 
-	updated, err := s.orderRepo.Reject(ctx, id, reason, &reviewerID)
+	rejectCtx := auditContext(ctx, audit.ActionOrderRejected, map[string]any{
+		"order_number": order.OrderNumber,
+		"reason":       reason,
+	})
+	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -248,16 +230,6 @@ func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, 
 			Reason:      reason,
 			TrackingURL: trackingURL,
 		})
-
-		domainEvent := orderDomain.NewOrderRejected(
-			id,
-			updated.OrderNumber,
-			updated.CustomerPhone,
-			reviewerID,
-			reason,
-			trackingURL,
-		)
-		s.publishDomainEvent(ctx, domainEvent)
 	}
 	return updated, nil
 }
@@ -286,6 +258,11 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 	}
 
 	oldStatus := order.Status
+	statusCtx := auditContext(ctx, audit.ActionOrderUpdated, map[string]any{
+		"order_number": order.OrderNumber,
+		"old_status":   oldStatus,
+		"new_status":   status,
+	})
 
 	var updated dto.Order
 	switch {
@@ -298,17 +275,17 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 		if err != nil {
 			return dto.Order{}, err
 		}
-		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(ctx, id, status, deductions, false)
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, deductions, false)
 		if err != nil {
 			return dto.Order{}, err
 		}
 	case status == "cancelada" && oldStatus != "cancelada":
-		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(ctx, id, status, nil, true)
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, nil, true)
 		if err != nil {
 			return dto.Order{}, err
 		}
 	default:
-		updated, err = s.orderStore.UpdateStatus(ctx, id, status)
+		updated, err = s.orderStore.UpdateStatus(statusCtx, id, status)
 		if err != nil {
 			return dto.Order{}, err
 		}
@@ -323,14 +300,6 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 				Phone:       updated.CustomerPhone,
 				TrackingURL: trackingURL,
 			})
-
-			domainEvent := orderDomain.NewOrderReady(
-				id,
-				updated.OrderNumber,
-				updated.CustomerPhone,
-				trackingURL,
-			)
-			s.publishDomainEvent(ctx, domainEvent)
 		}
 	}
 
@@ -369,6 +338,13 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		storeInput.CustomerID = customerID
 	}
 
+	updateCtx := auditContext(ctx, audit.ActionOrderUpdated, map[string]any{
+		"order_number":   existing.OrderNumber,
+		"customer_phone": storeInput.CustomerPhone,
+		"items_count":    len(storeInput.Items),
+	})
+
+	var updated dto.Order
 	if len(input.Items) > 0 && orderHasDeductedStock(existing.Status) {
 		newItems, err := s.resolveOrderItems(ctx, input.Items)
 		if err != nil {
@@ -378,10 +354,18 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		if err != nil {
 			return dto.Order{}, err
 		}
-		return s.orderStore.UpdateOrderWithStockAdjustment(ctx, id, storeInput, deductions, true)
+		updated, err = s.orderStore.UpdateOrderWithStockAdjustment(updateCtx, id, storeInput, deductions, true)
+		if err != nil {
+			return dto.Order{}, err
+		}
+	} else {
+		updated, err = s.orderStore.UpdateOrder(updateCtx, id, storeInput)
+		if err != nil {
+			return dto.Order{}, err
+		}
 	}
 
-	return s.orderStore.UpdateOrder(ctx, id, storeInput)
+	return updated, nil
 }
 
 // orderHasDeductedStock reports whether an order in the given status has already
@@ -417,19 +401,35 @@ func (s *OrderCommandService) resolveOrderItems(ctx context.Context, items []Ord
 // SetArchived toggles an order's archive flag. Manual archive/unarchive is
 // allowed for any status and is intended for admin-only use.
 func (s *OrderCommandService) SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error) {
-	if _, err := s.orderRepo.FindByID(ctx, id); err != nil {
+	order, err := s.orderRepo.FindByID(ctx, id)
+	if err != nil {
 		return dto.Order{}, err
 	}
-	return s.orderRepo.SetArchived(ctx, id, archived)
+
+	archiveCtx := auditContext(ctx, audit.ActionOrderArchived, map[string]any{
+		"order_number": order.OrderNumber,
+		"archived":     archived,
+	})
+	return s.orderRepo.SetArchived(archiveCtx, id, archived)
 }
 
 // UpdateNotes updates an order's notes field.
 func (s *OrderCommandService) UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error) {
-	if _, err := s.orderRepo.FindByID(ctx, id); err != nil {
+	order, err := s.orderRepo.FindByID(ctx, id)
+	if err != nil {
 		return dto.Order{}, err
 	}
 
-	return s.orderRepo.UpdateNotes(ctx, id, notes)
+	noteValue := ""
+	if notes != nil {
+		noteValue = *notes
+	}
+	notesCtx := auditContext(ctx, audit.ActionOrderUpdated, map[string]any{
+		"order_number": order.OrderNumber,
+		"notes":        noteValue,
+	})
+
+	return s.orderRepo.UpdateNotes(notesCtx, id, notes)
 }
 
 // Delete deletes an order and revokes any associated tracking tokens.
@@ -444,7 +444,14 @@ func (s *OrderCommandService) Delete(ctx context.Context, id uuid.UUID) error {
 		}
 	}
 
-	return s.orderRepo.Delete(ctx, id)
+	deleteCtx := auditContext(ctx, audit.ActionOrderDeleted, map[string]any{
+		"order_number": order.OrderNumber,
+	})
+	if err := s.orderRepo.Delete(deleteCtx, id); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // resolveCustomerByPhone returns the customer ID for the given phone, creating a
@@ -482,6 +489,15 @@ func (s *OrderCommandService) resolveCustomerByPhone(ctx context.Context, phone,
 	return nil, createErr
 }
 
+func auditContext(ctx context.Context, action string, changes map[string]any) context.Context {
+	return audit.WithLogSpec(ctx, audit.LogSpec{
+		Action:  action,
+		ActorID: audit.ActorFromContext(ctx),
+		IP:      audit.IPFromContext(ctx),
+		Changes: changes,
+	})
+}
+
 // GenerateOrderNumber generates a unique order number using timestamp and random digit.
 func GenerateOrderNumber() string {
 	randomNum, err := rand.Int(rand.Reader, big.NewInt(9000))
@@ -502,60 +518,4 @@ func toStoreOrderItemInputs(items []OrderItemInput) []repository.StoreOrderItemI
 		})
 	}
 	return result
-}
-
-// publishDomainEvent writes a domain event to the audit log.
-func (s *OrderCommandService) publishDomainEvent(ctx context.Context, evt orderDomain.DomainEvent) {
-	if s.auditSvc == nil || evt == nil {
-		return
-	}
-
-	actorID := audit.ActorFromContext(ctx)
-	ip := audit.IPFromContext(ctx)
-
-	var action, resource string
-	var changes map[string]any
-
-	switch e := evt.(type) {
-	case *orderDomain.OrderCreated:
-		action = audit.ActionOrderCreated
-		resource = fmt.Sprintf("order:%s", e.AggregateID().String())
-		changes = map[string]any{
-			"order_number":  e.OrderNumber,
-			"customer_name": e.CustomerName,
-			"payment":       e.PaymentMethod,
-			"items":         e.ItemCount,
-			"total":         e.TotalAmount,
-		}
-	case *orderDomain.OrderApproved:
-		action = audit.ActionOrderApproved
-		resource = fmt.Sprintf("order:%s", e.AggregateID().String())
-		changes = map[string]any{"order_number": e.OrderNumber}
-		if actorID == "" {
-			actorID = e.ReviewerID
-		}
-	case *orderDomain.OrderRejected:
-		action = audit.ActionOrderRejected
-		resource = fmt.Sprintf("order:%s", e.AggregateID().String())
-		changes = map[string]any{"order_number": e.OrderNumber, "reason": e.Reason}
-		if actorID == "" {
-			actorID = e.ReviewerID
-		}
-	case *orderDomain.OrderReady:
-		action = audit.ActionOrderReady
-		resource = fmt.Sprintf("order:%s", e.AggregateID().String())
-		changes = map[string]any{"order_number": e.OrderNumber}
-	case *orderDomain.OrderUpdated:
-		action = audit.ActionOrderUpdated
-		resource = fmt.Sprintf("order:%s", e.AggregateID().String())
-		changes = e.Changes
-	case *orderDomain.OrderDeleted:
-		action = audit.ActionOrderDeleted
-		resource = fmt.Sprintf("order:%s", e.AggregateID().String())
-		changes = map[string]any{"order_number": e.OrderNumber}
-	default:
-		return
-	}
-
-	_ = s.auditSvc.Log(ctx, action, actorID, resource, changes, ip)
 }

@@ -1,0 +1,5423 @@
+openapi: 3.0.3
+info:
+  title: ishos API
+  version: 1.0.0
+servers:
+- url: /api/v1
+paths:
+  /addons:
+    get:
+      description: Returns a list of active addons.
+      operationId: list-addons
+      parameters:
+      - description: Return all addons
+        explode: false
+        in: query
+        name: all
+        schema:
+          default: false
+          description: Return all addons
+          type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseAddon'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List addons
+      tags:
+      - Public catalog
+    post:
+      description: Creates a new addon. Admin only.
+      operationId: create-addon
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAddonInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Addon'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create addon
+      tags:
+      - Addons
+  /addons/{id}:
+    delete:
+      description: Removes an addon. Admin only.
+      operationId: delete-addon
+      parameters:
+      - description: Addon ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Addon ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete addon
+      tags:
+      - Addons
+    get:
+      description: Returns a single addon by ID.
+      operationId: get-addon
+      parameters:
+      - description: Addon ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Addon ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Addon'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get addon
+      tags:
+      - Public catalog
+    patch:
+      description: Updates an existing addon. Admin only.
+      operationId: update-addon
+      parameters:
+      - description: Addon ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Addon ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAddonInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Addon'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update addon
+      tags:
+      - Addons
+  /admin/orders/archive/run:
+    post:
+      description: Triggers an immediate auto-archive pass. Admin only.
+      operationId: run-order-archive
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Run order archive
+      tags:
+      - Orders
+  /analytics/dashboard:
+    get:
+      description: Returns overview, orders-over-time, and top-products in a single
+        response.
+      operationId: analytics-dashboard
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: start
+        schema:
+          description: Start date (YYYY-MM-DD)
+          example: '2026-06-01'
+          type: string
+      - description: End date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: end
+        schema:
+          description: End date (YYYY-MM-DD)
+          example: '2026-07-01'
+          type: string
+      - description: Bucket granularity
+        explode: false
+        in: query
+        name: groupBy
+        schema:
+          default: day
+          description: Bucket granularity
+          enum:
+          - day
+          - week
+          - month
+          type: string
+      - description: Number of products to return
+        explode: false
+        in: query
+        name: limit
+        schema:
+          default: 10
+          description: Number of products to return
+          format: int64
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsDashboardOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Analytics dashboard
+      tags:
+      - Analytics
+  /analytics/orders-over-time:
+    get:
+      description: Returns order counts and revenue over a date range.
+      operationId: analytics-orders-over-time
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: start
+        schema:
+          description: Start date (YYYY-MM-DD)
+          example: '2026-06-01'
+          type: string
+      - description: End date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: end
+        schema:
+          description: End date (YYYY-MM-DD)
+          example: '2026-07-01'
+          type: string
+      - description: Bucket granularity
+        explode: false
+        in: query
+        name: groupBy
+        schema:
+          default: day
+          description: Bucket granularity
+          enum:
+          - day
+          - week
+          - month
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AnalyticsTimelinePoint'
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Orders over time
+      tags:
+      - Analytics
+  /analytics/overview:
+    get:
+      description: Returns aggregate order metrics for a period.
+      operationId: analytics-overview
+      parameters:
+      - description: Report period
+        explode: false
+        in: query
+        name: period
+        schema:
+          default: month
+          description: Report period
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverview'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Analytics overview
+      tags:
+      - Analytics
+  /analytics/top-products:
+    get:
+      description: Returns the best-selling products for a date range.
+      operationId: analytics-top-products
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: start
+        schema:
+          description: Start date (YYYY-MM-DD)
+          example: '2026-06-01'
+          type: string
+      - description: End date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: end
+        schema:
+          description: End date (YYYY-MM-DD)
+          example: '2026-07-01'
+          type: string
+      - description: Number of products to return
+        explode: false
+        in: query
+        name: limit
+        schema:
+          default: 10
+          description: Number of products to return
+          format: int64
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AnalyticsTopProduct'
+                nullable: true
+                type: array
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Top products
+      tags:
+      - Analytics
+  /auth/lockout/reset:
+    post:
+      description: Resets the login rate-limit/lockout state for an email.
+      operationId: reset-login-lockout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reset-login-lockoutRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Reset login lockout
+      tags:
+      - Auth
+  /auth/login:
+    post:
+      description: Authenticates an employee and sets an HttpOnly auth cookie.
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Employee login
+      tags:
+      - Auth
+  /auth/logout:
+    post:
+      description: Revokes the current session and clears the auth cookie.
+      operationId: logout
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Logout
+      tags:
+      - Auth
+  /auth/session:
+    get:
+      description: Returns the currently authenticated employee session.
+      operationId: get-session
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get current session
+      tags:
+      - Auth
+  /categories:
+    get:
+      description: Returns a paginated list of active categories.
+      operationId: list-categories
+      parameters:
+      - description: Page number
+        explode: false
+        in: query
+        name: page
+        schema:
+          default: 1
+          description: Page number
+          format: int64
+          type: integer
+      - description: Items per page
+        explode: false
+        in: query
+        name: per_page
+        schema:
+          default: 20
+          description: Items per page
+          format: int64
+          type: integer
+      - description: Return all categories (admin fallback)
+        explode: false
+        in: query
+        name: all
+        schema:
+          default: false
+          description: Return all categories (admin fallback)
+          type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseCategory'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List categories
+      tags:
+      - Public catalog
+    post:
+      description: Creates a new category. Admin only.
+      operationId: create-category
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create category
+      tags:
+      - Categories
+  /categories/{id}:
+    delete:
+      description: Removes a category. Admin only.
+      operationId: delete-category
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Category ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete category
+      tags:
+      - Categories
+    patch:
+      description: Updates an existing category. Admin only.
+      operationId: update-category
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Category ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update category
+      tags:
+      - Categories
+  /categories/{slug}:
+    get:
+      description: Returns a category and its products by URL slug.
+      operationId: get-category-by-slug
+      parameters:
+      - description: Category slug
+        in: path
+        name: slug
+        required: true
+        schema:
+          description: Category slug
+          example: gelatos
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryDetail'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get category by slug
+      tags:
+      - Public catalog
+  /container-types:
+    get:
+      description: Returns all container types.
+      operationId: list-container-types
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseContainerType'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List container types
+      tags:
+      - Container types
+    post:
+      description: Creates a new container type. Admin only.
+      operationId: create-container-type
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContainerTypeInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContainerType'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create container type
+      tags:
+      - Container types
+  /container-types/{id}:
+    delete:
+      description: Removes a container type. Admin only.
+      operationId: delete-container-type
+      parameters:
+      - description: Container type ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Container type ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete container type
+      tags:
+      - Container types
+    get:
+      description: Returns a single container type.
+      operationId: get-container-type
+      parameters:
+      - description: Container type ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Container type ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContainerType'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get container type
+      tags:
+      - Container types
+    patch:
+      description: Updates an existing container type. Admin only.
+      operationId: update-container-type
+      parameters:
+      - description: Container type ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Container type ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContainerTypeInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContainerType'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update container type
+      tags:
+      - Container types
+  /employees:
+    get:
+      description: Returns all employee/admin records.
+      operationId: list-employees
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseEmployee'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List employees
+      tags:
+      - Employees
+    post:
+      description: Registers a new employee in the auth collection. Admin only.
+      operationId: create-employee
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmployeeInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create employee
+      tags:
+      - Employees
+  /employees/{id}:
+    delete:
+      description: Permanently removes an employee account. Admin only.
+      operationId: delete-employee
+      parameters:
+      - description: Employee ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Employee ID
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete employee
+      tags:
+      - Employees
+    patch:
+      description: Updates an employee account. Admin only.
+      operationId: update-employee
+      parameters:
+      - description: Employee ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Employee ID
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmployeeInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update employee
+      tags:
+      - Employees
+  /employees/{id}/deactivate:
+    patch:
+      description: Disables an employee account. Admin only.
+      operationId: deactivate-employee
+      parameters:
+      - description: Employee ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Employee ID
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Deactivate employee
+      tags:
+      - Employees
+  /export/orders:
+    delete:
+      description: Deletes completed/cancelled orders in a date range. Admin only.
+      operationId: purge-orders
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: start
+        schema:
+          description: Start date (YYYY-MM-DD)
+          example: '2026-01-01'
+          type: string
+      - description: End date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: end
+        schema:
+          description: End date (YYYY-MM-DD)
+          example: '2026-06-01'
+          type: string
+      - description: Comma-separated statuses to purge
+        explode: false
+        in: query
+        name: statuses
+        schema:
+          description: Comma-separated statuses to purge
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurgeOrdersOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Purge orders
+      tags:
+      - Export
+    get:
+      description: Exports orders to CSV or JSON. Admin only.
+      operationId: export-orders
+      parameters:
+      - description: Start date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: start
+        schema:
+          description: Start date (YYYY-MM-DD)
+          example: '2026-06-01'
+          type: string
+      - description: End date (YYYY-MM-DD)
+        explode: false
+        in: query
+        name: end
+        schema:
+          description: End date (YYYY-MM-DD)
+          example: '2026-07-01'
+          type: string
+      - description: Export format
+        explode: false
+        in: query
+        name: format
+        schema:
+          default: csv
+          description: Export format
+          enum:
+          - csv
+          - json
+          type: string
+      - description: Comma-separated order statuses
+        explode: false
+        in: query
+        name: statuses
+        schema:
+          description: Comma-separated order statuses
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportOrdersOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Export orders
+      tags:
+      - Export
+  /flavors:
+    get:
+      description: Returns a list of active flavors.
+      operationId: list-flavors
+      parameters:
+      - description: Return all flavors
+        explode: false
+        in: query
+        name: all
+        schema:
+          default: false
+          description: Return all flavors
+          type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseFlavor'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List flavors
+      tags:
+      - Public catalog
+    post:
+      description: Creates a new flavor. Admin only.
+      operationId: create-flavor
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFlavorInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flavor'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create flavor
+      tags:
+      - Flavors
+  /flavors/{id}:
+    delete:
+      description: Removes a flavor. Admin only.
+      operationId: delete-flavor
+      parameters:
+      - description: Flavor ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Flavor ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete flavor
+      tags:
+      - Flavors
+    get:
+      description: Returns a single flavor by ID.
+      operationId: get-flavor
+      parameters:
+      - description: Flavor ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Flavor ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flavor'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get flavor
+      tags:
+      - Public catalog
+    patch:
+      description: Updates an existing flavor. Admin only.
+      operationId: update-flavor
+      parameters:
+      - description: Flavor ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Flavor ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFlavorInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flavor'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update flavor
+      tags:
+      - Flavors
+  /inventory:
+    get:
+      description: Returns all inventory items.
+      operationId: list-inventory
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List inventory
+      tags:
+      - Inventory
+  /inventory/dashboard:
+    get:
+      description: Returns flavor inventory, unit inventory and stats in one response.
+      operationId: get-inventory-dashboard
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryDashboardOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Inventory dashboard
+      tags:
+      - Inventory
+  /inventory/flavors:
+    get:
+      description: Returns ball-based inventory items linked to flavors.
+      operationId: list-flavor-inventory
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List flavor inventory
+      tags:
+      - Inventory
+  /inventory/flavors/{id}/stock:
+    get:
+      description: Returns stock status for a flavor.
+      operationId: get-flavor-stock
+      parameters:
+      - description: Flavor ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Flavor ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlavorStockOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get flavor stock
+      tags:
+      - Inventory
+  /inventory/low-stock:
+    get:
+      description: Returns inventory items below their low-stock threshold.
+      operationId: get-low-stock
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Low stock items
+      tags:
+      - Inventory
+  /inventory/stats:
+    get:
+      description: Returns aggregate inventory statistics.
+      operationId: get-inventory-stats
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryStats'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Inventory stats
+      tags:
+      - Inventory
+  /inventory/unit-products:
+    get:
+      description: Returns unit-based inventory items linked to products.
+      operationId: list-unit-inventory
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseInventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List unit inventory
+      tags:
+      - Inventory
+    post:
+      description: Creates a new unit-based inventory item.
+      operationId: create-unit-inventory-item
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUnitInventoryItemInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create unit inventory item
+      tags:
+      - Inventory
+  /inventory/{id}:
+    get:
+      description: Returns a single inventory item.
+      operationId: get-inventory-item
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get inventory item
+      tags:
+      - Inventory
+  /inventory/{id}/adjustments:
+    post:
+      description: Records a manual stock adjustment.
+      operationId: record-inventory-adjustment
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordAdjustmentInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockMovement'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Record inventory adjustment
+      tags:
+      - Inventory
+  /inventory/{id}/entries:
+    post:
+      description: Records a flavor stock entry.
+      operationId: record-inventory-entry
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordEntryInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockMovement'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Record inventory entry
+      tags:
+      - Inventory
+  /inventory/{id}/movements:
+    get:
+      description: Returns stock movements for an inventory item.
+      operationId: get-inventory-movements
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryMovementsOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get inventory movement history
+      tags:
+      - Inventory
+  /inventory/{id}/products/{productId}:
+    delete:
+      description: Removes the product link from an inventory item.
+      operationId: unlink-inventory-product
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      - description: Product ID
+        in: path
+        name: productId
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Unlink inventory item from product
+      tags:
+      - Inventory
+    post:
+      description: Links an inventory item to a product.
+      operationId: link-inventory-product
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      - description: Product ID
+        in: path
+        name: productId
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItem'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Link inventory item to product
+      tags:
+      - Inventory
+  /inventory/{id}/unit-entries:
+    post:
+      description: Records a unit-based stock entry.
+      operationId: record-inventory-unit-entry
+      parameters:
+      - description: Inventory item ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Inventory item ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordUnitEntryInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockMovement'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Record unit inventory entry
+      tags:
+      - Inventory
+  /orders:
+    get:
+      description: Returns a paginated list of orders.
+      operationId: list-orders
+      parameters:
+      - description: Filter by status
+        explode: false
+        in: query
+        name: status
+        schema:
+          description: Filter by status
+          type: string
+      - description: Return lightweight order rows
+        explode: false
+        in: query
+        name: lite
+        schema:
+          default: false
+          description: Return lightweight order rows
+          type: boolean
+      - description: Include archived orders
+        explode: false
+        in: query
+        name: archived
+        schema:
+          default: false
+          description: Include archived orders
+          type: boolean
+      - description: Page number
+        explode: false
+        in: query
+        name: page
+        schema:
+          default: 1
+          description: Page number
+          format: int64
+          type: integer
+      - description: Items per page
+        explode: false
+        in: query
+        name: per_page
+        schema:
+          default: 20
+          description: Items per page
+          format: int64
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseOrder'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List orders
+      tags:
+      - Orders
+    post:
+      description: Creates a new order from the public storefront.
+      operationId: create-order
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create a public order
+      tags:
+      - Public orders
+  /orders/internal:
+    post:
+      description: Creates a new order from the staff panel. Requires an authenticated
+        employee or admin session and bypasses public storefront rate limits.
+      operationId: create-internal-order
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create internal order
+      tags:
+      - Orders
+  /orders/track:
+    get:
+      description: Returns the current status of an order using its tracking token.
+      operationId: track-order
+      parameters:
+      - description: Order number
+        explode: false
+        in: query
+        name: order_number
+        schema:
+          description: Order number
+          type: string
+      - description: Tracking token
+        explode: false
+        in: query
+        name: tracking_token
+        schema:
+          description: Tracking token
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderTrackingOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Track an order
+      tags:
+      - Public orders
+  /orders/{id}:
+    delete:
+      description: Deletes an editable order.
+      operationId: delete-order
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete order
+      tags:
+      - Orders
+    get:
+      description: Returns a single order by ID.
+      operationId: get-order
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get order
+      tags:
+      - Orders
+    patch:
+      description: Updates an editable order.
+      operationId: update-order
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update order
+      tags:
+      - Orders
+  /orders/{id}/approve:
+    post:
+      description: Approves an order for preparation.
+      operationId: approve-order
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Approve order
+      tags:
+      - Orders
+  /orders/{id}/archive:
+    patch:
+      description: Toggles the archive flag of an order. Admin only.
+      operationId: archive-order
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveOrderInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Archive order
+      tags:
+      - Orders
+  /orders/{id}/notes:
+    patch:
+      description: Updates the notes of an order.
+      operationId: update-order-notes
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderNotesInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update order notes
+      tags:
+      - Orders
+  /orders/{id}/reject:
+    post:
+      description: Rejects an order with a reason.
+      operationId: reject-order
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectOrderInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Reject order
+      tags:
+      - Orders
+  /orders/{id}/status:
+    patch:
+      description: Transitions an order to a new status.
+      operationId: update-order-status
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Order ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderStatusInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update order status
+      tags:
+      - Orders
+  /products:
+    get:
+      description: Returns a paginated list of available products.
+      operationId: list-products
+      parameters:
+      - description: Filter by category slug
+        explode: false
+        in: query
+        name: category
+        schema:
+          description: Filter by category slug
+          type: string
+      - description: Page number
+        explode: false
+        in: query
+        name: page
+        schema:
+          default: 1
+          description: Page number
+          format: int64
+          type: integer
+      - description: Items per page
+        explode: false
+        in: query
+        name: per_page
+        schema:
+          default: 20
+          description: Items per page
+          format: int64
+          type: integer
+      - description: Return all products (admin fallback)
+        explode: false
+        in: query
+        name: all
+        schema:
+          default: false
+          description: Return all products (admin fallback)
+          type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseProduct'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List products
+      tags:
+      - Public catalog
+    post:
+      description: Creates a new product. Admin only.
+      operationId: create-product
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create product
+      tags:
+      - Products
+  /products/{id}:
+    delete:
+      description: Removes a product. Admin only.
+      operationId: delete-product
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete product
+      tags:
+      - Products
+    get:
+      description: Returns a single product by ID.
+      operationId: get-product
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get product
+      tags:
+      - Public catalog
+    patch:
+      description: Updates an existing product. Admin only.
+      operationId: update-product
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update product
+      tags:
+      - Products
+  /products/{id}/addons/{addonId}:
+    delete:
+      description: Unlinks an addon from a product. Admin only.
+      operationId: unlink-product-addon
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      - description: Addon ID
+        in: path
+        name: addonId
+        required: true
+        schema:
+          description: Addon ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Unlink addon from product
+      tags:
+      - Products
+    post:
+      description: Links an addon to a product. Admin only.
+      operationId: link-product-addon
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      - description: Addon ID
+        in: path
+        name: addonId
+        required: true
+        schema:
+          description: Addon ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Link addon to product
+      tags:
+      - Products
+  /products/{id}/availability:
+    patch:
+      description: Flips the availability flag of a product. Admin only.
+      operationId: toggle-product-availability
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Toggle product availability
+      tags:
+      - Products
+  /products/{id}/flavors/{flavorId}:
+    delete:
+      description: Unlinks a flavor from a product. Admin only.
+      operationId: unlink-product-flavor
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      - description: Flavor ID
+        in: path
+        name: flavorId
+        required: true
+        schema:
+          description: Flavor ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Unlink flavor from product
+      tags:
+      - Products
+    post:
+      description: Links a flavor to a product. Admin only.
+      operationId: link-product-flavor
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: Product ID
+          format: uuid
+          type: string
+      - description: Flavor ID
+        in: path
+        name: flavorId
+        required: true
+        schema:
+          description: Flavor ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Link flavor to product
+      tags:
+      - Products
+  /settings/archive:
+    get:
+      description: Returns the order archive configuration.
+      operationId: get-archive-settings
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveConfig'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get archive settings
+      tags:
+      - Settings
+    patch:
+      description: Updates the order archive configuration.
+      operationId: update-archive-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveConfig'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveConfig'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update archive settings
+      tags:
+      - Settings
+  /settings/panel-config:
+    get:
+      description: Returns the panel/session token TTL configuration.
+      operationId: get-panel-config
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenTTLConfig'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get panel configuration
+      tags:
+      - Settings
+    patch:
+      description: Updates the panel/session token TTL configuration.
+      operationId: update-panel-config
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenTTLConfig'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenTTLConfig'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update panel configuration
+      tags:
+      - Settings
+  /settings/rate-limits:
+    get:
+      description: Returns the public order rate-limit configuration.
+      operationId: get-rate-limit-settings
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicOrderRateLimitConfig'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get rate-limit settings
+      tags:
+      - Settings
+    patch:
+      description: Updates the public order rate-limit configuration.
+      operationId: update-rate-limit-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicOrderRateLimitConfig'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicOrderRateLimitConfig'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update rate-limit settings
+      tags:
+      - Settings
+  /settings/store:
+    get:
+      description: Returns the full store settings.
+      operationId: get-store-settings
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreSettings'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get store settings
+      tags:
+      - Settings
+    patch:
+      description: Updates the store orders-enabled flag and special offers.
+      operationId: update-store-settings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreSettings'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreSettings'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update store settings
+      tags:
+      - Settings
+  /settings/store/public:
+    get:
+      description: Returns whether public orders are enabled and active offers.
+      operationId: get-public-store-status
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreStatusOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get public store status
+      tags:
+      - Settings
+  /upload/image:
+    post:
+      description: Uploads an image to object storage.
+      operationId: upload-image
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadImageInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadImageOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Upload image
+      tags:
+      - Upload
+  /users:
+    get:
+      description: Returns a paginated list of customers.
+      operationId: list-users
+      parameters:
+      - description: Filter by status
+        explode: false
+        in: query
+        name: status
+        schema:
+          description: Filter by status
+          type: string
+      - description: Search by name or phone
+        explode: false
+        in: query
+        name: search
+        schema:
+          description: Search by name or phone
+          type: string
+      - description: Page number
+        explode: false
+        in: query
+        name: page
+        schema:
+          default: 1
+          description: Page number
+          format: int64
+          type: integer
+      - description: Items per page
+        explode: false
+        in: query
+        name: per_page
+        schema:
+          default: 20
+          description: Items per page
+          format: int64
+          type: integer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedResponseUser'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: List users
+      tags:
+      - Users
+    post:
+      description: Creates a new customer. Admin only.
+      operationId: create-user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Create user
+      tags:
+      - Users
+  /users/upsert:
+    post:
+      description: Creates or updates a customer by phone. Admin only.
+      operationId: upsert-user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Upsert user
+      tags:
+      - Users
+  /users/{id}:
+    delete:
+      description: Removes a customer. Admin only.
+      operationId: delete-user
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: User ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Delete user
+      tags:
+      - Users
+    get:
+      description: Returns a single customer by ID.
+      operationId: get-user
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: User ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get user
+      tags:
+      - Users
+    patch:
+      description: Updates an existing customer. Admin only.
+      operationId: update-user
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: User ID
+          format: uuid
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserInputBody'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Update user
+      tags:
+      - Users
+  /users/{id}/orders:
+    get:
+      description: Returns order history for a customer. Admin only.
+      operationId: get-user-orders
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        schema:
+          description: User ID
+          format: uuid
+          type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOrdersOutputBody'
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorModel'
+          description: Error
+      summary: Get user orders
+      tags:
+      - Users
+components:
+  schemas:
+    ActiveOffer:
+      additionalProperties: false
+      properties:
+        discount_price:
+          description: Discount price
+          format: double
+          type: number
+        expires_at:
+          description: Offer expiration (RFC 3339)
+          type: string
+        flavor_id:
+          description: Flavor ID
+          type: string
+        flavor_ids:
+          description: Flavor IDs
+          items:
+            type: string
+          nullable: true
+          type: array
+        label:
+          description: Offer label
+          type: string
+        note:
+          description: Offer note
+          type: string
+        product_id:
+          description: Product ID
+          type: string
+      required:
+      - product_id
+      - label
+      - expires_at
+      type: object
+    Addon:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Addon.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        group_name:
+          description: Addon group name
+          example: Extras
+          type: string
+        id:
+          description: Addon ID
+          format: uuid
+          type: string
+        is_active:
+          description: Whether the addon is active
+          example: true
+          type: boolean
+        name:
+          description: Addon name
+          example: Extra scoop
+          type: string
+        price:
+          description: Addon price
+          example: 1
+          format: double
+          type: number
+      required:
+      - id
+      - name
+      - price
+      - group_name
+      - display_order
+      - is_active
+      - created_at
+      type: object
+    AnalyticsDashboardOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/AnalyticsDashboardOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        orders_over_time:
+          description: Order counts and revenue over the date range
+          items:
+            $ref: '#/components/schemas/AnalyticsTimelinePoint'
+          nullable: true
+          type: array
+        overview:
+          $ref: '#/components/schemas/AnalyticsOverview'
+          description: Aggregate metrics for the date range
+        top_products:
+          description: Best-selling products for the date range
+          items:
+            $ref: '#/components/schemas/AnalyticsTopProduct'
+          nullable: true
+          type: array
+      required:
+      - overview
+      - orders_over_time
+      - top_products
+      type: object
+    AnalyticsOverview:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/AnalyticsOverview.json
+          format: uri
+          readOnly: true
+          type: string
+        avg_order_value:
+          description: Average order value
+          example: 8.34
+          format: double
+          type: number
+        period:
+          description: Report period
+          example: month
+          type: string
+        status_breakdown:
+          additionalProperties:
+            format: int64
+            type: integer
+          description: Orders grouped by status
+          type: object
+        total_orders:
+          description: Total orders
+          example: 150
+          format: int64
+          type: integer
+        total_revenue:
+          description: Total revenue
+          example: 1250.5
+          format: double
+          type: number
+      required:
+      - period
+      - total_orders
+      - total_revenue
+      - avg_order_value
+      - status_breakdown
+      type: object
+    AnalyticsTimelinePoint:
+      additionalProperties: false
+      properties:
+        count:
+          description: Order count
+          example: 10
+          format: int64
+          type: integer
+        date:
+          description: Bucket date
+          example: '2026-07-01'
+          type: string
+        revenue:
+          description: Revenue
+          example: 100
+          format: double
+          type: number
+      required:
+      - date
+      - count
+      - revenue
+      type: object
+    AnalyticsTopProduct:
+      additionalProperties: false
+      properties:
+        name:
+          description: Product name
+          example: Stracciatella
+          type: string
+        total_sold:
+          description: Total units sold
+          example: 50
+          format: int64
+          type: integer
+        total_value:
+          description: Total sold value
+          example: 275
+          format: double
+          type: number
+      required:
+      - name
+      - total_sold
+      - total_value
+      type: object
+    ArchiveConfig:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/ArchiveConfig.json
+          format: uri
+          readOnly: true
+          type: string
+        age_days:
+          description: Archive orders older than this many days
+          example: 30
+          format: int64
+          type: integer
+        enabled:
+          description: Whether auto-archiving is enabled
+          example: true
+          type: boolean
+        interval_minutes:
+          description: Archive check interval in minutes
+          example: 60
+          format: int64
+          type: integer
+      required:
+      - enabled
+      - age_days
+      - interval_minutes
+      type: object
+    ArchiveOrderInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/ArchiveOrderInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        archived:
+          description: Archive flag
+          example: true
+          type: boolean
+      required:
+      - archived
+      type: object
+    Category:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Category.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        description:
+          description: Category description
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        id:
+          description: Category ID
+          format: uuid
+          type: string
+        image_path:
+          description: Image object path
+          type: string
+        is_active:
+          description: Whether the category is active
+          example: true
+          type: boolean
+        name:
+          description: Category name
+          example: Gelatos
+          type: string
+        slug:
+          description: URL slug
+          example: gelatos
+          type: string
+      required:
+      - id
+      - name
+      - slug
+      - description
+      - display_order
+      - is_active
+      - created_at
+      type: object
+    CategoryDetail:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CategoryDetail.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        description:
+          description: Category description
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        id:
+          description: Category ID
+          format: uuid
+          type: string
+        image_path:
+          description: Image object path
+          type: string
+        is_active:
+          description: Whether the category is active
+          example: true
+          type: boolean
+        name:
+          description: Category name
+          example: Gelatos
+          type: string
+        products:
+          description: Products in this category
+          items:
+            $ref: '#/components/schemas/ProductSummary'
+          nullable: true
+          type: array
+        slug:
+          description: URL slug
+          example: gelatos
+          type: string
+      required:
+      - products
+      - id
+      - name
+      - slug
+      - description
+      - display_order
+      - is_active
+      - created_at
+      type: object
+    ContainerType:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/ContainerType.json
+          format: uri
+          readOnly: true
+          type: string
+        balls_per_container:
+          description: Number of balls per container
+          example: 1
+          format: int64
+          type: integer
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        id:
+          description: Container type ID
+          format: uuid
+          type: string
+        is_active:
+          description: Whether the container type is active
+          example: true
+          type: boolean
+        is_custom:
+          description: Whether the container size is custom
+          example: false
+          type: boolean
+        name:
+          description: Container type name
+          example: Small cup
+          type: string
+      required:
+      - id
+      - name
+      - balls_per_container
+      - is_custom
+      - is_active
+      - created_at
+      type: object
+    CreateAddonInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateAddonInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        group_name:
+          description: Addon group name
+          example: Extras
+          type: string
+        name:
+          description: Addon name
+          example: Extra scoop
+          type: string
+        price:
+          description: Addon price
+          example: 1
+          format: double
+          type: number
+      required:
+      - name
+      - price
+      - group_name
+      type: object
+    CreateCategoryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateCategoryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          description: Category description
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        image_path:
+          description: Image object path
+          type: string
+        name:
+          description: Category name
+          example: Gelatos
+          type: string
+        slug:
+          description: URL slug
+          example: gelatos
+          type: string
+      required:
+      - name
+      - slug
+      - description
+      type: object
+    CreateContainerTypeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateContainerTypeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        balls_per_container:
+          description: Number of balls per container
+          example: 1
+          format: int64
+          type: integer
+        is_custom:
+          description: Whether the container size is custom
+          example: false
+          type: boolean
+        name:
+          description: Container type name
+          example: Small cup
+          type: string
+      required:
+      - name
+      - balls_per_container
+      - is_custom
+      type: object
+    CreateEmployeeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateEmployeeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: Employee email
+          example: admin@example.com
+          type: string
+        name:
+          description: Employee name
+          example: Admin
+          type: string
+        password:
+          description: Employee password
+          example: secret
+          type: string
+        phone:
+          description: Employee phone
+          example: '+50688881234'
+          type: string
+        role:
+          description: Employee role
+          example: employee
+          type: string
+        state:
+          description: Employee state
+          example: active
+          type: string
+      required:
+      - email
+      - password
+      - name
+      - phone
+      - role
+      - state
+      type: object
+    CreateFlavorInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateFlavorInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        is_seasonal:
+          description: Whether the flavor is seasonal
+          example: false
+          type: boolean
+        name:
+          description: Flavor name
+          example: Chocolate
+          type: string
+      required:
+      - name
+      - is_seasonal
+      type: object
+    CreateOrderInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateOrderInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        customer_email:
+          description: Customer email
+          example: john@example.com
+          type: string
+        customer_name:
+          description: Customer name
+          example: John Doe
+          type: string
+        customer_phone:
+          description: Customer phone
+          example: '+50688881234'
+          type: string
+        items:
+          description: Order items
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          nullable: true
+          type: array
+        notes:
+          description: Order notes
+          type: string
+        order_type:
+          description: Order type
+          enum:
+          - en_local
+          - para_llevar
+          type: string
+        payment_method:
+          description: Payment method
+          enum:
+          - efectivo
+          - tarjeta
+          - transferencia
+          - otro
+          type: string
+        table_number:
+          description: Table number
+          format: int64
+          type: integer
+      required:
+      - customer_name
+      - customer_phone
+      - payment_method
+      - order_type
+      - items
+      type: object
+    CreateProductInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateProductInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        allows_mixed_flavors:
+          description: Whether mixed flavors are allowed
+          example: false
+          type: boolean
+        ball_based:
+          description: Whether pricing is ball-based
+          example: false
+          type: boolean
+        ball_quantity:
+          description: Ball quantity
+          example: 0
+          format: int64
+          type: integer
+        category_id:
+          description: Category ID
+          format: uuid
+          type: string
+        description:
+          description: Product description
+          type: string
+        exclude_global_addons:
+          description: Whether global addons are excluded
+          example: false
+          type: boolean
+        exclude_global_flavors:
+          description: Whether global flavors are excluded
+          example: false
+          type: boolean
+        image_path:
+          description: Image object path
+          type: string
+        is_available:
+          description: Whether the product is available
+          example: true
+          type: boolean
+        name:
+          description: Product name
+          example: Stracciatella
+          type: string
+        price:
+          description: Product price
+          example: 5.5
+          format: double
+          type: number
+        stock_status:
+          description: Stock status
+          example: in_stock
+          type: string
+      required:
+      - name
+      - description
+      - price
+      - category_id
+      type: object
+    CreateUnitInventoryItemInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateUnitInventoryItemInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        low_stock_threshold:
+          description: Low stock alert threshold
+          example: 10
+          format: int64
+          type: integer
+        name:
+          description: Item name
+          example: Cones
+          type: string
+        product_id:
+          description: Linked product ID
+          format: uuid
+          type: string
+      required:
+      - name
+      - product_id
+      - low_stock_threshold
+      type: object
+    CreateUserInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/CreateUserInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: User email
+          example: john@example.com
+          type: string
+        name:
+          description: User name
+          example: John Doe
+          type: string
+        phone:
+          description: User phone
+          example: '+50688881234'
+          type: string
+        status:
+          description: User status
+          example: active
+          type: string
+        user_type:
+          description: User type
+          example: regular
+          type: string
+      required:
+      - name
+      - user_type
+      - phone
+      - status
+      type: object
+    Employee:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Employee.json
+          format: uri
+          readOnly: true
+          type: string
+        active:
+          description: Whether the employee is active
+          example: true
+          type: boolean
+        email:
+          description: Employee email
+          example: admin@example.com
+          type: string
+        id:
+          description: Employee ID
+          type: string
+        name:
+          description: Employee name
+          example: Admin
+          type: string
+        phone:
+          description: Employee phone
+          example: '+50688881234'
+          type: string
+        role:
+          description: Employee role
+          example: admin
+          type: string
+        state:
+          description: Employee state
+          example: active
+          type: string
+      required:
+      - id
+      - email
+      - name
+      - phone
+      - role
+      - state
+      - active
+      type: object
+    EmployeeStruct:
+      additionalProperties: false
+      properties:
+        active:
+          description: Whether the employee is active
+          type: boolean
+        email:
+          description: Employee email
+          type: string
+        id:
+          description: Employee ID
+          type: string
+        name:
+          description: Employee name
+          type: string
+        phone:
+          description: Employee phone
+          type: string
+        role:
+          description: Employee role
+          type: string
+      required:
+      - id
+      - email
+      - name
+      - phone
+      - role
+      - active
+      type: object
+    ErrorDetail:
+      additionalProperties: false
+      properties:
+        location:
+          description: Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id'
+          type: string
+        message:
+          description: Error message text
+          type: string
+        value:
+          description: The value at the given location
+      type: object
+    ErrorModel:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/ErrorModel.json
+          format: uri
+          readOnly: true
+          type: string
+        detail:
+          description: A human-readable explanation specific to this occurrence of
+            the problem.
+          example: Property foo is required but is missing.
+          type: string
+        errors:
+          description: Optional list of individual error details
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+          nullable: true
+          type: array
+        instance:
+          description: A URI reference that identifies the specific occurrence of
+            the problem.
+          example: https://example.com/error-log/abc123
+          format: uri
+          type: string
+        status:
+          description: HTTP status code
+          example: 400
+          format: int64
+          type: integer
+        title:
+          description: A short, human-readable summary of the problem type. This value
+            should not change between occurrences of the error.
+          example: Bad Request
+          type: string
+        type:
+          default: about:blank
+          description: A URI reference to human-readable documentation for the error.
+          example: https://example.com/errors/example
+          format: uri
+          type: string
+      type: object
+    ExportOrderRow:
+      additionalProperties: false
+      properties:
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        customer_name:
+          description: Customer name
+          example: John Doe
+          type: string
+        customer_phone:
+          description: Customer phone
+          example: '+50688881234'
+          type: string
+        id:
+          description: Order ID
+          format: uuid
+          type: string
+        items_count:
+          description: Number of items
+          example: 2
+          format: int64
+          type: integer
+        items_summary:
+          description: Items summary
+          example: 2x Stracciatella
+          type: string
+        notes:
+          description: Order notes
+          type: string
+        order_number:
+          description: Order number
+          example: ORD-0001
+          type: string
+        order_type:
+          description: Order type
+          example: para_llevar
+          type: string
+        payment_method:
+          description: Payment method
+          example: efectivo
+          type: string
+        payment_status:
+          description: Payment status
+          example: paid
+          type: string
+        status:
+          description: Order status
+          example: entregada
+          type: string
+        table_number:
+          description: Table number
+          format: int64
+          type: integer
+        total_amount:
+          description: Order total
+          example: 11
+          format: double
+          type: number
+        updated_at:
+          description: Last update timestamp
+          format: date-time
+          type: string
+      required:
+      - id
+      - order_number
+      - customer_name
+      - customer_phone
+      - status
+      - payment_method
+      - payment_status
+      - order_type
+      - total_amount
+      - items_count
+      - items_summary
+      - created_at
+      - updated_at
+      type: object
+    ExportOrdersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/ExportOrdersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        count:
+          description: Exported order count
+          example: 100
+          format: int64
+          type: integer
+        end:
+          description: End date
+          type: string
+        orders:
+          description: Exported orders
+          items:
+            $ref: '#/components/schemas/ExportOrderRow'
+          nullable: true
+          type: array
+        start:
+          description: Start date
+          type: string
+      required:
+      - start
+      - end
+      - count
+      - orders
+      type: object
+    Flavor:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Flavor.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        id:
+          description: Flavor ID
+          format: uuid
+          type: string
+        is_active:
+          description: Whether the flavor is active
+          example: true
+          type: boolean
+        is_seasonal:
+          description: Whether the flavor is seasonal
+          example: false
+          type: boolean
+        name:
+          description: Flavor name
+          example: Chocolate
+          type: string
+      required:
+      - id
+      - name
+      - display_order
+      - is_seasonal
+      - is_active
+      - created_at
+      type: object
+    FlavorStockOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/FlavorStockOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        current_stock:
+          description: Current stock
+          example: 10
+          format: int64
+          type: integer
+        flavor_id:
+          description: Flavor ID
+          format: uuid
+          type: string
+        low_stock:
+          description: Whether stock is low
+          example: false
+          type: boolean
+      required:
+      - flavor_id
+      - current_stock
+      - low_stock
+      type: object
+    FormFile:
+      additionalProperties: false
+      properties:
+        ContentType:
+          type: string
+        Filename:
+          type: string
+        IsSet:
+          type: boolean
+        Size:
+          format: int64
+          type: integer
+      required:
+      - ContentType
+      - IsSet
+      - Size
+      - Filename
+      type: object
+    InventoryDashboardOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/InventoryDashboardOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        flavor_inventory:
+          description: Flavor inventory items
+          items:
+            $ref: '#/components/schemas/InventoryItem'
+          nullable: true
+          type: array
+        stats:
+          $ref: '#/components/schemas/InventoryStats'
+          description: Inventory statistics
+        unit_inventory:
+          description: Unit inventory items
+          items:
+            $ref: '#/components/schemas/InventoryItem'
+          nullable: true
+          type: array
+      required:
+      - flavor_inventory
+      - unit_inventory
+      - stats
+      type: object
+    InventoryItem:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/InventoryItem.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        current_stock:
+          description: Current stock quantity
+          example: 10
+          format: int64
+          type: integer
+        flavor_id:
+          description: Linked flavor ID
+          format: uuid
+          type: string
+        id:
+          description: Inventory item ID
+          format: uuid
+          type: string
+        low_stock_threshold:
+          description: Low stock alert threshold
+          example: 5
+          format: int64
+          type: integer
+        name:
+          description: Item name
+          example: Chocolate
+          type: string
+        product_id:
+          description: Linked product ID
+          format: uuid
+          type: string
+        type:
+          description: Item type
+          example: flavor
+          type: string
+      required:
+      - id
+      - name
+      - type
+      - current_stock
+      - low_stock_threshold
+      - created_at
+      type: object
+    InventoryMovementsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/InventoryMovementsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Movement records
+          items:
+            $ref: '#/components/schemas/StockMovement'
+          nullable: true
+          type: array
+        limit:
+          description: Page limit
+          example: 50
+          format: int64
+          type: integer
+        offset:
+          description: Page offset
+          example: 0
+          format: int64
+          type: integer
+        total:
+          description: Total records
+          example: 100
+          format: int64
+          type: integer
+        total_pages:
+          description: Total pages
+          example: 2
+          format: int64
+          type: integer
+      required:
+      - data
+      - total
+      - limit
+      - offset
+      - total_pages
+      type: object
+    InventoryStats:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/InventoryStats.json
+          format: uri
+          readOnly: true
+          type: string
+        low_stock_items:
+          description: Items below low-stock threshold
+          example: 3
+          format: int64
+          type: integer
+        out_of_stock_items:
+          description: Items with zero stock
+          example: 1
+          format: int64
+          type: integer
+        total_items:
+          description: Total inventory items
+          example: 25
+          format: int64
+          type: integer
+      required:
+      - total_items
+      - low_stock_items
+      - out_of_stock_items
+      type: object
+    LoginInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/LoginInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: Employee email
+          example: admin@example.com
+          type: string
+        password:
+          description: Employee password
+          example: secret
+          type: string
+      required:
+      - email
+      - password
+      type: object
+    LoginOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/LoginOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        employee:
+          $ref: '#/components/schemas/EmployeeStruct'
+          description: Employee record
+      required:
+      - employee
+      type: object
+    MessageResponse:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/MessageResponse.json
+          format: uri
+          readOnly: true
+          type: string
+        message:
+          description: Response message
+          type: string
+      required:
+      - message
+      type: object
+    OfferItem:
+      additionalProperties: false
+      properties:
+        discount_price:
+          description: Discount price
+          example: 4
+          format: double
+          type: number
+        expires_at:
+          description: Offer expiration (RFC 3339)
+          example: '2026-12-31T23:59:59Z'
+          type: string
+        flavor_id:
+          description: Flavor ID
+          format: uuid
+          type: string
+        flavor_ids:
+          description: Flavor IDs
+          items:
+            type: string
+          nullable: true
+          type: array
+        label:
+          description: Offer label
+          example: 2x1
+          type: string
+        note:
+          description: Offer note
+          example: All week
+          type: string
+        product_id:
+          description: Product ID
+          format: uuid
+          type: string
+      required:
+      - product_id
+      - label
+      - expires_at
+      type: object
+    Order:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Order.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        created_by_user_id:
+          description: Creator employee ID
+          type: string
+        customer_email:
+          description: Customer email
+          example: john@example.com
+          type: string
+        customer_id:
+          description: Customer ID
+          format: uuid
+          type: string
+        customer_name:
+          description: Customer name
+          example: John Doe
+          type: string
+        customer_phone:
+          description: Customer phone
+          example: '+50688881234'
+          type: string
+        id:
+          description: Order ID
+          format: uuid
+          type: string
+        is_archived:
+          description: Whether the order is archived
+          example: false
+          type: boolean
+        items:
+          description: Order items
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          nullable: true
+          type: array
+        notes:
+          description: Order notes
+          type: string
+        order_number:
+          description: Order number
+          example: ORD-0001
+          type: string
+        order_type:
+          description: Order type
+          example: para_llevar
+          type: string
+        payment_method:
+          description: Payment method
+          example: efectivo
+          type: string
+        payment_status:
+          description: Payment status
+          example: pending
+          type: string
+        rejection_reason:
+          description: Rejection reason
+          type: string
+        reviewed_at:
+          description: Review timestamp
+          format: date-time
+          type: string
+        reviewed_by_user_id:
+          description: Reviewer employee ID
+          type: string
+        status:
+          description: Order status
+          example: pendiente_revision
+          type: string
+        status_timestamps:
+          additionalProperties:
+            type: string
+          description: Status change timestamps
+          type: object
+        table_number:
+          description: Table number
+          format: int64
+          type: integer
+        total_amount:
+          description: Order total
+          example: 11
+          format: double
+          type: number
+        updated_at:
+          description: Last update timestamp
+          format: date-time
+          type: string
+      required:
+      - id
+      - order_number
+      - customer_name
+      - customer_phone
+      - total_amount
+      - status
+      - payment_method
+      - payment_status
+      - order_type
+      - is_archived
+      - created_at
+      - updated_at
+      type: object
+    OrderItem:
+      additionalProperties: false
+      properties:
+        customizations:
+          additionalProperties: {}
+          description: Item customizations
+          type: object
+        product_id:
+          description: Product ID
+          format: uuid
+          type: string
+        quantity:
+          description: Quantity
+          example: 2
+          format: int64
+          type: integer
+      required:
+      - product_id
+      - quantity
+      type: object
+    OrderOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/OrderOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        message:
+          description: Confirmation message
+          example: Order received
+          type: string
+        order_number:
+          description: Order number
+          example: ORD-0001
+          type: string
+        status:
+          description: Order status
+          example: pendiente_revision
+          type: string
+        total:
+          description: Order total
+          example: 11
+          format: int64
+          type: integer
+        tracking_expires_at:
+          description: Tracking token expiration
+          type: string
+        tracking_token:
+          description: Tracking token
+          type: string
+      required:
+      - order_number
+      - status
+      - total
+      - tracking_token
+      - tracking_expires_at
+      - message
+      type: object
+    OrderTrackingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/OrderTrackingOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        order_number:
+          description: Order number
+          type: string
+        status:
+          description: Order status
+          type: string
+        total_amount:
+          description: Order total
+          format: double
+          type: number
+      required:
+      - order_number
+      - status
+      - total_amount
+      type: object
+    PaginatedResponseAddon:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseAddon.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/Addon'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseCategory:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseCategory.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/Category'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseContainerType:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseContainerType.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/ContainerType'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseEmployee:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseEmployee.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/Employee'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseFlavor:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseFlavor.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/Flavor'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseInventoryItem:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseInventoryItem.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/InventoryItem'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseOrder:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseOrder.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/Order'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseProduct:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseProduct.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/Product'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginatedResponseUser:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PaginatedResponseUser.json
+          format: uri
+          readOnly: true
+          type: string
+        data:
+          description: Page items
+          items:
+            $ref: '#/components/schemas/User'
+          nullable: true
+          type: array
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+          description: Pagination metadata
+      required:
+      - data
+      - pagination
+      type: object
+    PaginationMetadata:
+      additionalProperties: false
+      properties:
+        page:
+          description: Current page number
+          example: 1
+          format: int64
+          type: integer
+        per_page:
+          description: Number of items per page
+          example: 20
+          format: int64
+          type: integer
+        total:
+          description: Total number of items
+          example: 100
+          format: int64
+          type: integer
+        total_pages:
+          description: Total number of pages
+          example: 5
+          format: int64
+          type: integer
+      required:
+      - page
+      - per_page
+      - total
+      - total_pages
+      type: object
+    Product:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Product.json
+          format: uri
+          readOnly: true
+          type: string
+        addons:
+          description: Product addons
+          items:
+            $ref: '#/components/schemas/Addon'
+          nullable: true
+          type: array
+        allows_mixed_flavors:
+          description: Whether mixed flavors are allowed
+          example: false
+          type: boolean
+        ball_based:
+          description: Whether pricing is ball-based
+          example: false
+          type: boolean
+        ball_quantity:
+          description: Ball quantity
+          example: 0
+          format: int64
+          type: integer
+        category_id:
+          description: Category ID
+          format: uuid
+          type: string
+        category_name:
+          description: Category name
+          example: Gelatos
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        description:
+          description: Product description
+          type: string
+        exclude_global_addons:
+          description: Whether global addons are excluded
+          example: false
+          type: boolean
+        exclude_global_flavors:
+          description: Whether global flavors are excluded
+          example: false
+          type: boolean
+        flavors:
+          description: Product flavors
+          items:
+            $ref: '#/components/schemas/Flavor'
+          nullable: true
+          type: array
+        id:
+          description: Product ID
+          format: uuid
+          type: string
+        image_path:
+          description: Image object path
+          type: string
+        image_url:
+          description: Public image URL
+          type: string
+        is_available:
+          description: Whether the product is available
+          example: true
+          type: boolean
+        name:
+          description: Product name
+          example: Stracciatella
+          type: string
+        price:
+          description: Product price
+          example: 5.5
+          format: double
+          type: number
+        stock_status:
+          description: Stock status
+          example: in_stock
+          type: string
+      required:
+      - id
+      - name
+      - description
+      - price
+      - is_available
+      - created_at
+      type: object
+    ProductSummary:
+      additionalProperties: false
+      properties:
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        description:
+          description: Product description
+          type: string
+        id:
+          description: Product ID
+          format: uuid
+          type: string
+        image_path:
+          description: Image object path
+          type: string
+        is_available:
+          description: Whether the product is available
+          example: true
+          type: boolean
+        name:
+          description: Product name
+          example: Stracciatella
+          type: string
+        price:
+          description: Product price
+          example: 5.5
+          format: double
+          type: number
+      required:
+      - id
+      - name
+      - description
+      - price
+      - is_available
+      - created_at
+      type: object
+    PublicOrderRateLimitConfig:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PublicOrderRateLimitConfig.json
+          format: uri
+          readOnly: true
+          type: string
+        ip_block_minutes:
+          description: IP block duration in minutes
+          example: 60
+          format: int64
+          type: integer
+        ip_burst:
+          description: Max orders per IP burst
+          example: 10
+          format: int64
+          type: integer
+        ip_window_minutes:
+          description: IP rate-limit window in minutes
+          example: 60
+          format: int64
+          type: integer
+        phone_block_minutes:
+          description: Phone block duration in minutes
+          example: 60
+          format: int64
+          type: integer
+        phone_burst:
+          description: Max orders per phone burst
+          example: 5
+          format: int64
+          type: integer
+        phone_window_minutes:
+          description: Phone rate-limit window in minutes
+          example: 60
+          format: int64
+          type: integer
+        staff_burst:
+          description: Max staff orders per burst
+          example: 100
+          format: int64
+          type: integer
+        staff_window_minutes:
+          description: Staff rate-limit window in minutes
+          example: 60
+          format: int64
+          type: integer
+      required:
+      - phone_burst
+      - phone_window_minutes
+      - phone_block_minutes
+      - ip_burst
+      - ip_window_minutes
+      - ip_block_minutes
+      - staff_burst
+      - staff_window_minutes
+      type: object
+    PurgeOrdersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/PurgeOrdersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        deleted_items:
+          description: Number of deleted items
+          example: 25
+          format: int64
+          type: integer
+        deleted_orders:
+          description: Number of deleted orders
+          example: 10
+          format: int64
+          type: integer
+        message:
+          description: Result message
+          example: Orders purged successfully
+          type: string
+      required:
+      - deleted_orders
+      - deleted_items
+      - message
+      type: object
+    RecordAdjustmentInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/RecordAdjustmentInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        quantity:
+          description: Quantity adjustment
+          example: -2
+          format: int64
+          type: integer
+        reason:
+          description: Adjustment reason
+          example: Spoilage
+          type: string
+      required:
+      - quantity
+      - reason
+      type: object
+    RecordEntryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/RecordEntryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        balls_per_container:
+          description: Balls per container (for custom containers)
+          example: 1
+          format: int64
+          type: integer
+        container_type_id:
+          description: Container type ID
+          format: uuid
+          type: string
+        quantity_containers:
+          description: Number of containers
+          example: 2
+          format: int64
+          type: integer
+      required:
+      - container_type_id
+      - quantity_containers
+      type: object
+    RecordUnitEntryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/RecordUnitEntryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        quantity:
+          description: Quantity added
+          example: 20
+          format: int64
+          type: integer
+      required:
+      - quantity
+      type: object
+    RejectOrderInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/RejectOrderInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        reason:
+          description: Rejection reason
+          example: Out of stock
+          type: string
+      required:
+      - reason
+      type: object
+    Reset-login-lockoutRequest:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/Reset-login-lockoutRequest.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: Employee email
+          example: admin@example.com
+          type: string
+      required:
+      - email
+      type: object
+    SessionOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/SessionOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        active:
+          description: Whether the employee is active
+          type: boolean
+        email:
+          description: Employee email
+          type: string
+        id:
+          description: Employee ID
+          type: string
+        name:
+          description: Employee name
+          type: string
+        phone:
+          description: Employee phone
+          type: string
+        role:
+          description: Employee role
+          type: string
+      required:
+      - id
+      - email
+      - name
+      - phone
+      - role
+      - active
+      type: object
+    StockMovement:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/StockMovement.json
+          format: uri
+          readOnly: true
+          type: string
+        container_type_id:
+          description: Container type ID
+          format: uuid
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        created_by_user_id:
+          description: Creator employee ID
+          type: string
+        flavor_id:
+          description: Flavor ID
+          format: uuid
+          type: string
+        id:
+          description: Movement ID
+          format: uuid
+          type: string
+        inventory_item_id:
+          description: Inventory item ID
+          format: uuid
+          type: string
+        order_id:
+          description: Order ID
+          format: uuid
+          type: string
+        quantity:
+          description: Quantity changed
+          example: 5
+          format: int64
+          type: integer
+        quantity_containers:
+          description: Number of containers
+          example: 2
+          format: int64
+          type: integer
+        reason:
+          description: Movement reason
+          example: Initial stock
+          type: string
+        type:
+          description: Movement type
+          example: entry
+          type: string
+      required:
+      - id
+      - type
+      - quantity
+      - inventory_item_id
+      - created_at
+      type: object
+    StoreSettings:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/StoreSettings.json
+          format: uri
+          readOnly: true
+          type: string
+        offers:
+          description: Active offers
+          items:
+            $ref: '#/components/schemas/OfferItem'
+          nullable: true
+          type: array
+        orders_enabled:
+          description: Whether public orders are enabled
+          example: true
+          type: boolean
+      required:
+      - orders_enabled
+      - offers
+      type: object
+    StoreStatusOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/StoreStatusOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        offers:
+          description: Active offers
+          items:
+            $ref: '#/components/schemas/ActiveOffer'
+          nullable: true
+          type: array
+        orders_enabled:
+          description: Whether public orders are enabled
+          type: boolean
+      required:
+      - orders_enabled
+      - offers
+      type: object
+    TokenTTLConfig:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/TokenTTLConfig.json
+          format: uri
+          readOnly: true
+          type: string
+        auth_cookie_ttl_hours:
+          description: Auth cookie TTL in hours
+          example: 168
+          format: int64
+          type: integer
+        auth_token_ttl_hours:
+          description: Auth token TTL in hours
+          example: 24
+          format: int64
+          type: integer
+        inactivity_logout_seconds:
+          description: Inactivity logout timeout in seconds
+          example: 1800
+          format: int64
+          type: integer
+        tracking_token_ttl_hours:
+          description: Tracking token TTL in hours
+          example: 72
+          format: int64
+          type: integer
+      required:
+      - auth_cookie_ttl_hours
+      - auth_token_ttl_hours
+      - tracking_token_ttl_hours
+      - inactivity_logout_seconds
+      type: object
+    UpdateAddonInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateAddonInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        group_name:
+          description: Addon group name
+          example: Extras
+          type: string
+        is_active:
+          description: Whether the addon is active
+          example: true
+          type: boolean
+        name:
+          description: Addon name
+          example: Extra scoop
+          type: string
+        price:
+          description: Addon price
+          example: 1
+          format: double
+          type: number
+      type: object
+    UpdateCategoryInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateCategoryInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          description: Category description
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        image_path:
+          description: Image object path
+          type: string
+        is_active:
+          description: Whether the category is active
+          example: true
+          type: boolean
+        name:
+          description: Category name
+          example: Gelatos
+          type: string
+        slug:
+          description: URL slug
+          example: gelatos
+          type: string
+      type: object
+    UpdateContainerTypeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateContainerTypeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        balls_per_container:
+          description: Number of balls per container
+          example: 1
+          format: int64
+          type: integer
+        is_active:
+          description: Whether the container type is active
+          example: true
+          type: boolean
+        is_custom:
+          description: Whether the container size is custom
+          example: false
+          type: boolean
+        name:
+          description: Container type name
+          example: Small cup
+          type: string
+      type: object
+    UpdateEmployeeInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateEmployeeInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: Employee email
+          example: admin@example.com
+          type: string
+        name:
+          description: Employee name
+          example: Admin
+          type: string
+        password:
+          description: Employee password
+          example: secret
+          type: string
+        phone:
+          description: Employee phone
+          example: '+50688881234'
+          type: string
+        role:
+          description: Employee role
+          example: employee
+          type: string
+        state:
+          description: Employee state
+          example: active
+          type: string
+      type: object
+    UpdateFlavorInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateFlavorInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        display_order:
+          description: Display order
+          example: 1
+          format: int64
+          type: integer
+        is_active:
+          description: Whether the flavor is active
+          example: true
+          type: boolean
+        is_seasonal:
+          description: Whether the flavor is seasonal
+          example: false
+          type: boolean
+        name:
+          description: Flavor name
+          example: Chocolate
+          type: string
+      type: object
+    UpdateOrderInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateOrderInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        customer_email:
+          description: Customer email
+          example: john@example.com
+          type: string
+        customer_name:
+          description: Customer name
+          example: John Doe
+          type: string
+        customer_phone:
+          description: Customer phone
+          example: '+50688881234'
+          type: string
+        items:
+          description: Order items
+          items:
+            $ref: '#/components/schemas/OrderItem'
+          nullable: true
+          type: array
+        notes:
+          description: Order notes
+          type: string
+        order_type:
+          description: Order type
+          enum:
+          - en_local
+          - para_llevar
+          type: string
+        payment_method:
+          description: Payment method
+          enum:
+          - efectivo
+          - tarjeta
+          - transferencia
+          - otro
+          type: string
+        table_number:
+          description: Table number
+          format: int64
+          type: integer
+      required:
+      - customer_name
+      - customer_phone
+      - payment_method
+      - order_type
+      - notes
+      - items
+      type: object
+    UpdateOrderNotesInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateOrderNotesInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        notes:
+          description: Order notes
+          example: Call on arrival
+          nullable: true
+          type: string
+      required:
+      - notes
+      type: object
+    UpdateOrderStatusInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateOrderStatusInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        status:
+          description: New order status
+          example: en_preparacion
+          type: string
+      required:
+      - status
+      type: object
+    UpdateProductInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateProductInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        allows_mixed_flavors:
+          description: Whether mixed flavors are allowed
+          example: false
+          type: boolean
+        ball_based:
+          description: Whether pricing is ball-based
+          example: false
+          type: boolean
+        ball_quantity:
+          description: Ball quantity
+          example: 0
+          format: int64
+          type: integer
+        category_id:
+          description: Category ID
+          format: uuid
+          type: string
+        description:
+          description: Product description
+          type: string
+        exclude_global_addons:
+          description: Whether global addons are excluded
+          example: false
+          type: boolean
+        exclude_global_flavors:
+          description: Whether global flavors are excluded
+          example: false
+          type: boolean
+        image_path:
+          description: Image object path
+          type: string
+        is_available:
+          description: Whether the product is available
+          example: true
+          type: boolean
+        name:
+          description: Product name
+          example: Stracciatella
+          type: string
+        price:
+          description: Product price
+          example: 5.5
+          format: double
+          type: number
+      type: object
+    UpdateUserInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UpdateUserInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        email:
+          description: User email
+          example: john@example.com
+          type: string
+        name:
+          description: User name
+          example: John Doe
+          type: string
+        phone:
+          description: User phone
+          example: '+50688881234'
+          type: string
+        status:
+          description: User status
+          example: active
+          type: string
+        user_type:
+          description: User type
+          example: regular
+          type: string
+      type: object
+    UploadImageInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UploadImageInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        Image:
+          $ref: '#/components/schemas/FormFile'
+          description: Image file (JPEG, PNG, WebP)
+      required:
+      - Image
+      type: object
+    UploadImageOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UploadImageOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        message:
+          description: Result message
+          example: Image uploaded successfully
+          type: string
+        path:
+          description: Uploaded image path
+          example: products/abc123.png
+          type: string
+      required:
+      - path
+      - message
+      type: object
+    User:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/User.json
+          format: uri
+          readOnly: true
+          type: string
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        email:
+          description: User email
+          example: john@example.com
+          type: string
+        id:
+          description: User ID
+          format: uuid
+          type: string
+        name:
+          description: User name
+          example: John Doe
+          type: string
+        phone:
+          description: User phone
+          example: '+50688881234'
+          type: string
+        status:
+          description: User status
+          example: active
+          type: string
+        updated_at:
+          description: Last update timestamp
+          format: date-time
+          type: string
+        user_type:
+          description: User type
+          example: regular
+          type: string
+      required:
+      - id
+      - name
+      - user_type
+      - phone
+      - status
+      - created_at
+      - updated_at
+      type: object
+    UserOrder:
+      additionalProperties: false
+      properties:
+        created_at:
+          description: Creation timestamp
+          format: date-time
+          type: string
+        customer_name:
+          description: Customer name
+          example: John Doe
+          type: string
+        customer_phone:
+          description: Customer phone
+          example: '+50688881234'
+          type: string
+        id:
+          description: Order ID
+          format: uuid
+          type: string
+        order_number:
+          description: Order number
+          example: ORD-0001
+          type: string
+        status:
+          description: Order status
+          example: entregada
+          type: string
+        total_amount:
+          description: Order total
+          example: 11
+          format: double
+          type: number
+      required:
+      - id
+      - order_number
+      - customer_name
+      - customer_phone
+      - total_amount
+      - status
+      - created_at
+      type: object
+    UserOrdersOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          example: /api/v1/schemas/UserOrdersOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        orders:
+          description: User orders
+          items:
+            $ref: '#/components/schemas/UserOrder'
+          nullable: true
+          type: array
+      required:
+      - orders
+      type: object

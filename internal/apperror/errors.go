@@ -214,3 +214,10 @@ func StatusCode(err error) int {
 		return http.StatusInternalServerError
 	}
 }
+
+// IsAppError reports whether err maps to a recognized, non-internal application
+// error status. It can be used to decide whether an error message is safe to
+// expose to clients.
+func IsAppError(err error) bool {
+	return StatusCode(err) != http.StatusInternalServerError
+}

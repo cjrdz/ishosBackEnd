@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/cjrdz/ishosBackEnd/internal/auditctx"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 )
 
@@ -14,6 +15,15 @@ const (
 	ipContextKey    contextKey = "audit_client_ip"
 	actorContextKey contextKey = "audit_actor_id"
 )
+
+// LogSpec is an alias so callers can continue using the audit package name.
+type LogSpec = auditctx.LogSpec
+
+// WithLogSpec attaches a transactional audit log specification to the context.
+// Repositories read it back with auditctx.LogSpecFromContext.
+func WithLogSpec(ctx context.Context, spec LogSpec) context.Context {
+	return auditctx.WithLogSpec(ctx, spec)
+}
 
 // WithIP stores the client IP address in the context for audit logging.
 func WithIP(ctx context.Context, ip string) context.Context {

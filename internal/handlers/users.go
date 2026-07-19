@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -22,10 +25,11 @@ import (
 
 type UserHandler struct {
 	customerSvc services.CustomerServiceInterface
+	auditSvc    audit.Service
 }
 
-func NewUserHandler(svc services.CustomerServiceInterface) *UserHandler {
-	return &UserHandler{customerSvc: svc}
+func NewUserHandler(svc services.CustomerServiceInterface, auditSvc audit.Service) *UserHandler {
+	return &UserHandler{customerSvc: svc, auditSvc: auditSvc}
 }
 
 type userResponse struct {
@@ -151,18 +155,31 @@ func (h *UserHandler) createOrUpsert(r *http.Request, w http.ResponseWriter, sta
 		Status:   body.Status,
 	}
 
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
 	var result dto.Customer
 	var err error
 	if upsert {
-		result, err = h.customerSvc.UpsertByPhone(r.Context(), input)
+		result, err = h.customerSvc.UpsertByPhone(ctx, input)
 	} else {
-		result, err = h.customerSvc.Create(r.Context(), input)
+		result, err = h.customerSvc.Create(ctx, input)
 	}
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create user")
 		response.Error(w, http.StatusInternalServerError, "No se pudo crear usuario")
 		return
 	}
+
+	action := audit.ActionUserCreated
+	if upsert {
+		action = audit.ActionUserUpserted
+	}
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, action, actorID, fmt.Sprintf("user:%s", result.ID.String()), map[string]any{
+		"name":  result.Name,
+		"phone": result.Phone,
+	}, ip)
 
 	response.JSON(w, statusCode, toUserResponse(result))
 }
@@ -192,7 +209,10 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.customerSvc.Update(r.Context(), id, repository.UpdateCustomerInput{
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	updated, err := h.customerSvc.Update(ctx, id, repository.UpdateCustomerInput{
 		Name:     body.Name,
 		UserType: body.UserType,
 		Phone:    body.Phone,
@@ -209,6 +229,12 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionUserUpdated, actorID, fmt.Sprintf("user:%s", id.String()), map[string]any{
+		"name":  updated.Name,
+		"phone": updated.Phone,
+	}, ip)
+
 	response.JSON(w, http.StatusOK, toUserResponse(updated))
 }
 
@@ -219,7 +245,10 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.customerSvc.Delete(r.Context(), id); err != nil {
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	if err := h.customerSvc.Delete(ctx, id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Usuario no encontrado")
 			return
@@ -228,6 +257,9 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "No se pudo eliminar usuario")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionUserDeleted, actorID, fmt.Sprintf("user:%s", id.String()), nil, ip)
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Usuario eliminado"})
 }

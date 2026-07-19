@@ -95,9 +95,9 @@ Some operations span multiple tables or domains and must be atomic. `OrderStore`
 | `UpdateStatus` | Change order status (no stock change) |
 | `UpdateStatusWithStockAdjustment` | Change status **and** deduct or restore stock atomically |
 
-The stock-adjustment methods open a single Bun transaction, perform the order mutation, then call `InventoryBunRepository` (constructed with the transaction's `bun.Tx`) to adjust stock. If either step fails, both roll back.
+The stock-adjustment methods use the shared `runInTx` helper, perform the order mutation, then call `InventoryBunRepository` (constructed with the transaction's `bun.Tx`) to adjust stock. If either step fails, both roll back.
 
-`InventoryBunRepository` accepts `bun.IDB` (either `*bun.DB` or `bun.Tx`) so it can run standalone or inside an existing transaction via its `withTx` helper.
+`runInTx` accepts optional `*sql.TxOptions`, so callers can request read-only transactions for reporting queries. `InventoryBunRepository` accepts `bun.IDB` (either `*bun.DB` or `bun.Tx`) so it can run standalone or inside an existing transaction.
 
 #### Idempotent order creation
 
@@ -118,7 +118,7 @@ back-button resubmits.
    **inside the same transaction** as the order. This atomicity means:
    - If two requests race with the same key, only one transaction commits.
    - The loser's transaction (including its order row) is rolled back by the
-     `defer tx.Rollback()` in `OrderStore.CreateOrder`.
+     shared `runInTx` helper used in `OrderStore.CreateOrder`.
    - The service catches the unique-violation error and fetches the winning
      order instead of surfacing a conflict.
 5. The key is scoped to a single logical order. After a successful order the
@@ -149,15 +149,48 @@ func (o *Order) Approve(reviewer string) error {
 }
 ```
 
+### Transactional audit logging
+
+Sensitive operations are audited inside the same database transaction as the
+mutation. The service layer attaches an `audit.LogSpec` to the context:
+
+```go
+ctx := audit.WithLogSpec(ctx, audit.LogSpec{
+    Action:  audit.ActionOrderApproved,
+    ActorID: reviewerID,
+    IP:      audit.IPFromContext(ctx),
+    Changes: map[string]any{"order_number": order.OrderNumber},
+})
+updated, err := s.orderRepo.Approve(ctx, id, &reviewerID)
+```
+
+The repository reads the spec with `auditctx.LogSpecFromContext` and writes the
+audit record using the open `bun.Tx`. If the mutation rolls back, the audit
+record rolls back with it.
+
+### OpenAPI contract
+
+The API contract is generated from source with Huma in docs-only mode. Keep it
+up to date after adding or changing endpoints:
+
+```bash
+go run ./cmd/api openapi > api/openapi.yaml
+```
+
+The same spec is served live at `/openapi.yaml` and `/openapi.json`, and an
+interactive Scalar UI renders it at `/docs` (see `internal/openapi/docs.go`).
+
 ---
 
 ## Key Rules
 
 🔒 **Security**
 - ✅ Use Bun ORM for ALL queries (parameterized, SQL injection prevention)
-- ✅ Log sensitive operations (via domain events)
-- ✅ Validate input in handlers
+- ✅ Log sensitive operations transactionally (attach `audit.LogSpec` to context; repositories call the audit logger inside the mutation transaction)
+- ✅ Validate input in handlers; all JSON parsing goes through the shared `decodeJSON` helper
 - ✅ Auth via HttpOnly cookie (SameSite=Lax, no JS-accessible tokens)
+- ✅ Sanitize fallback error messages so internal details are not leaked
+- ✅ Harden file uploads (dimensions, extension/content-type match, folder allowlist)
 - ❌ Never use raw SQL or hardcode secrets
 - ❌ No `X-CSRF-Token` in CORS headers (SameSite=Lax covers CSRF)
 
@@ -188,7 +221,9 @@ func (o *Order) Approve(reviewer string) error {
 4. Add repository method if needed
 5. Wire route in `internal/server/server.go`
 6. Add tests (unit test for routing, integration test if DB is involved)
-7. Update `docs/API.md`
+7. Register the Huma operation in `internal/openapi/openapi.go` and update `internal/openapi/types.go`
+8. Regenerate the contract: `go run ./cmd/api openapi > api/openapi.yaml`
+9. Update the live `/docs` UI by regenerating the OpenAPI contract (`go run ./cmd/api openapi > api/openapi.yaml`)
 
 ### Add a database entity
 1. Add model: `internal/models/models.go`
@@ -293,7 +328,7 @@ Repository integration tests (`internal/repository/`) call `t.Skipf` if PostgreS
 
 ## Need More Details?
 
-- **Endpoints:** See `docs/API.md`
+- **Endpoints:** See the interactive docs at `/docs` or the OpenAPI spec at `/openapi.yaml`
 - **Deployment:** See `docs/DEPLOYMENT.md`
 
 ---

@@ -7,7 +7,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -15,9 +14,12 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/auditctx"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/models"
 )
+
+const idempotencyKeyTTL = 30 * 24 * time.Hour // 30 days
 
 // StoreOrderItemInput is the raw order item supplied to OrderStore.
 type StoreOrderItemInput struct {
@@ -70,14 +72,32 @@ type productResolver interface {
 
 // OrderStore implements transactional order creation and update.
 type OrderStore struct {
-	db          *bun.DB
+	db          bun.IDB
 	productRepo productResolver
 	enrichment  EnrichmentService
+	auditSvc    transactionalAuditLogger
 }
 
 // NewOrderStore creates a new transactional order store.
-func NewOrderStore(db *bun.DB, productRepo productResolver, enrichment EnrichmentService) *OrderStore {
-	return &OrderStore{db: db, productRepo: productRepo, enrichment: enrichment}
+// An optional audit service can be supplied to enable transactional audit
+// logging for mutating operations.
+func NewOrderStore(db bun.IDB, productRepo productResolver, enrichment EnrichmentService, auditSvc ...transactionalAuditLogger) *OrderStore {
+	s := &OrderStore{db: db, productRepo: productRepo, enrichment: enrichment}
+	if len(auditSvc) > 0 {
+		s.auditSvc = auditSvc[0]
+	}
+	return s
+}
+
+func (s *OrderStore) maybeLog(ctx context.Context, tx bun.Tx, orderID uuid.UUID) error {
+	if s.auditSvc == nil {
+		return nil
+	}
+	spec, ok := auditctx.LogSpecFromContext(ctx)
+	if !ok {
+		return nil
+	}
+	return s.auditSvc.LogWithDB(ctx, tx, spec.Action, spec.ActorID, fmt.Sprintf("order:%s", orderID), spec.Changes, spec.IP)
 }
 
 // FindOrderByIdempotencyKey returns the order previously created for the
@@ -109,120 +129,130 @@ func (s *OrderStore) FindOrderByIdempotencyKey(ctx context.Context, key uuid.UUI
 // CreateOrder creates a new order with its items inside a single transaction.
 // It validates products, enriches customizations, and computes the total amount.
 func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dto.Order, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return dto.Order{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
+	var result dto.Order
 
-	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
-	if err != nil {
-		return dto.Order{}, err
-	}
+	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
+		total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
+		if err != nil {
+			return err
+		}
 
-	now := time.Now()
-	order := models.Order{
-		ID:              uuid.New(),
-		OrderNumber:     input.OrderNumber,
-		CustomerID:      input.CustomerID,
-		CustomerName:    input.CustomerName,
-		CustomerPhone:   input.CustomerPhone,
-		CustomerEmail:   input.CustomerEmail,
-		CustomerIP:      input.CustomerIP,
-		TotalAmount:     total,
-		Status:          models.OrderStatusPendienteRevision,
-		PaymentMethod:   models.OrderPaymentMethod(input.PaymentMethod),
-		PaymentStatus:   models.OrderPaymentStatusPendiente,
-		OrderType:       models.OrderType(input.OrderType),
-		TableNumber:     input.TableNumber,
-		Notes:           input.Notes,
-		CreatedByUserID: input.CreatedByID,
-		StatusTimestamps: map[string]time.Time{
-			string(models.OrderStatusPendienteRevision): now,
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-
-	if _, err := tx.NewInsert().Model(&order).Exec(ctx); err != nil {
-		return dto.Order{}, err
-	}
-
-	// Record the idempotency key in the same transaction as the order. A
-	// unique-constraint violation here means a concurrent request with the
-	// same key already won the race; the caller can fetch the winning order.
-	if input.IdempotencyKey != nil {
-		ikRow := models.IdempotencyKey{
-			Key:       *input.IdempotencyKey,
-			OrderID:   order.ID,
+		now := time.Now()
+		order := models.Order{
+			ID:              uuid.New(),
+			OrderNumber:     input.OrderNumber,
+			CustomerID:      input.CustomerID,
+			CustomerName:    input.CustomerName,
+			CustomerPhone:   input.CustomerPhone,
+			CustomerEmail:   input.CustomerEmail,
+			CustomerIP:      input.CustomerIP,
+			TotalAmount:     total,
+			Status:          models.OrderStatusPendienteRevision,
+			PaymentMethod:   models.OrderPaymentMethod(input.PaymentMethod),
+			PaymentStatus:   models.OrderPaymentStatusPendiente,
+			OrderType:       models.OrderType(input.OrderType),
+			TableNumber:     input.TableNumber,
+			Notes:           input.Notes,
+			CreatedByUserID: input.CreatedByID,
+			StatusTimestamps: map[string]time.Time{
+				string(models.OrderStatusPendienteRevision): now,
+			},
 			CreatedAt: now,
+			UpdatedAt: now,
 		}
-		if _, err := tx.NewInsert().Model(&ikRow).Exec(ctx); err != nil {
-			return dto.Order{}, err
-		}
-	}
 
-	if err := s.createItems(ctx, tx, order.ID, snapshots); err != nil {
+		if _, err := tx.NewInsert().Model(&order).Exec(ctx); err != nil {
+			return err
+		}
+
+		// Record the idempotency key in the same transaction as the order. A
+		// unique-constraint violation here means a concurrent request with the
+		// same key already won the race; the caller can fetch the winning order.
+		if input.IdempotencyKey != nil {
+			ikRow := models.IdempotencyKey{
+				Key:       *input.IdempotencyKey,
+				OrderID:   order.ID,
+				CreatedAt: now,
+				ExpiresAt: now.Add(idempotencyKeyTTL),
+			}
+			if _, err := tx.NewInsert().Model(&ikRow).Exec(ctx); err != nil {
+				return err
+			}
+		}
+
+		if err := s.createItems(ctx, tx, order.ID, snapshots); err != nil {
+			return err
+		}
+
+		if err := s.maybeLog(ctx, tx, order.ID); err != nil {
+			return err
+		}
+
+		result = s.toDTOOrder(order, snapshots)
+		return nil
+	})
+	if err != nil {
 		return dto.Order{}, err
 	}
-
-	if err := tx.Commit(); err != nil {
-		return dto.Order{}, err
-	}
-
-	return s.toDTOOrder(order, snapshots), nil
+	return result, nil
 }
 
 // UpdateOrder updates an order and replaces its items inside a single transaction.
 // When Items is empty, only the order metadata is updated and existing items are kept.
 func (s *OrderStore) UpdateOrder(ctx context.Context, id uuid.UUID, input StoreUpdateOrderInput) (dto.Order, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	var result dto.Order
+
+	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
+		existingOrder, snapshots, err := s.updateOrderOnDB(ctx, tx, id, input)
+		if err != nil {
+			return err
+		}
+		if err := s.maybeLog(ctx, tx, id); err != nil {
+			return err
+		}
+		result = s.toDTOOrder(existingOrder, snapshots)
+		return nil
+	})
 	if err != nil {
 		return dto.Order{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	existingOrder, snapshots, err := s.updateOrderOnDB(ctx, tx, id, input)
-	if err != nil {
-		return dto.Order{}, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return dto.Order{}, err
-	}
-	return s.toDTOOrder(existingOrder, snapshots), nil
+	return result, nil
 }
 
 // UpdateOrderWithStockAdjustment updates an order and replaces its items, then
 // applies an inventory adjustment inside the same transaction. This keeps order
 // data and stock consistent when an in-progress order's items change.
 func (s *OrderStore) UpdateOrderWithStockAdjustment(ctx context.Context, id uuid.UUID, input StoreUpdateOrderInput, deductions []StockDeductionInput, restore bool) (dto.Order, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	var result dto.Order
+
+	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
+		existingOrder, snapshots, err := s.updateOrderOnDB(ctx, tx, id, input)
+		if err != nil {
+			return err
+		}
+
+		invRepo := NewInventoryBunRepository(tx)
+		if len(deductions) > 0 {
+			if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
+				return err
+			}
+		} else if restore {
+			if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
+				return err
+			}
+		}
+
+		if err := s.maybeLog(ctx, tx, id); err != nil {
+			return err
+		}
+
+		result = s.toDTOOrder(existingOrder, snapshots)
+		return nil
+	})
 	if err != nil {
 		return dto.Order{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	existingOrder, snapshots, err := s.updateOrderOnDB(ctx, tx, id, input)
-	if err != nil {
-		return dto.Order{}, err
-	}
-
-	invRepo := NewInventoryBunRepository(tx)
-	if len(deductions) > 0 {
-		if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
-			return dto.Order{}, err
-		}
-	} else if restore {
-		if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
-			return dto.Order{}, err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return dto.Order{}, err
-	}
-	return s.toDTOOrder(existingOrder, snapshots), nil
+	return result, nil
 }
 
 // updateOrderOnDB performs the actual order metadata and item replacement
@@ -276,39 +306,59 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 
 // UpdateStatus updates an order's status.
 func (s *OrderStore) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
-	return s.updateStatusOnDB(ctx, s.db, id, status)
+	var result dto.Order
+
+	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
+		updated, err := s.updateStatusOnDB(ctx, tx, id, status)
+		if err != nil {
+			return err
+		}
+		if err := s.maybeLog(ctx, tx, id); err != nil {
+			return err
+		}
+		result = updated
+		return nil
+	})
+	if err != nil {
+		return dto.Order{}, err
+	}
+	return result, nil
 }
 
 // UpdateStatusWithStockAdjustment updates an order's status and applies an
 // inventory adjustment inside the same transaction so that stock and status are
 // committed atomically. If the adjustment fails, the status change is rolled back.
 func (s *OrderStore) UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []StockDeductionInput, restore bool) (dto.Order, error) {
-	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
+	var result dto.Order
+
+	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
+		updated, err := s.updateStatusOnDB(ctx, tx, id, status)
+		if err != nil {
+			return err
+		}
+
+		invRepo := NewInventoryBunRepository(tx)
+		if len(deductions) > 0 {
+			if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
+				return err
+			}
+		} else if restore {
+			if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
+				return err
+			}
+		}
+
+		if err := s.maybeLog(ctx, tx, id); err != nil {
+			return err
+		}
+
+		result = updated
+		return nil
+	})
 	if err != nil {
 		return dto.Order{}, err
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	updated, err := s.updateStatusOnDB(ctx, tx, id, status)
-	if err != nil {
-		return dto.Order{}, err
-	}
-
-	invRepo := NewInventoryBunRepository(tx)
-	if len(deductions) > 0 {
-		if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
-			return dto.Order{}, err
-		}
-	} else if restore {
-		if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
-			return dto.Order{}, err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return dto.Order{}, err
-	}
-	return updated, nil
+	return result, nil
 }
 
 // updateStatusOnDB updates an order's status against the supplied DB or transaction.
@@ -408,10 +458,16 @@ func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolv
 	return total, snapshots, nil
 }
 
-// createItems persists resolved item snapshots against an open transaction.
+// createItems persists resolved item snapshots against an open transaction using
+// a single bulk insert instead of one query per item.
 func (s *OrderStore) createItems(ctx context.Context, db bun.IDB, orderID uuid.UUID, snapshots []itemSnapshot) error {
-	for _, item := range snapshots {
-		model := models.OrderItem{
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	items := make([]models.OrderItem, len(snapshots))
+	for i, item := range snapshots {
+		items[i] = models.OrderItem{
 			ID:                uuid.New(),
 			OrderID:           orderID,
 			ProductID:         item.product.ID,
@@ -422,11 +478,21 @@ func (s *OrderStore) createItems(ctx context.Context, db bun.IDB, orderID uuid.U
 			Subtotal:          item.unitPrice * float64(item.quantity),
 			Customizations:    item.customizations,
 		}
-		if _, err := db.NewInsert().Model(&model).Exec(ctx); err != nil {
-			return err
-		}
+	}
+
+	if _, err := db.NewInsert().Model(&items).Exec(ctx); err != nil {
+		return err
 	}
 	return nil
+}
+
+// CleanupExpiredIdempotencyKeys removes idempotency keys past their TTL.
+func (s *OrderStore) CleanupExpiredIdempotencyKeys(ctx context.Context, now time.Time) (int64, error) {
+	res, err := s.db.NewDelete().Model((*models.IdempotencyKey)(nil)).Where("expires_at <= ?", now.UTC()).Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("cleanup expired idempotency keys: %w", err)
+	}
+	return res.RowsAffected()
 }
 
 // toDTOOrder builds a dto.Order from a persisted models.Order and resolved snapshots.

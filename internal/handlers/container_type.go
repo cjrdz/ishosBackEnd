@@ -1,25 +1,29 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
+	"github.com/cjrdz/ishosBackEnd/internal/audit"
+	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
 
 type ContainerTypeHandler struct {
-	service services.ContainerTypeServiceInterface
+	service  services.ContainerTypeServiceInterface
+	auditSvc audit.Service
 }
 
-func NewContainerTypeHandler(svc services.ContainerTypeServiceInterface) *ContainerTypeHandler {
+func NewContainerTypeHandler(svc services.ContainerTypeServiceInterface, auditSvc audit.Service) *ContainerTypeHandler {
 	return &ContainerTypeHandler{
-		service: svc,
+		service:  svc,
+		auditSvc: auditSvc,
 	}
 }
 
@@ -61,7 +65,7 @@ func (h *ContainerTypeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		BallsPerContainer int    `json:"balls_per_container"`
 		IsCustom          bool   `json:"is_custom"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -71,11 +75,21 @@ func (h *ContainerTypeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.Create(r.Context(), body.Name, body.BallsPerContainer, body.IsCustom)
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	item, err := h.service.Create(ctx, body.Name, body.BallsPerContainer, body.IsCustom)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to create container type")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionContainerTypeCreated, actorID, fmt.Sprintf("container_type:%s", item.ID.String()), map[string]any{
+		"name":                item.Name,
+		"balls_per_container": item.BallsPerContainer,
+		"is_custom":           item.IsCustom,
+	}, ip)
 
 	response.JSON(w, http.StatusCreated, item)
 }
@@ -94,12 +108,15 @@ func (h *ContainerTypeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		IsCustom          *bool   `json:"is_custom"`
 		IsActive          *bool   `json:"is_active"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
-	item, err := h.service.Update(r.Context(), id, body.Name, body.BallsPerContainer, body.IsCustom, body.IsActive)
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	item, err := h.service.Update(ctx, id, body.Name, body.BallsPerContainer, body.IsCustom, body.IsActive)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Container type not found")
@@ -108,6 +125,14 @@ func (h *ContainerTypeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to update container type")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionContainerTypeUpdated, actorID, fmt.Sprintf("container_type:%s", id.String()), map[string]any{
+		"name":                item.Name,
+		"balls_per_container": item.BallsPerContainer,
+		"is_custom":           item.IsCustom,
+		"is_active":           item.IsActive,
+	}, ip)
 
 	response.JSON(w, http.StatusOK, item)
 }
@@ -120,7 +145,10 @@ func (h *ContainerTypeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Delete(r.Context(), id); err != nil {
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+
+	if err := h.service.Delete(ctx, id); err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			response.Error(w, http.StatusNotFound, "Container type not found")
 			return
@@ -128,6 +156,9 @@ func (h *ContainerTypeHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to delete container type")
 		return
 	}
+
+	ip := auth.ClientIP(r)
+	_ = h.auditSvc.Log(ctx, audit.ActionContainerTypeDeleted, actorID, fmt.Sprintf("container_type:%s", id.String()), nil, ip)
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Container type deleted"})
 }

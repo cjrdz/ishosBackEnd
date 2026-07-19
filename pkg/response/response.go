@@ -26,10 +26,16 @@ func Error(w http.ResponseWriter, status int, msg string) {
 
 // WriteOrError writes a successful JSON response or maps an error to HTTP response.
 // This is the primary handler exit point: WriteOrError(w, result, err).
+// Error messages are only exposed for recognized application errors; internal
+// errors are returned with a generic message.
 func WriteOrError(w http.ResponseWriter, result interface{}, err error) {
 	if err != nil {
 		status := apperror.StatusCode(err)
-		Error(w, status, err.Error())
+		msg := "An unexpected error occurred"
+		if apperror.IsAppError(err) {
+			msg = err.Error()
+		}
+		Error(w, status, msg)
 		return
 	}
 	JSON(w, http.StatusOK, result)

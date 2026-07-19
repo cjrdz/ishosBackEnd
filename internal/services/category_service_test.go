@@ -37,6 +37,15 @@ func (s *categoryRepoStub) FindActive(ctx context.Context) ([]dto.Category, erro
 	return nil, nil
 }
 
+func (s *categoryRepoStub) FindAllPaginated(ctx context.Context, showAll bool, page, perPage int) ([]dto.Category, int, error) {
+	s.listCalls++
+	if s.listFn != nil {
+		items, err := s.listFn(ctx, showAll)
+		return items, len(items), err
+	}
+	return nil, 0, nil
+}
+
 func (s *categoryRepoStub) FindByID(context.Context, uuid.UUID) (dto.Category, error) {
 	return dto.Category{}, nil
 }
@@ -90,6 +99,24 @@ func TestCategoryServiceList_UsesCacheOnSecondCall(t *testing.T) {
 
 	if repo.listCalls != 1 {
 		t.Fatalf("repo list calls = %d, want %d", repo.listCalls, 1)
+	}
+}
+
+func TestCategoryServiceListPaginated_ReturnsPageAndTotal(t *testing.T) {
+	repo := &categoryRepoStub{listFn: func(_ context.Context, _ bool) ([]dto.Category, error) {
+		return []dto.Category{{Name: "Gelatos"}, {Name: "Sorbetes"}}, nil
+	}}
+	svc := NewCategoryService(repo)
+
+	cats, total, err := svc.ListPaginated(context.Background(), false, 1, 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cats) != 2 {
+		t.Fatalf("expected 2 categories from stub, got %d", len(cats))
+	}
+	if total != 2 {
+		t.Fatalf("expected total 2, got %d", total)
 	}
 }
 

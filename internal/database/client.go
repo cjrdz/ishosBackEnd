@@ -10,21 +10,23 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
+
+	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
 
-// OpenRawDB opens a *sql.DB from a PostgreSQL URL.
-func OpenRawDB(databaseURL string) (*stdsql.DB, error) {
-	pgCfg, err := pgx.ParseConfig(databaseURL)
+// OpenRawDB opens a *sql.DB from the configured PostgreSQL URL and applies
+// the operator-tuned connection pool settings.
+func OpenRawDB(cfg *config.Config) (*stdsql.DB, error) {
+	pgCfg, err := pgx.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
 
 	rawDB := stdlib.OpenDB(*pgCfg)
-	// Pool sized for a single-instance API: enough headroom without exhausting Postgres connection slots.
-	rawDB.SetMaxOpenConns(10)
-	rawDB.SetMaxIdleConns(5)
-	rawDB.SetConnMaxIdleTime(5 * time.Minute)
-	rawDB.SetConnMaxLifetime(30 * time.Minute)
+	rawDB.SetMaxOpenConns(cfg.DBMaxOpenConns)
+	rawDB.SetMaxIdleConns(cfg.DBMaxIdleConns)
+	rawDB.SetConnMaxIdleTime(time.Duration(cfg.DBConnMaxIdleTimeMinutes) * time.Minute)
+	rawDB.SetConnMaxLifetime(time.Duration(cfg.DBConnMaxLifetimeMinutes) * time.Minute)
 
 	// Warm up the connection pool so the first real request doesn't pay
 	// connection-establishment cost.

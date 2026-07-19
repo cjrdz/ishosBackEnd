@@ -25,7 +25,16 @@ func NewAuditLogBunRepository(db bun.IDB) *AuditLogBunRepository {
 
 // Log creates an audit entry for a sensitive action.
 func (r *AuditLogBunRepository) Log(ctx context.Context, action, actorID, resource string, changes map[string]any, ip string) error {
-	if r.db == nil {
+	return r.logWithDB(ctx, r.db, action, actorID, resource, changes, ip)
+}
+
+// LogWithDB creates an audit entry inside the supplied bun transaction or DB.
+func (r *AuditLogBunRepository) LogWithDB(ctx context.Context, db bun.IDB, action, actorID, resource string, changes map[string]any, ip string) error {
+	return r.logWithDB(ctx, db, action, actorID, resource, changes, ip)
+}
+
+func (r *AuditLogBunRepository) logWithDB(ctx context.Context, db bun.IDB, action, actorID, resource string, changes map[string]any, ip string) error {
+	if db == nil {
 		return nil
 	}
 
@@ -45,7 +54,7 @@ func (r *AuditLogBunRepository) Log(ctx context.Context, action, actorID, resour
 		entry.Changes = changes
 	}
 
-	if _, err := r.db.NewInsert().Model(&entry).Exec(ctx); err != nil {
+	if _, err := db.NewInsert().Model(&entry).Exec(ctx); err != nil {
 		return fmt.Errorf("audit log: %w", err)
 	}
 	return nil
