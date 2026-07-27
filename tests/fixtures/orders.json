@@ -1,0 +1,13 @@
+[
+  {
+    "customer_name": "Maria Garcia",
+    "customer_phone": "+50688887777",
+    "payment_method": "efectivo",
+    "items": [
+      {
+        "product_name": "Gelato de Chocolate",
+        "quantity": 2
+      }
+    ]
+  }
+]

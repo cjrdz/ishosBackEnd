@@ -1,0 +1,21 @@
+meta {
+  name: UploadImage
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:8080/api/v1/upload/image
+  body: multipartForm
+  auth: inherit
+}
+
+body:multipart-form {
+  image: @./sample.jpg
+  folder: products
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

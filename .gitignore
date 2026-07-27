@@ -1,0 +1,56 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/server
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+*.prof
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directory
+vendor/
+
+# PocketBase runtime data (SQLite auth DB, WAL files, logs, etc.)
+# Exclude the whole directory — *.db alone misses *.db-shm, *.db-wal, and logs/
+pb_data/
+pb_public/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE / Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Build output
+/bin/
+/dist/
+/tmp/
+
+# Debug
+debug
+__debug_bin
+
+# githints local change-tracking store (store.db, salt, and rendered markdown)
+.githints/
+AGENTS.md
+tests/testAPI

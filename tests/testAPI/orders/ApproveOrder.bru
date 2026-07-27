@@ -1,0 +1,22 @@
+meta {
+  name: ApproveOrder
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:8080/api/v1/orders/{{orderId}}/approve
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "force": false
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

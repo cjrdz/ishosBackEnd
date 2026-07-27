@@ -1,0 +1,111 @@
+[
+  {
+    "categoria ": "conos y barquillos ",
+    "nombre ": "cono sencillo",
+    "# bolas ": "1",
+    "precio ": " $0.90 "
+  },
+  {
+    "categoria ": "conos y barquillos ",
+    "nombre ": "cono dobble ",
+    "# bolas ": "2",
+    "precio ": " $1.75 "
+  },
+  {
+    "categoria ": "conos y barquillos ",
+    "nombre ": "barquillo sencillo ",
+    "# bolas ": "1",
+    "precio ": " $1.25 "
+  },
+  {
+    "categoria ": "conos y barquillos ",
+    "nombre ": "barquillo doble",
+    "# bolas ": "2",
+    "precio ": " $1.85 "
+  },
+  {
+    "categoria ": "vasos y tarrinas",
+    "nombre ": "vasito",
+    "# bolas ": "2",
+    "precio ": " $1.25 "
+  },
+  {
+    "categoria ": "vasos y tarrinas",
+    "nombre ": "vaso fruta",
+    "# bolas ": "2",
+    "precio ": " $2.00 "
+  },
+  {
+    "categoria ": "vasos y tarrinas",
+    "nombre ": "sundae",
+    "# bolas ": "2",
+    "precio ": " $2.50 "
+  },
+  {
+    "categoria ": "vasos y tarrinas",
+    "nombre ": "tarrina ",
+    "# bolas ": "3",
+    "precio ": " $2.50 "
+  },
+  {
+    "categoria ": "vasos y tarrinas",
+    "nombre ": "tarrina frutal",
+    "# bolas ": "3",
+    "precio ": " $2.85 "
+  },
+  {
+    "categoria ": "vasos y tarrinas",
+    "nombre ": "banana split",
+    "# bolas ": "3",
+    "precio ": " $3.85 "
+  },
+  {
+    "categoria ": "bowls",
+    "nombre ": "bow tradicional",
+    "# bolas ": "4",
+    "precio ": " $3.25 "
+  },
+  {
+    "numero": "12",
+    "categoria ": "bowls",
+    "nombre ": "bowl izalco",
+    "# bolas ": "4",
+    "precio ": " $3.85 "
+  },
+  {
+    "categoria ": "bowls",
+    "nombre ": "bowl apaneca",
+    "# bolas ": "4",
+    "precio ": " $4.50 "
+  },
+  {
+    "categoria ": "extras",
+    "nombre ": "cajita mix",
+    "# bolas ": "6",
+    "precio ": " $5.00 "
+  },
+  {
+    "categoria ": "extras",
+    "nombre ": "pinta ",
+    "# bolas ": "6",
+    "precio ": " $3.25 "
+  },
+  {
+    "categoria ": "extras",
+    "nombre ": "litro ",
+    "# bolas ": "12",
+    "precio ": " $6.50 "
+  },
+  {
+    "categoria ": "extras",
+    "nombre ": "malteada",
+    "# bolas ": "3",
+    "precio ": " $3.85 "
+  },
+  {
+    "categoria ": "extras",
+    "nombre ": "frappe",
+    "# bolas ": "3",
+    "precio ": " $2.50 "
+  }
+]

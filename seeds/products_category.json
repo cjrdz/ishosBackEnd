@@ -1,0 +1,66 @@
+[
+  {
+    "id": 1,
+    "name": "Extras",
+    "slug": "extras",
+    "description": "Varidad de productos extras",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 2,
+    "name": "Conos y Barquillos",
+    "slug": "conos-y-barquillos",
+    "description": "Conos y barquillos de diferentes tamaños",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 3,
+    "name": "Vasos y Tarrinas",
+    "slug": "vasos-y-tarrinas",
+    "description": "Vasos y tarrinas de diferentes tamaños",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 4,
+    "name": "Bowls",
+    "slug": "bowls",
+    "description": "Bowls de diferentes tamaños",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 5,
+    "name": "Para llevar",
+    "slug": "para-llevar",
+    "description": "Productos para llevar ",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 6,
+    "name": "Para Compartir",
+    "slug": "para-compartir",
+    "description": "Productos para compartir",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 7,
+    "name": "Chocobananos",
+    "slug": "chocobananos",
+    "description": "Chocobananos de con toppings al gusto",
+    "image": "",
+    "is_active": true
+  },
+  {
+    "id": 8,
+    "name": "Bebidas",
+    "slug": "bebidas",
+    "description": "Bebidas de diferentes tipos",
+    "image": "",
+    "is_active": true
+  }
+]

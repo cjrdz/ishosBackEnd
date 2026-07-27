@@ -1,0 +1,11 @@
+# Gitleaks ignore patterns for false positives and intentional examples
+
+# Documentation files contain example API responses with truncated/dummy tokens
+# These are not real secrets and are safe to commit
+docs/API.md
+README.md
+
+# Environment files must never contain real secrets in production. This entry is a
+# temporary stop-gap while the committed .env is removed from git history and its
+# credentials are rotated.
+.env

@@ -1,0 +1,15 @@
+meta {
+  name: LogoutAdmin
+  type: http
+  seq: 3
+}
+
+post {
+  url: http://localhost:8080/api/v1/auth/logout
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+}

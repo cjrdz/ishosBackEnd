@@ -1,0 +1,45 @@
+// logging.go — Request ID context helpers.
+package middleware
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/google/uuid"
+)
+
+// ctxKey is the type for context keys to avoid collisions.
+type ctxKey string
+
+const (
+	// requestIDKey stores the request ID in context.
+	requestIDKey ctxKey = "request_id"
+)
+
+// RequestID retrieves the request ID from context, or returns empty string if not found.
+func RequestID(ctx context.Context) string {
+	rid, ok := ctx.Value(requestIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return rid
+}
+
+// withRequestID stores a request ID in the context.
+func withRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey, id)
+}
+
+// RequestIDMiddleware adds a unique request ID to each request for tracing and logging.
+// The request ID is stored in context and exposed as X-Request-ID header,
+// so log lines can be correlated across a single request.
+func RequestIDMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestID := uuid.New().String()
+			ctx := withRequestID(r.Context(), requestID)
+			w.Header().Set("X-Request-ID", requestID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}

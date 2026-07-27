@@ -1,0 +1,26 @@
+meta {
+  name: PostCategories
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:8080/api/v1/categories
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "name": "Para Llevar",
+    "slug": "para-llevar",
+    "description": "Producto para llevar a casa",
+    "image_path": "NULL",
+    "display_order": 4
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

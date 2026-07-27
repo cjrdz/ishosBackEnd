@@ -1,0 +1,24 @@
+meta {
+  name: PatchAddon
+  type: http
+  seq: 3
+}
+
+patch {
+  url: http://localhost:8080/api/v1/addons/{{addonId}}
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "name": "Nueces Premium",
+    "price": 400,
+    "is_active": true
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

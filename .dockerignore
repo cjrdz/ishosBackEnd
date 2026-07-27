@@ -1,0 +1,13 @@
+.git
+.github
+.vscode
+.env
+.env.*
+!.env.example
+pb_data
+bin
+tests
+testAPI
+*.log
+coverage.out
+coverage.html

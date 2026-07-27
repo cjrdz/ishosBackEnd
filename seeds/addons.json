@@ -1,0 +1,44 @@
+[
+  {
+    "display_order": 1,
+    "name": "Mani",
+    "price": 0.35,
+    "group_name": "toppings",
+    "is_active": true
+  },
+  {
+    "display_order": 2,
+    "name": "Crispy",
+    "price": 0.35,
+    "group_name": "toppings",
+    "is_active": true
+  },
+  {
+    "display_order": 4,
+    "name": "Granola",
+    "price": 0.35,
+    "group_name": "toppings",
+    "is_active": true
+  },
+  {
+    "display_order": 10,
+    "name": "Jalea Maracuya",
+    "price": 0.35,
+    "group_name": "jalea",
+    "is_active": true
+  },
+  {
+    "display_order": 11,
+    "name": "Jalea Tamarindo",
+    "price": 0.35,
+    "group_name": "jalea",
+    "is_active": true
+  },
+  {
+    "display_order": 12,
+    "name": "Jalea Chocolate",
+    "price": 0.35,
+    "group_name": "jalea",
+    "is_active": true
+  }
+]
