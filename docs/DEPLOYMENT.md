@@ -35,6 +35,13 @@ feature/bugfix work  →  dev  →  sec  →  main
 
 - `v0.0.1` — initial clean baseline for all three branches.
 
+### Project history
+
+- `2026-07-27` — Clean baseline reset. All three branches (`main`, `sec`, `dev`)
+  were squashed to a single `v0.0.1` commit. GitHub Actions workflow runs,
+  artifacts, and deployment environments were removed. Old Railway deployments
+  were marked `REMOVED` so only the `v0.0.1` baseline deployment remains active.
+
 ## Build
 
 ```sh
