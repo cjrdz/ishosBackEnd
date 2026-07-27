@@ -188,10 +188,10 @@ type Order struct {
 	CustomerIP       *string              `bun:"customer_ip,type:varchar(255)"`
 	TotalAmount      float64              `bun:"total_amount,notnull"`
 	AmountReceived   *float64             `bun:"amount_received"`
-	Status           OrderStatus          "bun:\"status,notnull,type:varchar(40),default:\\\"pendiente_revision\\\"\""
-	PaymentMethod    OrderPaymentMethod   "bun:\"payment_method,notnull,type:varchar(20),default:\\\"efectivo\\\"\""
-	PaymentStatus    OrderPaymentStatus   "bun:\"payment_status,notnull,type:varchar(20),default:\\\"pendiente\\\"\""
-	OrderType        OrderType            "bun:\"order_type,notnull,type:varchar(20),default:\\\"para_llevar\\\"\""
+	Status           OrderStatus          `bun:"status,notnull,type:varchar(40),default:'pendiente_revision'"`
+	PaymentMethod    OrderPaymentMethod   `bun:"payment_method,notnull,type:varchar(20),default:'efectivo'"`
+	PaymentStatus    OrderPaymentStatus   `bun:"payment_status,notnull,type:varchar(20),default:'pendiente'"`
+	OrderType        OrderType            `bun:"order_type,notnull,type:varchar(20),default:'para_llevar'"`
 	TableNumber      *int                 `bun:"table_number"`
 	Notes            *string              `bun:"notes,type:text"`
 	RejectionReason  *string              `bun:"rejection_reason,type:text"`
