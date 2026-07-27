@@ -32,7 +32,13 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 		if err := ensureOrderArchiveIndex(ctx, db); err != nil {
 			return err
 		}
-		return ensureIdempotencyKeyExpiresAt(ctx, db)
+		if err := ensureIdempotencyKeyExpiresAt(ctx, db); err != nil {
+			return err
+		}
+		if err := ensureAmountReceivedColumn(ctx, db); err != nil {
+			return err
+		}
+		return ensureFreeToppingsColumn(ctx, db)
 	}
 
 	if err := createTables(ctx, db); err != nil {
@@ -208,6 +214,26 @@ func ensureOrderArchiveIndex(ctx context.Context, db *bun.DB) error {
 	_, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_orders_is_archived_created_at ON orders (is_archived, created_at DESC)`)
 	if err != nil {
 		return fmt.Errorf("create order archive index: %w", err)
+	}
+	return nil
+}
+
+func ensureAmountReceivedColumn(ctx context.Context, db *bun.DB) error {
+	_, err := db.ExecContext(ctx, `ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_received DOUBLE PRECISION`)
+	if err != nil {
+		return fmt.Errorf("add orders.amount_received column: %w", err)
+	}
+	return nil
+}
+
+func ensureFreeToppingsColumn(ctx context.Context, db *bun.DB) error {
+	_, err := db.ExecContext(ctx, `ALTER TABLE products ADD COLUMN IF NOT EXISTS free_toppings INTEGER NOT NULL DEFAULT 1`)
+	if err != nil {
+		return fmt.Errorf("add products.free_toppings column: %w", err)
+	}
+	_, err = db.ExecContext(ctx, `UPDATE products SET free_toppings = 1 WHERE free_toppings IS NULL OR free_toppings < 0`)
+	if err != nil {
+		return fmt.Errorf("backfill products.free_toppings: %w", err)
 	}
 	return nil
 }

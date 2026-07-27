@@ -168,7 +168,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 				selectedAddonGroups[s.normalizeAddonGroupName(selectedAddon.GroupName)] = true
 
 				groupName := s.normalizeAddonGroupName(selectedAddon.GroupName)
-				allowance := freeAddonAllowanceByGroup[groupName]
+				allowance := s.freeAllowanceForGroup(product, groupName)
 				if allowance > 0 && includedByGroupCount[groupName] < allowance {
 					includedByGroupCount[groupName]++
 					normalizedIncludedIDs = append(normalizedIncludedIDs, selectedAddon.ID.String())
@@ -365,6 +365,19 @@ func (s *OrderEnrichmentService) normalizeAddonGroupName(value string) string {
 		return defaultAddonGroupName
 	}
 	return value
+}
+
+// freeAllowanceForGroup returns the number of addons from a primary group that
+// are included in the product base price. Toppings are configurable per-product;
+// jalea currently defaults to one.
+func (s *OrderEnrichmentService) freeAllowanceForGroup(product dto.Product, groupName string) int {
+	if groupName == "toppings" {
+		if product.FreeToppings > 0 {
+			return product.FreeToppings
+		}
+		return 0
+	}
+	return freeAddonAllowanceByGroup[groupName]
 }
 
 // activeFlavorIndex builds an index of active flavors by ID.

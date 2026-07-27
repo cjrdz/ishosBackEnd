@@ -1,12 +1,19 @@
 package dto
 
+// AnalyticsPaymentMethodSummary is one payment method's revenue/count aggregate.
+type AnalyticsPaymentMethodSummary struct {
+	Revenue float64 `json:"revenue"`
+	Count   int     `json:"count"`
+}
+
 // AnalyticsOverview is the aggregate result for the analytics overview endpoint.
 type AnalyticsOverview struct {
-	Period          string         `json:"period"`
-	TotalOrders     int            `json:"total_orders"`
-	TotalRevenue    float64        `json:"total_revenue"`
-	AvgOrderValue   float64        `json:"avg_order_value"`
-	StatusBreakdown map[string]int `json:"status_breakdown"`
+	Period                 string                                   `json:"period"`
+	TotalOrders            int                                      `json:"total_orders"`
+	TotalRevenue           float64                                  `json:"total_revenue"`
+	AvgOrderValue          float64                                  `json:"avg_order_value"`
+	StatusBreakdown        map[string]int                           `json:"status_breakdown"`
+	PaymentMethodBreakdown map[string]AnalyticsPaymentMethodSummary `json:"payment_method_breakdown,omitempty"`
 }
 
 // AnalyticsTimelinePoint is one bucket for orders-over-time.

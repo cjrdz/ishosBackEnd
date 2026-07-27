@@ -75,6 +75,7 @@ func (r *OrderBunRepository) Create(ctx context.Context, input CreateOrderInput)
 			CustomerEmail:   input.CustomerEmail,
 			CustomerIP:      input.CustomerIP,
 			TotalAmount:     input.TotalAmount,
+			AmountReceived:  input.AmountReceived,
 			Status:          models.OrderStatus(input.Status),
 			PaymentMethod:   models.OrderPaymentMethod(input.PaymentMethod),
 			PaymentStatus:   models.OrderPaymentStatusPendiente,
@@ -568,6 +569,30 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 		}
 		for _, row := range statusRows {
 			overview.StatusBreakdown[row.Status] = int(row.Count)
+		}
+
+		var paymentRows []struct {
+			PaymentMethod string  `bun:"payment_method"`
+			Count         int64   `bun:"count"`
+			Revenue       float64 `bun:"revenue"`
+		}
+		err = tx.NewSelect().
+			Model((*models.Order)(nil)).
+			Column("payment_method").
+			ColumnExpr("COUNT(*) AS count").
+			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE status != 'cancelada'), 0) AS revenue").
+			Where("created_at >= ? AND created_at <= ?", start, end).
+			Group("payment_method").
+			Scan(ctx, &paymentRows)
+		if err != nil {
+			return err
+		}
+		overview.PaymentMethodBreakdown = make(map[string]dto.AnalyticsPaymentMethodSummary, len(paymentRows))
+		for _, row := range paymentRows {
+			overview.PaymentMethodBreakdown[row.PaymentMethod] = dto.AnalyticsPaymentMethodSummary{
+				Revenue: row.Revenue,
+				Count:   int(row.Count),
+			}
 		}
 		return nil
 	}); err != nil {

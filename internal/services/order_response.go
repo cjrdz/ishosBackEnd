@@ -37,6 +37,7 @@ type OrderResponse struct {
 	OrderType        string               `json:"order_type"`
 	TableNumber      *int                 `json:"table_number,omitempty"`
 	TotalAmount      float64              `json:"total_amount"`
+	AmountReceived   *float64             `json:"amount_received,omitempty"`
 	Notes            *string              `json:"notes,omitempty"`
 	RejectionReason  *string              `json:"rejection_reason,omitempty"`
 	CreatedByUserID  *string              `json:"created_by_user_id,omitempty"`
@@ -195,6 +196,7 @@ func (m *OrderResponseMapper) mapInternal(order dto.Order) OrderResponse {
 		OrderType:        order.OrderType,
 		TableNumber:      order.TableNumber,
 		TotalAmount:      order.TotalAmount,
+		AmountReceived:   order.AmountReceived,
 		Notes:            order.Notes,
 		RejectionReason:  order.RejectionReason,
 		CreatedByUserID:  order.CreatedByUserID,

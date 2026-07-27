@@ -38,6 +38,7 @@ type StoreOrderInput struct {
 	CustomerEmail  *string
 	CustomerIP     *string
 	PaymentMethod  string
+	AmountReceived *float64
 	OrderType      string
 	TableNumber    *int
 	Notes          *string
@@ -47,15 +48,16 @@ type StoreOrderInput struct {
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
 type StoreUpdateOrderInput struct {
-	CustomerID    *uuid.UUID
-	CustomerName  string
-	CustomerPhone string
-	CustomerEmail *string
-	PaymentMethod string
-	OrderType     string
-	TableNumber   *int
-	Notes         *string
-	Items         []StoreOrderItemInput
+	CustomerID     *uuid.UUID
+	CustomerName   string
+	CustomerPhone  string
+	CustomerEmail  *string
+	PaymentMethod  string
+	AmountReceived *float64
+	OrderType      string
+	TableNumber    *int
+	Notes          *string
+	Items          []StoreOrderItemInput
 }
 
 // EnrichmentService validates and enriches order customizations with pricing.
@@ -87,6 +89,15 @@ func NewOrderStore(db bun.IDB, productRepo productResolver, enrichment Enrichmen
 		s.auditSvc = auditSvc[0]
 	}
 	return s
+}
+
+// validateAmountReceived returns a validation error when the provided cash
+// amount is insufficient to cover the order total.
+func validateAmountReceived(amountReceived *float64, total float64) error {
+	if amountReceived != nil && *amountReceived < total {
+		return &apperror.ValidationError{Fields: map[string]string{"amount_received": "must be greater than or equal to the order total"}}
+	}
+	return nil
 }
 
 func (s *OrderStore) maybeLog(ctx context.Context, tx bun.Tx, orderID uuid.UUID) error {
@@ -137,6 +148,10 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 			return err
 		}
 
+		if err := validateAmountReceived(input.AmountReceived, total); err != nil {
+			return err
+		}
+
 		now := time.Now()
 		order := models.Order{
 			ID:              uuid.New(),
@@ -147,6 +162,7 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 			CustomerEmail:   input.CustomerEmail,
 			CustomerIP:      input.CustomerIP,
 			TotalAmount:     total,
+			AmountReceived:  input.AmountReceived,
 			Status:          models.OrderStatusPendienteRevision,
 			PaymentMethod:   models.OrderPaymentMethod(input.PaymentMethod),
 			PaymentStatus:   models.OrderPaymentStatusPendiente,
@@ -276,7 +292,16 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 		existingOrder.CustomerID = input.CustomerID
 	}
 
+	if input.PaymentMethod != "efectivo" {
+		existingOrder.AmountReceived = nil
+	} else {
+		existingOrder.AmountReceived = input.AmountReceived
+	}
+
 	if len(input.Items) == 0 {
+		if err := validateAmountReceived(existingOrder.AmountReceived, existingOrder.TotalAmount); err != nil {
+			return models.Order{}, nil, err
+		}
 		if _, err := db.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
 			return models.Order{}, nil, err
 		}
@@ -288,6 +313,10 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 		return models.Order{}, nil, err
 	}
 	existingOrder.TotalAmount = total
+
+	if err := validateAmountReceived(existingOrder.AmountReceived, total); err != nil {
+		return models.Order{}, nil, err
+	}
 
 	if _, err := db.NewUpdate().Model(&existingOrder).WherePK().Exec(ctx); err != nil {
 		return models.Order{}, nil, err
@@ -520,6 +549,7 @@ func (s *OrderStore) toDTOOrder(order models.Order, snapshots []itemSnapshot) dt
 		CustomerEmail:    order.CustomerEmail,
 		CustomerIP:       order.CustomerIP,
 		TotalAmount:      order.TotalAmount,
+		AmountReceived:   order.AmountReceived,
 		Status:           string(order.Status),
 		PaymentMethod:    string(order.PaymentMethod),
 		PaymentStatus:    string(order.PaymentStatus),

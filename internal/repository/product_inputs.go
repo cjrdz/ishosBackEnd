@@ -14,6 +14,7 @@ type CreateProductInput struct {
 	BallBased            *bool
 	BallQuantity         *int
 	AllowsMixedFlavors   *bool
+	FreeToppings         *int
 }
 
 // UpdateProductInput is the data required to update a product.
@@ -29,4 +30,5 @@ type UpdateProductInput struct {
 	BallBased            *bool
 	BallQuantity         *int
 	AllowsMixedFlavors   *bool
+	FreeToppings         *int
 }

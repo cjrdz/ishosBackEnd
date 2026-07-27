@@ -36,6 +36,7 @@ type Product struct {
 	BallBased            *bool     `json:"ball_based,omitempty" example:"false" doc:"Whether pricing is ball-based"`
 	BallQuantity         *int      `json:"ball_quantity,omitempty" example:"0" doc:"Ball quantity"`
 	AllowsMixedFlavors   *bool     `json:"allows_mixed_flavors,omitempty" example:"false" doc:"Whether mixed flavors are allowed"`
+	FreeToppings         int       `json:"free_toppings" example:"1" doc:"Number of free toppings included with the product"`
 	StockStatus          *string   `json:"stock_status,omitempty" example:"in_stock" doc:"Stock status"`
 	Flavors              []Flavor  `json:"flavors,omitempty" doc:"Product flavors"`
 	Addons               []Addon   `json:"addons,omitempty" doc:"Product addons"`
@@ -130,6 +131,7 @@ type CreateProductInput struct {
 		BallBased            *bool   `json:"ball_based,omitempty" example:"false" doc:"Whether pricing is ball-based"`
 		BallQuantity         *int    `json:"ball_quantity,omitempty" example:"0" doc:"Ball quantity"`
 		AllowsMixedFlavors   *bool   `json:"allows_mixed_flavors,omitempty" example:"false" doc:"Whether mixed flavors are allowed"`
+		FreeToppings         *int    `json:"free_toppings,omitempty" example:"1" doc:"Number of free toppings included with the product"`
 	}
 }
 
@@ -148,6 +150,7 @@ type UpdateProductInput struct {
 		BallBased            *bool    `json:"ball_based,omitempty" example:"false" doc:"Whether pricing is ball-based"`
 		BallQuantity         *int     `json:"ball_quantity,omitempty" example:"0" doc:"Ball quantity"`
 		AllowsMixedFlavors   *bool    `json:"allows_mixed_flavors,omitempty" example:"false" doc:"Whether mixed flavors are allowed"`
+		FreeToppings         *int     `json:"free_toppings,omitempty" example:"1" doc:"Number of free toppings included with the product"`
 	}
 }
 
@@ -312,6 +315,7 @@ type Order struct {
 	CustomerPhone    string            `json:"customer_phone" example:"+50688881234" doc:"Customer phone"`
 	CustomerEmail    *string           `json:"customer_email,omitempty" example:"john@example.com" doc:"Customer email"`
 	TotalAmount      float64           `json:"total_amount" example:"11.00" doc:"Order total"`
+	AmountReceived   *float64          `json:"amount_received,omitempty" example:"20.00" doc:"Cash amount received (efectivo only)"`
 	Status           string            `json:"status" example:"pendiente_revision" doc:"Order status"`
 	PaymentMethod    string            `json:"payment_method" example:"efectivo" doc:"Payment method"`
 	PaymentStatus    string            `json:"payment_status" example:"pending" doc:"Payment status"`
@@ -332,14 +336,15 @@ type Order struct {
 // CreateOrderInput is the public order creation payload.
 type CreateOrderInput struct {
 	Body struct {
-		CustomerName  string      `json:"customer_name" example:"John Doe" doc:"Customer name"`
-		CustomerPhone string      `json:"customer_phone" example:"+50688881234" doc:"Customer phone"`
-		CustomerEmail string      `json:"customer_email,omitempty" example:"john@example.com" doc:"Customer email"`
-		PaymentMethod string      `json:"payment_method" enum:"efectivo,tarjeta,transferencia,otro" doc:"Payment method"`
-		OrderType     string      `json:"order_type" enum:"en_local,para_llevar" doc:"Order type"`
-		TableNumber   int         `json:"table_number,omitempty" doc:"Table number"`
-		Notes         string      `json:"notes,omitempty" doc:"Order notes"`
-		Items         []OrderItem `json:"items" doc:"Order items"`
+		CustomerName   string      `json:"customer_name" example:"John Doe" doc:"Customer name"`
+		CustomerPhone  string      `json:"customer_phone" example:"+50688881234" doc:"Customer phone"`
+		CustomerEmail  string      `json:"customer_email,omitempty" example:"john@example.com" doc:"Customer email"`
+		PaymentMethod  string      `json:"payment_method" enum:"efectivo,tarjeta,transferencia,otro" doc:"Payment method"`
+		AmountReceived *float64    `json:"amount_received,omitempty" example:"20.00" doc:"Cash amount received (efectivo only)"`
+		OrderType      string      `json:"order_type" enum:"en_local,para_llevar" doc:"Order type"`
+		TableNumber    int         `json:"table_number,omitempty" doc:"Table number"`
+		Notes          string      `json:"notes,omitempty" doc:"Order notes"`
+		Items          []OrderItem `json:"items" doc:"Order items"`
 	}
 }
 
@@ -398,14 +403,15 @@ type OrderOutputSingle struct {
 type UpdateOrderInput struct {
 	OrderIDInput
 	Body struct {
-		CustomerName  string      `json:"customer_name" example:"John Doe" doc:"Customer name"`
-		CustomerPhone string      `json:"customer_phone" example:"+50688881234" doc:"Customer phone"`
-		CustomerEmail string      `json:"customer_email,omitempty" example:"john@example.com" doc:"Customer email"`
-		PaymentMethod string      `json:"payment_method" enum:"efectivo,tarjeta,transferencia,otro" doc:"Payment method"`
-		OrderType     string      `json:"order_type" enum:"en_local,para_llevar" doc:"Order type"`
-		TableNumber   int         `json:"table_number,omitempty" doc:"Table number"`
-		Notes         string      `json:"notes" doc:"Order notes"`
-		Items         []OrderItem `json:"items" doc:"Order items"`
+		CustomerName   string      `json:"customer_name" example:"John Doe" doc:"Customer name"`
+		CustomerPhone  string      `json:"customer_phone" example:"+50688881234" doc:"Customer phone"`
+		CustomerEmail  string      `json:"customer_email,omitempty" example:"john@example.com" doc:"Customer email"`
+		PaymentMethod  string      `json:"payment_method" enum:"efectivo,tarjeta,transferencia,otro" doc:"Payment method"`
+		AmountReceived *float64    `json:"amount_received,omitempty" example:"20.00" doc:"Cash amount received (efectivo only)"`
+		OrderType      string      `json:"order_type" enum:"en_local,para_llevar" doc:"Order type"`
+		TableNumber    int         `json:"table_number,omitempty" doc:"Table number"`
+		Notes          string      `json:"notes" doc:"Order notes"`
+		Items          []OrderItem `json:"items" doc:"Order items"`
 	}
 }
 
@@ -821,13 +827,20 @@ type PanelConfigOutput struct {
 	Body TokenTTLConfig
 }
 
+// AnalyticsPaymentMethodSummary is one payment method's revenue/count aggregate.
+type AnalyticsPaymentMethodSummary struct {
+	Revenue float64 `json:"revenue" example:"800.00" doc:"Revenue for this payment method"`
+	Count   int     `json:"count" example:"100" doc:"Number of orders for this payment method"`
+}
+
 // AnalyticsOverview is the aggregate result for the analytics overview endpoint.
 type AnalyticsOverview struct {
-	Period          string         `json:"period" example:"month" doc:"Report period"`
-	TotalOrders     int            `json:"total_orders" example:"150" doc:"Total orders"`
-	TotalRevenue    float64        `json:"total_revenue" example:"1250.50" doc:"Total revenue"`
-	AvgOrderValue   float64        `json:"avg_order_value" example:"8.34" doc:"Average order value"`
-	StatusBreakdown map[string]int `json:"status_breakdown" doc:"Orders grouped by status"`
+	Period                 string                                   `json:"period" example:"month" doc:"Report period"`
+	TotalOrders            int                                      `json:"total_orders" example:"150" doc:"Total orders"`
+	TotalRevenue           float64                                  `json:"total_revenue" example:"1250.50" doc:"Total revenue"`
+	AvgOrderValue          float64                                  `json:"avg_order_value" example:"8.34" doc:"Average order value"`
+	StatusBreakdown        map[string]int                           `json:"status_breakdown" doc:"Orders grouped by status"`
+	PaymentMethodBreakdown map[string]AnalyticsPaymentMethodSummary `json:"payment_method_breakdown,omitempty" doc:"Orders and revenue grouped by payment method"`
 }
 
 // AnalyticsOverviewOutput is the response for the analytics overview endpoint.

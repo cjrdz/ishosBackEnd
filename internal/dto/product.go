@@ -19,6 +19,7 @@ type Product struct {
 	BallBased            bool            `json:"ball_based"`
 	BallQuantity         int             `json:"ball_quantity"`
 	AllowsMixedFlavors   bool            `json:"allows_mixed_flavors"`
+	FreeToppings         int             `json:"free_toppings"`
 	CreatedAt            time.Time       `json:"created_at"`
 	UpdatedAt            time.Time       `json:"updated_at"`
 	Category             *Category       `json:"category,omitempty"`

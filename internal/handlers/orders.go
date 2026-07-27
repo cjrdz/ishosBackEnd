@@ -143,7 +143,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if errs := validator.ValidateOrderCreate(
 		body.CustomerName, body.CustomerPhone, body.PaymentMethod, body.OrderType,
-		body.TableNumber, len(body.Items), isStaff,
+		body.TableNumber, len(body.Items), isStaff, body.AmountReceived,
 	); errs.HasErrors() {
 		response.WriteOrError(w, nil, errs)
 		return
@@ -195,6 +195,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CustomerEmail:  nilIfEmpty(body.CustomerEmail),
 		CustomerIP:     &ip,
 		PaymentMethod:  body.PaymentMethod,
+		AmountReceived: body.AmountReceived,
 		OrderType:      body.OrderType,
 		TableNumber:    body.TableNumber,
 		Notes:          nilIfEmpty(body.Notes),
@@ -215,14 +216,19 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusCreated, map[string]any{
+	respBody := map[string]any{
 		"order_number":        order.OrderNumber,
 		"status":              order.Status,
 		"total":               order.TotalAmount,
 		"tracking_token":      trackingAccess.Token,
 		"tracking_expires_at": trackingAccess.ExpiresAt,
 		"message":             "Orden recibida, te notificaremos pronto 🍦",
-	})
+	}
+	if order.AmountReceived != nil {
+		respBody["amount_received"] = *order.AmountReceived
+		respBody["change"] = *order.AmountReceived - order.TotalAmount
+	}
+	response.JSON(w, http.StatusCreated, respBody)
 }
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -531,7 +537,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if errs := validator.ValidateOrderDetails(
 		body.CustomerName, body.CustomerPhone, body.PaymentMethod, body.OrderType,
-		body.TableNumber, true,
+		body.TableNumber, true, body.AmountReceived,
 	); errs.HasErrors() {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
@@ -567,14 +573,15 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	ctx := audit.ContextFromRequest(r, actorID)
 	updated, err := h.orderSvc.Update(ctx, id, services.UpdateOrderInput{
-		CustomerName:  body.CustomerName,
-		CustomerPhone: body.CustomerPhone,
-		CustomerEmail: nilIfEmpty(body.CustomerEmail),
-		PaymentMethod: body.PaymentMethod,
-		OrderType:     body.OrderType,
-		TableNumber:   body.TableNumber,
-		Notes:         &notes,
-		Items:         items,
+		CustomerName:   body.CustomerName,
+		CustomerPhone:  body.CustomerPhone,
+		CustomerEmail:  nilIfEmpty(body.CustomerEmail),
+		PaymentMethod:  body.PaymentMethod,
+		AmountReceived: body.AmountReceived,
+		OrderType:      body.OrderType,
+		TableNumber:    body.TableNumber,
+		Notes:          &notes,
+		Items:          items,
 	})
 	if err != nil {
 		writeAppError(w, err, "Failed to update order")
