@@ -2,6 +2,8 @@
 
 Go + Chi + Bun + PocketBase service. Manages orders, products, employees, customers, inventory, and settings.
 
+**Current version:** `0.0.1` (see [`VERSION`](VERSION) and [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for release flow).
+
 ---
 
 ## Quick Start
