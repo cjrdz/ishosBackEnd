@@ -15,6 +15,7 @@ type Order struct {
 	CustomerEmail    *string              `json:"customer_email,omitempty"`
 	CustomerIP       *string              `json:"customer_ip,omitempty"`
 	TotalAmount      float64              `json:"total_amount"`
+	AmountReceived   *float64             `json:"amount_received,omitempty"`
 	Status           string               `json:"status"`
 	PaymentMethod    string               `json:"payment_method"`
 	PaymentStatus    string               `json:"payment_status"`

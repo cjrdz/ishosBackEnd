@@ -61,6 +61,7 @@ type productResponse struct {
 	BallBased            bool             `json:"ball_based"`
 	BallQuantity         int              `json:"ball_quantity"`
 	AllowsMixedFlavors   bool             `json:"allows_mixed_flavors"`
+	FreeToppings         int              `json:"free_toppings"`
 	StockStatus          string           `json:"stock_status"`
 	Flavors              []flavorResponse `json:"flavors"`
 	Addons               []addonResponse  `json:"addons"`
@@ -140,6 +141,7 @@ func (h *ProductHandler) toProductResponse(p dto.Product) productResponse {
 		BallBased:            p.BallBased,
 		BallQuantity:         p.BallQuantity,
 		AllowsMixedFlavors:   p.AllowsMixedFlavors,
+		FreeToppings:         p.FreeToppings,
 		StockStatus:          stockStatus,
 		Flavors:              flavors,
 		Addons:               addons,
@@ -241,6 +243,7 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		BallBased            *bool     `json:"ball_based"`
 		BallQuantity         *int      `json:"ball_quantity"`
 		AllowsMixedFlavors   *bool     `json:"allows_mixed_flavors"`
+		FreeToppings         *int      `json:"free_toppings"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -268,6 +271,7 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		BallBased:            body.BallBased,
 		BallQuantity:         body.BallQuantity,
 		AllowsMixedFlavors:   body.AllowsMixedFlavors,
+		FreeToppings:         body.FreeToppings,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create product")
@@ -327,6 +331,7 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		BallBased            *bool      `json:"ball_based"`
 		BallQuantity         *int       `json:"ball_quantity"`
 		AllowsMixedFlavors   *bool      `json:"allows_mixed_flavors"`
+		FreeToppings         *int       `json:"free_toppings"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -354,6 +359,7 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		BallBased:            body.BallBased,
 		BallQuantity:         body.BallQuantity,
 		AllowsMixedFlavors:   body.AllowsMixedFlavors,
+		FreeToppings:         body.FreeToppings,
 	})
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {

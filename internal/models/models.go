@@ -187,6 +187,7 @@ type Order struct {
 	CustomerEmail    *string              `bun:"customer_email,type:varchar(255)"`
 	CustomerIP       *string              `bun:"customer_ip,type:varchar(255)"`
 	TotalAmount      float64              `bun:"total_amount,notnull"`
+	AmountReceived   *float64             `bun:"amount_received"`
 	Status           OrderStatus          `bun:"status,notnull,type:varchar(40),default:'pendiente_revision'"`
 	PaymentMethod    OrderPaymentMethod   `bun:"payment_method,notnull,type:varchar(20),default:'efectivo'"`
 	PaymentStatus    OrderPaymentStatus   `bun:"payment_status,notnull,type:varchar(20),default:'pendiente'"`
@@ -255,6 +256,7 @@ type Product struct {
 	BallBased            bool      `bun:"ball_based,notnull,default:false"`
 	BallQuantity         int       `bun:"ball_quantity,notnull,default:0"`
 	AllowsMixedFlavors   bool      `bun:"allows_mixed_flavors,notnull,default:false"`
+	FreeToppings         int       `bun:"free_toppings,notnull,default:1"`
 	CreatedAt            time.Time `bun:",notnull,default:current_timestamp"`
 	UpdatedAt            time.Time `bun:",notnull,default:current_timestamp"`
 	CategoryID           uuid.UUID `bun:"category_products,notnull,type:uuid"`

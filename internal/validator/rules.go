@@ -259,7 +259,7 @@ func ValidateProductUpdate(name *string, price *float64, stockStatus *string) Va
 	return errs
 }
 
-func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNumber *int, requireTableForEnLocal bool) ValidationErrors {
+func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNumber *int, requireTableForEnLocal bool, amountReceived *float64) ValidationErrors {
 	var errs ValidationErrors
 
 	if strings.TrimSpace(name) == "" {
@@ -290,16 +290,34 @@ func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNum
 		}
 	}
 
+	if amountReceived != nil {
+		if paymentMethod != "efectivo" {
+			errs.Add("amount_received", "only allowed for efectivo payment method")
+		} else if *amountReceived <= 0 {
+			errs.Add("amount_received", "must be greater than 0")
+		}
+	}
+
 	return errs
 }
 
-func ValidateOrderCreate(name, phone, paymentMethod, orderType string, tableNumber *int, itemCount int, requireTableForEnLocal bool) ValidationErrors {
-	errs := ValidateOrderDetails(name, phone, paymentMethod, orderType, tableNumber, requireTableForEnLocal)
+func ValidateOrderCreate(name, phone, paymentMethod, orderType string, tableNumber *int, itemCount int, requireTableForEnLocal bool, amountReceived *float64) ValidationErrors {
+	errs := ValidateOrderDetails(name, phone, paymentMethod, orderType, tableNumber, requireTableForEnLocal, amountReceived)
 
 	if itemCount == 0 {
 		errs.Add("items", "at least one item required")
 	}
 
+	return errs
+}
+
+// ValidateOrderAmountReceived checks that a provided cash amount covers the
+// order total. It assumes the caller has already validated the payment method.
+func ValidateOrderAmountReceived(amountReceived *float64, total float64) ValidationErrors {
+	var errs ValidationErrors
+	if amountReceived != nil && *amountReceived < total {
+		errs.Add("amount_received", "must be greater than or equal to the order total")
+	}
 	return errs
 }
 

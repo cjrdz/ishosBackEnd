@@ -248,6 +248,7 @@ func toOrderDTOFromModel(o models.Order, items []dto.OrderItem) dto.Order {
 		CustomerEmail:    o.CustomerEmail,
 		CustomerIP:       o.CustomerIP,
 		TotalAmount:      o.TotalAmount,
+		AmountReceived:   o.AmountReceived,
 		Status:           string(o.Status),
 		PaymentMethod:    string(o.PaymentMethod),
 		PaymentStatus:    string(o.PaymentStatus),

@@ -13,6 +13,7 @@ type CreateOrderInput struct {
 	TotalAmount     float64
 	Status          string
 	PaymentMethod   string
+	AmountReceived  *float64
 	OrderType       string
 	TableNumber     *int
 	Notes           *string

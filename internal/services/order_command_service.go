@@ -84,6 +84,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		CustomerEmail:  input.CustomerEmail,
 		CustomerIP:     input.CustomerIP,
 		PaymentMethod:  input.PaymentMethod,
+		AmountReceived: input.AmountReceived,
 		OrderType:      input.OrderType,
 		TableNumber:    input.TableNumber,
 		Notes:          input.Notes,
@@ -320,14 +321,15 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 	}
 
 	storeInput := repository.StoreUpdateOrderInput{
-		CustomerName:  input.CustomerName,
-		CustomerPhone: input.CustomerPhone,
-		CustomerEmail: input.CustomerEmail,
-		PaymentMethod: input.PaymentMethod,
-		OrderType:     input.OrderType,
-		TableNumber:   input.TableNumber,
-		Notes:         input.Notes,
-		Items:         toStoreOrderItemInputs(input.Items),
+		CustomerName:   input.CustomerName,
+		CustomerPhone:  input.CustomerPhone,
+		CustomerEmail:  input.CustomerEmail,
+		PaymentMethod:  input.PaymentMethod,
+		AmountReceived: input.AmountReceived,
+		OrderType:      input.OrderType,
+		TableNumber:    input.TableNumber,
+		Notes:          input.Notes,
+		Items:          toStoreOrderItemInputs(input.Items),
 	}
 
 	if input.CustomerPhone != existing.CustomerPhone {

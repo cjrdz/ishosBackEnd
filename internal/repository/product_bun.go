@@ -190,6 +190,9 @@ func (r *ProductBunRepository) Create(ctx context.Context, input CreateProductIn
 	if input.AllowsMixedFlavors != nil {
 		row.AllowsMixedFlavors = *input.AllowsMixedFlavors
 	}
+	if input.FreeToppings != nil {
+		row.FreeToppings = *input.FreeToppings
+	}
 
 	if _, err := r.db.NewInsert().Model(&row).Exec(ctx); err != nil {
 		return dto.Product{}, err
@@ -253,6 +256,9 @@ func (r *ProductBunRepository) Update(ctx context.Context, id uuid.UUID, input U
 	}
 	if input.AllowsMixedFlavors != nil {
 		row.AllowsMixedFlavors = *input.AllowsMixedFlavors
+	}
+	if input.FreeToppings != nil {
+		row.FreeToppings = *input.FreeToppings
 	}
 
 	res, err := r.db.NewUpdate().Model(&row).WherePK().Exec(ctx)
@@ -422,6 +428,7 @@ func toProductDTOFromModel(p models.Product, category *models.Category) dto.Prod
 		BallBased:            p.BallBased,
 		BallQuantity:         p.BallQuantity,
 		AllowsMixedFlavors:   p.AllowsMixedFlavors,
+		FreeToppings:         p.FreeToppings,
 		CreatedAt:            p.CreatedAt,
 		UpdatedAt:            p.UpdatedAt,
 	}

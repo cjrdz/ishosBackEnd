@@ -27,8 +27,7 @@ var (
 const defaultAddonGroupName = "extras"
 
 var freeAddonAllowanceByGroup = map[string]int{
-	"toppings": 1,
-	"jalea":    1,
+	"jalea": 1,
 }
 
 type OrderService struct {
@@ -49,6 +48,7 @@ type CreateOrderInput struct {
 	CustomerEmail  *string
 	CustomerIP     *string
 	PaymentMethod  string
+	AmountReceived *float64
 	OrderType      string
 	TableNumber    *int
 	Notes          *string
@@ -63,14 +63,15 @@ type OrderItemInput struct {
 }
 
 type UpdateOrderInput struct {
-	CustomerName  string
-	CustomerPhone string
-	CustomerEmail *string
-	PaymentMethod string
-	OrderType     string
-	TableNumber   *int
-	Notes         *string
-	Items         []OrderItemInput
+	CustomerName   string
+	CustomerPhone  string
+	CustomerEmail  *string
+	PaymentMethod  string
+	AmountReceived *float64
+	OrderType      string
+	TableNumber    *int
+	Notes          *string
+	Items          []OrderItemInput
 }
 
 func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerRepo CustomerRepository, productRepo ProductRepository, inventory *InventoryService, tracker *TrackingTokenService, dispatcher *events.Dispatcher, publicStoreURL string) *OrderService {
