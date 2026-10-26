@@ -318,30 +318,47 @@ func (r *InventoryBunRepository) RestoreStockForOrder(ctx context.Context, order
 }
 
 func (r *InventoryBunRepository) restoreStock(ctx context.Context, tx bun.Tx, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error) {
-	var saleMovements []models.StockMovement
-	if err := tx.NewSelect().Model(&saleMovements).Where("order_id = ? AND type = ?", orderID, models.StockMovementTypeSale).Scan(ctx); err != nil {
+	// Restore only the order's net outstanding deduction per inventory item:
+	// sales are negative and earlier restores are positive, so their sum is what
+	// is still owed back. Replaying every historical sale movement instead would
+	// over-restock when an order is restored more than once (edit, then cancel;
+	// cancel, force-approve, re-process, cancel again).
+	var outstanding []struct {
+		InventoryItemID uuid.UUID `bun:"inventory_item_id"`
+		Net             int       `bun:"net"`
+	}
+	if err := tx.NewSelect().
+		TableExpr("stock_movements").
+		ColumnExpr("inventory_item_id").
+		ColumnExpr("SUM(quantity) AS net").
+		Where("order_id = ?", orderID).
+		Where("type IN (?)", bun.List([]models.StockMovementType{models.StockMovementTypeSale, models.StockMovementTypeAdjustment})).
+		Group("inventory_item_id").
+		Having("SUM(quantity) < 0").
+		OrderExpr("inventory_item_id").
+		Scan(ctx, &outstanding); err != nil {
 		return nil, err
 	}
 
-	restored := make([]dto.StockMovement, 0, len(saleMovements))
+	restored := make([]dto.StockMovement, 0, len(outstanding))
 
-	for _, m := range saleMovements {
+	for _, o := range outstanding {
 		var invItem models.InventoryItem
-		if err := tx.NewSelect().Model(&invItem).Where("id = ?", m.InventoryItemID).For("UPDATE").Scan(ctx); err != nil {
+		if err := tx.NewSelect().Model(&invItem).Where("id = ?", o.InventoryItemID).For("UPDATE").Scan(ctx); err != nil {
 			return nil, translateInventoryError(err)
 		}
 
-		invItem.CurrentStock += -m.Quantity
+		invItem.CurrentStock += -o.Net
 		invItem.UpdatedAt = time.Now()
 		if _, err := tx.NewUpdate().Model(&invItem).WherePK().Exec(ctx); err != nil {
 			return nil, err
 		}
 
-		reason := "Order cancelled"
+		reason := "Order stock restored"
 		restMovement := models.StockMovement{
 			ID:              uuid.New(),
 			Type:            models.StockMovementTypeAdjustment,
-			Quantity:        -m.Quantity,
+			Quantity:        -o.Net,
 			InventoryItemID: invItem.ID,
 			OrderID:         &orderID,
 			Reason:          &reason,

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
@@ -199,6 +202,48 @@ type StoreSettings struct {
 	Offers        []OfferItem `json:"offers"`
 }
 
+// ActiveOffers returns the offers that have not expired at now. An offer
+// without a parseable expiry is treated as active.
+func ActiveOffers(offers []OfferItem, now time.Time) []OfferItem {
+	active := make([]OfferItem, 0, len(offers))
+	for _, o := range offers {
+		if o.ExpiresAt != "" {
+			if t, err := time.Parse(time.RFC3339, o.ExpiresAt); err == nil && t.Before(now) {
+				continue
+			}
+		}
+		active = append(active, o)
+	}
+	return active
+}
+
+// ActiveOfferPrices maps product ID → special price for every active offer
+// with a positive discount price (the lowest one if several overlap). Order
+// pricing uses it as the product's base price so the server charges what the
+// storefront shows.
+func (s *AdminSettingService) ActiveOfferPrices(ctx context.Context) (map[uuid.UUID]float64, error) {
+	settings, err := s.GetStoreSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prices := make(map[uuid.UUID]float64)
+	for _, o := range ActiveOffers(settings.Offers, time.Now()) {
+		id, parseErr := uuid.Parse(o.ProductID)
+		if parseErr != nil || o.DiscountPrice <= 0 {
+			continue
+		}
+		// The storefront treats an offer without a valid expiry as inactive,
+		// so never charge an offer price the customer was not shown.
+		if _, expErr := time.Parse(time.RFC3339, o.ExpiresAt); expErr != nil {
+			continue
+		}
+		if current, ok := prices[id]; !ok || o.DiscountPrice < current {
+			prices[id] = o.DiscountPrice
+		}
+	}
+	return prices, nil
+}
+
 func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
 	result := StoreSettings{OrdersEnabled: true, Offers: []OfferItem{}}
 	if s.repo == nil {
@@ -264,7 +309,32 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 	return result, nil
 }
 
+// validateOffers rejects offers the order pricing would silently ignore:
+// ActiveOfferPrices needs a product UUID, a non-negative price and an RFC 3339
+// expiry (the admin UI sends toISOString()).
+func validateOffers(offers []OfferItem) error {
+	fields := map[string]string{}
+	for i, o := range offers {
+		if _, err := uuid.Parse(o.ProductID); err != nil {
+			fields[fmt.Sprintf("offers[%d].product_id", i)] = "must be a product UUID"
+		}
+		if o.DiscountPrice < 0 {
+			fields[fmt.Sprintf("offers[%d].discount_price", i)] = "must not be negative"
+		}
+		if _, err := time.Parse(time.RFC3339, o.ExpiresAt); err != nil {
+			fields[fmt.Sprintf("offers[%d].expires_at", i)] = "must be an RFC 3339 date-time"
+		}
+	}
+	if len(fields) > 0 {
+		return &apperror.ValidationError{Fields: fields, Cause: fmt.Errorf("invalid offers")}
+	}
+	return nil
+}
+
 func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings, changedBy string) (StoreSettings, error) {
+	if err := validateOffers(input.Offers); err != nil {
+		return StoreSettings{}, err
+	}
 	if s.repo == nil {
 		return input, nil
 	}

@@ -3,9 +3,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -50,6 +52,10 @@ func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *htt
 	adminID := getAdminID(r)
 	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), body, adminID)
 	if err != nil {
+		if errors.Is(err, apperror.ErrValidation) {
+			response.Error(w, http.StatusBadRequest, "Revisa las ofertas: cada una necesita un artículo del menú, un precio y una fecha de vencimiento válidos")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración de tienda")
 		return
 	}
@@ -134,17 +140,7 @@ func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *ht
 		return
 	}
 
-	now := time.Now()
-	activeOffers := make([]services.OfferItem, 0, len(settings.Offers))
-	for _, o := range settings.Offers {
-		if o.ExpiresAt != "" {
-			t, parseErr := time.Parse(time.RFC3339, o.ExpiresAt)
-			if parseErr == nil && t.Before(now) {
-				continue
-			}
-		}
-		activeOffers = append(activeOffers, o)
-	}
+	activeOffers := services.ActiveOffers(settings.Offers, time.Now())
 
 	response.JSON(w, http.StatusOK, map[string]any{
 		"orders_enabled": settings.OrdersEnabled,

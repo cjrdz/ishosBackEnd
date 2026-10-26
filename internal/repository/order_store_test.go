@@ -61,7 +61,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RollsBackOnDeductionFailure(
 	require.NoError(t, err)
 
 	// Attempt to deduct 10 units (more than available) — this must fail.
-	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), []StockDeductionInput{
+	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), "", []StockDeductionInput{
 		{InventoryItemID: invItem.ID, Quantity: 10},
 	}, false)
 	require.Error(t, err, "expected deduction failure due to insufficient stock")
@@ -111,7 +111,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_CommitsOnSuccess(t *testing.
 	})
 	require.NoError(t, err)
 
-	updated, err := store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), []StockDeductionInput{
+	updated, err := store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), "", []StockDeductionInput{
 		{InventoryItemID: invItem.ID, Quantity: 5},
 	}, false)
 	require.NoError(t, err)
@@ -167,7 +167,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RestoreOnCancel(t *testing.T
 	assert.Equal(t, 45, item.CurrentStock, "precondition: stock deducted to 45")
 
 	// Now cancel the order — stock should be restored atomically.
-	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusCancelada), nil, true)
+	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusCancelada), "", nil, true)
 	require.NoError(t, err)
 
 	// Verify stock was restored.
@@ -303,4 +303,31 @@ func isUniqueViolation(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
+}
+
+// TestOrderStore_CreateOrder_AppliesOfferBasePrice proves active-offer base
+// prices are charged server-side (the storefront shows them in the cart).
+func TestOrderStore_CreateOrder_AppliesOfferBasePrice(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	productRepo := NewProductBunRepository(db)
+	store := NewOrderStore(db, productRepo, noopEnrichment{})
+
+	offered, _ := createTestProduct(t, ctx, db, "Offer-Product", 5.0)
+	regular, _ := createTestProduct(t, ctx, db, "Regular-Product", 2.0)
+
+	order, err := store.CreateOrder(ctx, StoreOrderInput{
+		OrderNumber:   "ORD-OF-001",
+		CustomerName:  "Test",
+		CustomerPhone: "555-7101",
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+		Items: []StoreOrderItemInput{
+			{ProductID: offered.ID, Quantity: 2},
+			{ProductID: regular.ID, Quantity: 1},
+		},
+		BasePrices: map[uuid.UUID]float64{offered.ID: 3.5},
+	})
+	require.NoError(t, err)
+	assert.InDelta(t, 2*3.5+2.0, order.TotalAmount, 0.001, "offer price replaces the base price; others unchanged")
 }

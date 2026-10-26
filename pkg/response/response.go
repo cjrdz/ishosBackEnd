@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 )
 
@@ -34,6 +36,10 @@ func WriteOrError(w http.ResponseWriter, result interface{}, err error) {
 		msg := "An unexpected error occurred"
 		if apperror.IsAppError(err) {
 			msg = err.Error()
+		} else {
+			// The client only sees the generic message; keep the cause in the
+			// logs so production 500s are diagnosable.
+			log.Error().Err(err).Int("status", status).Msg("unhandled error returned to client")
 		}
 		Error(w, status, msg)
 		return

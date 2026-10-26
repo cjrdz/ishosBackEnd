@@ -336,6 +336,11 @@ func normalizePhone(phone string) string {
 // CheckOrderIP checks the IP-level limit before the request body is parsed.
 func (rl *OrderRateLimiter) CheckOrderIP(ctx context.Context, ip string) RateLimitResult {
 	cfg := rl.resolveConfig(ctx)
+	if ip == "" {
+		// Unknown client IP: do not lump every such request into one shared
+		// bucket (that would block the whole store). The per-phone limit applies.
+		return RateLimitResult{Allowed: true, Limit: cfg.IPBurst, Remaining: cfg.IPBurst}
+	}
 	return rl.check(ctx, rl.applyPrefix("orders:ip:"+ip), cfg.IPBurst, time.Duration(cfg.IPWindowMinutes)*time.Minute, time.Duration(cfg.IPBlockMinutes)*time.Minute)
 }
 
@@ -354,6 +359,10 @@ func (rl *OrderRateLimiter) CheckStaff(ctx context.Context, staffID string) Rate
 
 // CheckTrackingIP checks the public tracking endpoint IP limit.
 func (rl *OrderRateLimiter) CheckTrackingIP(ctx context.Context, ip string) RateLimitResult {
+	if ip == "" {
+		// See CheckOrderIP: avoid a single shared bucket for unknown IPs.
+		return RateLimitResult{Allowed: true, Limit: rl.tracking.IPBurst, Remaining: rl.tracking.IPBurst}
+	}
 	return rl.check(ctx, rl.applyPrefix("tracking:ip:"+ip), rl.tracking.IPBurst, time.Duration(rl.tracking.IPWindowMinutes)*time.Minute, time.Duration(rl.tracking.IPWindowMinutes)*time.Minute)
 }
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
@@ -21,8 +22,14 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
+// OfferPriceSource provides the special base prices of active store offers.
+type OfferPriceSource interface {
+	ActiveOfferPrices(ctx context.Context) (map[uuid.UUID]float64, error)
+}
+
 // OrderCommandService handles all state mutations for orders.
 type OrderCommandService struct {
+	offers       OfferPriceSource
 	orderRepo    OrderRepository
 	orderStore   OrderStore
 	customerRepo CustomerRepository
@@ -51,6 +58,21 @@ func NewOrderCommandService(
 		dispatcher:   dispatcher,
 		tracker:      tracker,
 	}
+}
+
+// activeOfferPrices returns product → offer price for active offers. A
+// settings read failure is logged and falls back to regular prices rather
+// than blocking the order.
+func (s *OrderCommandService) activeOfferPrices(ctx context.Context) map[uuid.UUID]float64 {
+	if s.offers == nil {
+		return nil
+	}
+	prices, err := s.offers.ActiveOfferPrices(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("could not load active offers; pricing at regular prices")
+		return nil
+	}
+	return prices
 }
 
 // Create creates a new order with items in a transaction.
@@ -90,6 +112,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		Notes:          input.Notes,
 		CreatedByID:    input.CreatedByID,
 		Items:          toStoreOrderItemInputs(input.Items),
+		BasePrices:     s.activeOfferPrices(ctx),
 	}
 
 	createCtx := auditContext(ctx, audit.ActionOrderCreated, map[string]any{
@@ -149,8 +172,11 @@ func (s *OrderCommandService) createOrderWithRetry(ctx context.Context, storeInp
 		}
 	}
 
-	return dto.Order{}, fmt.Errorf("%w: unable to generate a unique order number after %d attempts: %v",
-		apperror.ErrConflict, maxAttempts, lastErr)
+	// The conflict message is returned to the client, so keep the database
+	// error out of it and log it instead.
+	log.Error().Err(lastErr).Int("attempts", maxAttempts).Msg("order number generation exhausted retries")
+	return dto.Order{}, fmt.Errorf("%w: unable to generate a unique order number after %d attempts",
+		apperror.ErrConflict, maxAttempts)
 }
 
 // isIdempotencyKeyConflict reports whether err is a Postgres unique-violation
@@ -181,7 +207,7 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 	approveCtx := auditContext(ctx, audit.ActionOrderApproved, map[string]any{
 		"order_number": order.OrderNumber,
 	})
-	updated, err := s.orderRepo.Approve(approveCtx, id, &reviewerID)
+	updated, err := s.orderRepo.Approve(approveCtx, id, &reviewerID, order.Status)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -217,7 +243,7 @@ func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, 
 		"order_number": order.OrderNumber,
 		"reason":       reason,
 	})
-	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID)
+	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID, order.Status)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -276,17 +302,17 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 		if err != nil {
 			return dto.Order{}, err
 		}
-		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, deductions, false)
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, oldStatus, deductions, false)
 		if err != nil {
 			return dto.Order{}, err
 		}
 	case status == "cancelada" && oldStatus != "cancelada":
-		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, nil, true)
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, oldStatus, nil, true)
 		if err != nil {
 			return dto.Order{}, err
 		}
 	default:
-		updated, err = s.orderStore.UpdateStatus(statusCtx, id, status)
+		updated, err = s.orderStore.UpdateStatus(statusCtx, id, status, oldStatus)
 		if err != nil {
 			return dto.Order{}, err
 		}
@@ -330,6 +356,8 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		TableNumber:    input.TableNumber,
 		Notes:          input.Notes,
 		Items:          toStoreOrderItemInputs(input.Items),
+		ExpectedStatus: existing.Status,
+		BasePrices:     s.activeOfferPrices(ctx),
 	}
 
 	if input.CustomerPhone != existing.CustomerPhone {

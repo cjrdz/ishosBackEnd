@@ -38,6 +38,18 @@ func newTestBunDB(t *testing.T) *bun.DB {
 	require.NoError(t, err)
 	require.NoError(t, setupDB.Close())
 
+	// Drop the schema when the test ends so repeated runs do not accumulate
+	// test_* schemas in the database. Registered before the pool cleanup below,
+	// so it runs after that pool is closed (t.Cleanup is LIFO).
+	t.Cleanup(func() {
+		dropDB, err := sql.Open("pgx", databaseURL)
+		if err != nil {
+			return
+		}
+		defer func() { _ = dropDB.Close() }()
+		_, _ = dropDB.ExecContext(context.Background(), "DROP SCHEMA IF EXISTS "+schemaName+" CASCADE")
+	})
+
 	// Re-open the pool with the test schema baked into the connection string so
 	// every connection uses it automatically.
 	databaseURLWithSchema, err := withSearchPath(databaseURL, schemaName)

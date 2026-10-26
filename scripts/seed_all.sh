@@ -12,13 +12,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# Load .env if present
+# Load .env if present. An explicitly exported DATABASE_URL wins, so
+# `DATABASE_URL=... make seed` targets that database instead of the .env one.
+PRESET_DATABASE_URL="${DATABASE_URL:-}"
 if [ -f ".env" ]; then
   # shellcheck disable=SC1091
   set -o allexport
   # shellcheck disable=SC1090
   source .env
   set +o allexport
+fi
+if [ -n "$PRESET_DATABASE_URL" ]; then
+  DATABASE_URL="$PRESET_DATABASE_URL"
 fi
 
 if [ -z "${DATABASE_URL:-}" ]; then
@@ -57,18 +62,21 @@ if [ ! -f "$ADDONS_FILE" ]; then
   echo "Missing addons seed file: $ADDONS_FILE" >&2
   exit 1
 fi
-if [ ! -f "$INVENTORY_FILE" ]; then
-  echo "Missing inventory seed file: $INVENTORY_FILE" >&2
-  exit 1
+# Inventory is optional: stock levels are usually entered from the admin panel.
+INVENTORY_ARGS=()
+if [ -f "$INVENTORY_FILE" ]; then
+  INVENTORY_ARGS=(--inventory="$INVENTORY_FILE")
+else
+  echo "No $INVENTORY_FILE found; skipping inventory seed."
 fi
 
 # Run unified Go seeder
-echo "Seeding categories, products, flavors, addons, and inventory using Go seeder..."
+echo "Seeding categories, products, flavors, and addons using Go seeder..."
 go run ./cmd/seed \
   --categories="$CATEGORIES_FILE" \
   --products="$PRODUCTS_FILE" \
   --flavors="$FLAVORS_FILE" \
   --addons="$ADDONS_FILE" \
-  --inventory="$INVENTORY_FILE"
+  "${INVENTORY_ARGS[@]}"
 
 echo "Seeding completed."

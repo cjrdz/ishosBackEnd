@@ -44,6 +44,8 @@ type StoreOrderInput struct {
 	Notes          *string
 	CreatedByID    *string
 	Items          []StoreOrderItemInput
+	// BasePrices overrides a product's base price (active store offers).
+	BasePrices map[uuid.UUID]float64
 }
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
@@ -58,6 +60,11 @@ type StoreUpdateOrderInput struct {
 	TableNumber    *int
 	Notes          *string
 	Items          []StoreOrderItemInput
+	// ExpectedStatus, when non-empty, must match the order's status under the
+	// row lock or the update fails with a conflict.
+	ExpectedStatus string
+	// BasePrices overrides a product's base price (active store offers).
+	BasePrices map[uuid.UUID]float64
 }
 
 // EnrichmentService validates and enriches order customizations with pricing.
@@ -143,7 +150,7 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 	var result dto.Order
 
 	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
+		total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items, input.BasePrices)
 		if err != nil {
 			return err
 		}
@@ -247,15 +254,8 @@ func (s *OrderStore) UpdateOrderWithStockAdjustment(ctx context.Context, id uuid
 			return err
 		}
 
-		invRepo := NewInventoryBunRepository(tx)
-		if len(deductions) > 0 {
-			if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
-				return err
-			}
-		} else if restore {
-			if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
-				return err
-			}
+		if err := applyStockAdjustment(ctx, tx, id, deductions, restore); err != nil {
+			return err
 		}
 
 		if err := s.maybeLog(ctx, tx, id); err != nil {
@@ -277,6 +277,10 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 	var existingOrder models.Order
 	if err := db.NewSelect().Model(&existingOrder).Where("id = ?", id).For("UPDATE").Scan(ctx); err != nil {
 		return models.Order{}, nil, translateOrderError(err)
+	}
+	if input.ExpectedStatus != "" && string(existingOrder.Status) != input.ExpectedStatus {
+		return models.Order{}, nil, fmt.Errorf("%w: order status changed from %s to %s; refresh and try again",
+			apperror.ErrConflict, input.ExpectedStatus, existingOrder.Status)
 	}
 
 	now := time.Now()
@@ -308,7 +312,7 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 		return existingOrder, nil, nil
 	}
 
-	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items)
+	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items, input.BasePrices)
 	if err != nil {
 		return models.Order{}, nil, err
 	}
@@ -334,11 +338,15 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 }
 
 // UpdateStatus updates an order's status.
-func (s *OrderStore) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
+//
+// expectedStatus, when non-empty, is the status the caller validated the
+// transition against; the update fails with a conflict if the order has moved
+// on since (e.g. a concurrent request from another device).
+func (s *OrderStore) UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error) {
 	var result dto.Order
 
 	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		updated, err := s.updateStatusOnDB(ctx, tx, id, status)
+		updated, err := s.updateStatusOnDB(ctx, tx, id, status, expectedStatus)
 		if err != nil {
 			return err
 		}
@@ -357,24 +365,20 @@ func (s *OrderStore) UpdateStatus(ctx context.Context, id uuid.UUID, status stri
 // UpdateStatusWithStockAdjustment updates an order's status and applies an
 // inventory adjustment inside the same transaction so that stock and status are
 // committed atomically. If the adjustment fails, the status change is rolled back.
-func (s *OrderStore) UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []StockDeductionInput, restore bool) (dto.Order, error) {
+//
+// When restore is set the order's outstanding stock is returned first, then any
+// deductions are applied. expectedStatus behaves as in UpdateStatus.
+func (s *OrderStore) UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status, expectedStatus string, deductions []StockDeductionInput, restore bool) (dto.Order, error) {
 	var result dto.Order
 
 	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		updated, err := s.updateStatusOnDB(ctx, tx, id, status)
+		updated, err := s.updateStatusOnDB(ctx, tx, id, status, expectedStatus)
 		if err != nil {
 			return err
 		}
 
-		invRepo := NewInventoryBunRepository(tx)
-		if len(deductions) > 0 {
-			if _, err := invRepo.DeductStockForOrder(ctx, id, deductions, ""); err != nil {
-				return err
-			}
-		} else if restore {
-			if _, err := invRepo.RestoreStockForOrder(ctx, id, ""); err != nil {
-				return err
-			}
+		if err := applyStockAdjustment(ctx, tx, id, deductions, restore); err != nil {
+			return err
 		}
 
 		if err := s.maybeLog(ctx, tx, id); err != nil {
@@ -391,60 +395,64 @@ func (s *OrderStore) UpdateStatusWithStockAdjustment(ctx context.Context, id uui
 }
 
 // updateStatusOnDB updates an order's status against the supplied DB or transaction.
-func (s *OrderStore) updateStatusOnDB(ctx context.Context, db bun.IDB, id uuid.UUID, status string) (dto.Order, error) {
-	order, err := s.findOrderModelByID(ctx, db, id)
+// The row is locked for the rest of the transaction and only the status columns
+// are written, so concurrent edits to other fields (e.g. amount_received) are kept.
+func (s *OrderStore) updateStatusOnDB(ctx context.Context, db bun.IDB, id uuid.UUID, status, expectedStatus string) (dto.Order, error) {
+	order, err := lockOrderForStatusChange(ctx, db, id, expectedStatus)
 	if err != nil {
 		return dto.Order{}, err
 	}
 
 	now := time.Now()
-	model := models.Order{
-		ID:               order.ID,
-		OrderNumber:      order.OrderNumber,
-		CustomerID:       order.CustomerID,
-		CustomerName:     order.CustomerName,
-		CustomerPhone:    order.CustomerPhone,
-		CustomerEmail:    order.CustomerEmail,
-		CustomerIP:       order.CustomerIP,
-		TotalAmount:      order.TotalAmount,
-		Status:           order.Status,
-		PaymentMethod:    order.PaymentMethod,
-		PaymentStatus:    order.PaymentStatus,
-		OrderType:        order.OrderType,
-		TableNumber:      order.TableNumber,
-		Notes:            order.Notes,
-		RejectionReason:  order.RejectionReason,
-		ReviewedByUserID: order.ReviewedByUserID,
-		ReviewedAt:       order.ReviewedAt,
-		CreatedByUserID:  order.CreatedByUserID,
-		IsArchived:       order.IsArchived,
-		CreatedAt:        order.CreatedAt,
-		UpdatedAt:        now,
-		StatusTimestamps: order.StatusTimestamps,
+	if order.StatusTimestamps == nil {
+		order.StatusTimestamps = make(map[string]time.Time)
 	}
-	if model.StatusTimestamps == nil {
-		model.StatusTimestamps = make(map[string]time.Time)
-	}
-	model.StatusTimestamps[status] = now
-	model.Status = models.OrderStatus(status)
+	order.StatusTimestamps[status] = now
+	order.Status = models.OrderStatus(status)
+	order.UpdatedAt = now
 
-	res, err := db.NewUpdate().Model(&model).WherePK().Exec(ctx)
+	res, err := db.NewUpdate().Model(&order).Column("status", "status_timestamps", "updated_at").WherePK().Exec(ctx)
 	if err != nil {
 		return dto.Order{}, translateOrderError(err)
 	}
 	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
 		return dto.Order{}, &apperror.NotFoundError{Resource: "order"}
 	}
-	return toOrderDTOFromModel(model, nil), nil
+	return toOrderDTOFromModel(order, nil), nil
 }
 
-// findOrderModelByID loads a raw models.Order by ID against the supplied DB or transaction.
-func (s *OrderStore) findOrderModelByID(ctx context.Context, db bun.IDB, id uuid.UUID) (models.Order, error) {
+// lockOrderForStatusChange loads an order with SELECT ... FOR UPDATE and, when
+// expectedStatus is non-empty, verifies it still has that status. Callers must
+// be inside a transaction for the lock to be meaningful.
+func lockOrderForStatusChange(ctx context.Context, db bun.IDB, id uuid.UUID, expectedStatus string) (models.Order, error) {
 	var order models.Order
-	if err := db.NewSelect().Model(&order).Where("id = ?", id).Scan(ctx); err != nil {
+	if err := db.NewSelect().Model(&order).Where("id = ?", id).For("UPDATE").Scan(ctx); err != nil {
 		return models.Order{}, translateOrderError(err)
 	}
+	if expectedStatus != "" && string(order.Status) != expectedStatus {
+		return models.Order{}, fmt.Errorf("%w: order status changed from %s to %s; refresh and try again",
+			apperror.ErrConflict, expectedStatus, order.Status)
+	}
 	return order, nil
+}
+
+// applyStockAdjustment returns the order's outstanding stock (when restore is
+// set) and then applies any new deductions, inside the caller's transaction.
+// Restore is net-based and idempotent, so restoring before deducting is always
+// safe, including when an in-progress order's items are replaced.
+func applyStockAdjustment(ctx context.Context, tx bun.Tx, orderID uuid.UUID, deductions []StockDeductionInput, restore bool) error {
+	invRepo := NewInventoryBunRepository(tx)
+	if restore {
+		if _, err := invRepo.RestoreStockForOrder(ctx, orderID, ""); err != nil {
+			return err
+		}
+	}
+	if len(deductions) > 0 {
+		if _, err := invRepo.DeductStockForOrder(ctx, orderID, deductions, ""); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // itemSnapshot holds resolved item data ready for persistence.
@@ -455,8 +463,10 @@ type itemSnapshot struct {
 	customizations map[string]any
 }
 
-// resolveItems validates products, enriches customizations, and computes pricing.
-func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolver, items []StoreOrderItemInput) (float64, []itemSnapshot, error) {
+// resolveItems validates products, enriches customizations, and computes
+// pricing. basePrices, when it has an entry for a product, replaces that
+// product's base price (active offers); add-on extras are charged on top.
+func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolver, items []StoreOrderItemInput, basePrices map[uuid.UUID]float64) (float64, []itemSnapshot, error) {
 	total := 0.0
 	snapshots := make([]itemSnapshot, 0, len(items))
 
@@ -473,7 +483,11 @@ func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolv
 		if err != nil {
 			return 0, nil, err
 		}
-		effectivePrice := p.Price + addonExtra
+		basePrice := p.Price
+		if offerPrice, ok := basePrices[p.ID]; ok && offerPrice > 0 {
+			basePrice = offerPrice
+		}
+		effectivePrice := basePrice + addonExtra
 
 		total += effectivePrice * float64(item.Quantity)
 		snapshots = append(snapshots, itemSnapshot{

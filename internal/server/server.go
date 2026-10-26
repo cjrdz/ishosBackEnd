@@ -74,7 +74,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	flavorRepo := repository.NewFlavorBunRepository(bunDB)
 	addonRepo := repository.NewAddonBunRepository(bunDB)
 	productRepo := repository.NewProductBunRepository(bunDB)
-	orderRepo := repository.NewOrderBunRepository(bunDB, auditSvc)
+	orderRepo := repository.NewOrderBunRepository(bunDB, auditSvc).WithStoreTimeZone(cfg.StoreTimeZone)
 	settingsRepo := repository.NewAdminSettingBunRepository(bunDB)
 	customerRepo := repository.NewCustomerBunRepository(bunDB)
 	containerTypeRepo := repository.NewContainerTypeBunRepository(bunDB)
@@ -146,6 +146,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		orderDispatcher,
 		cfg.PublicStoreURL,
 	)
+	orderSvc.SetOfferPrices(settingsSvc)
 	archiveDefaults := services.ArchiveConfig{
 		Enabled:         cfg.OrderArchiveEnabled,
 		AgeDays:         cfg.OrderArchiveAgeDays,
@@ -179,7 +180,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	addonHandler := handlers.NewAddonHandler(addonSvc, auditSvc)
 	uploadHandler := handlers.NewUploadHandler(cfg, auditSvc)
 	analyticsHandler := handlers.NewAnalyticsHandler(orderRepo, cfg)
-	exportHandler := handlers.NewExportHandler(orderRepo, auditSvc)
+	exportHandler := handlers.NewExportHandler(orderRepo, auditSvc, cfg.StoreLocation())
 	userHandler := handlers.NewUserHandler(customerSvc, auditSvc)
 	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc, auditSvc)
 
@@ -219,7 +220,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	// Global middleware
 	r.Use(middleware.RequestID)
 	r.Use(appmiddleware.RequestIDMiddleware())
-	r.Use(middleware.ClientIPFromXFFTrustedProxies(1))
+	r.Use(appmiddleware.ClientIP(cfg.BFFSharedSecret))
 	r.Use(appmiddleware.SecurityHeaders)
 	r.Use(appmiddleware.Logger)
 	r.Use(appmiddleware.Recovery)
@@ -337,34 +338,35 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Patch("/users/{id}", userHandler.Update)
 			protected.With(appmiddleware.RequireAdmin).Delete("/users/{id}", userHandler.Delete)
 
-			// Products management
-			protected.Post("/products", productHandler.Create)
-			protected.Patch("/products/{id}", productHandler.Update)
+			// Products management. Catalog writes (prices, names, images) are
+			// admin-only; staff may still toggle availability during service.
+			protected.With(appmiddleware.RequireAdmin).Post("/products", productHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Patch("/products/{id}", productHandler.Update)
 			protected.Patch("/products/{id}/availability", productHandler.ToggleAvailability)
-			protected.Delete("/products/{id}", productHandler.Delete)
+			protected.With(appmiddleware.RequireAdmin).Delete("/products/{id}", productHandler.Delete)
 
 			// Product-Flavor linking
-			protected.Post("/products/{id}/flavors/{flavorId}", productHandler.LinkFlavor)
-			protected.Delete("/products/{id}/flavors/{flavorId}", productHandler.UnlinkFlavor)
+			protected.With(appmiddleware.RequireAdmin).Post("/products/{id}/flavors/{flavorId}", productHandler.LinkFlavor)
+			protected.With(appmiddleware.RequireAdmin).Delete("/products/{id}/flavors/{flavorId}", productHandler.UnlinkFlavor)
 
 			// Product-Addon linking
-			protected.Post("/products/{id}/addons/{addonId}", productHandler.LinkAddon)
-			protected.Delete("/products/{id}/addons/{addonId}", productHandler.UnlinkAddon)
+			protected.With(appmiddleware.RequireAdmin).Post("/products/{id}/addons/{addonId}", productHandler.LinkAddon)
+			protected.With(appmiddleware.RequireAdmin).Delete("/products/{id}/addons/{addonId}", productHandler.UnlinkAddon)
 
 			// Flavors management
-			protected.Post("/flavors", flavorHandler.Create)
-			protected.Patch("/flavors/{id}", flavorHandler.Update)
-			protected.Delete("/flavors/{id}", flavorHandler.Delete)
+			protected.With(appmiddleware.RequireAdmin).Post("/flavors", flavorHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Patch("/flavors/{id}", flavorHandler.Update)
+			protected.With(appmiddleware.RequireAdmin).Delete("/flavors/{id}", flavorHandler.Delete)
 
 			// Addons management
-			protected.Post("/addons", addonHandler.Create)
-			protected.Patch("/addons/{id}", addonHandler.Update)
-			protected.Delete("/addons/{id}", addonHandler.Delete)
+			protected.With(appmiddleware.RequireAdmin).Post("/addons", addonHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Patch("/addons/{id}", addonHandler.Update)
+			protected.With(appmiddleware.RequireAdmin).Delete("/addons/{id}", addonHandler.Delete)
 
 			// Categories management
-			protected.Post("/categories", categoryHandler.Create)
-			protected.Patch("/categories/{id}", categoryHandler.Update)
-			protected.Delete("/categories/{id}", categoryHandler.Delete)
+			protected.With(appmiddleware.RequireAdmin).Post("/categories", categoryHandler.Create)
+			protected.With(appmiddleware.RequireAdmin).Patch("/categories/{id}", categoryHandler.Update)
+			protected.With(appmiddleware.RequireAdmin).Delete("/categories/{id}", categoryHandler.Delete)
 
 			// Orders management
 			protected.Get("/orders", orderHandler.List)
@@ -422,7 +424,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Delete("/export/orders", exportHandler.PurgeOrders)
 
 			// Upload
-			protected.Post("/upload/image", uploadHandler.UploadImage)
+			protected.With(appmiddleware.RequireAdmin).Post("/upload/image", uploadHandler.UploadImage)
 			protected.With(appmiddleware.RequireAdmin).Delete("/upload/image", uploadHandler.DeleteImage)
 			protected.Get("/upload/images", uploadHandler.ListImages)
 		})
