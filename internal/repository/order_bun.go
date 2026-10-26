@@ -28,6 +28,33 @@ type transactionalAuditLogger interface {
 type OrderBunRepository struct {
 	db       bun.IDB
 	auditSvc transactionalAuditLogger
+	// storeTimeZone (IANA name) is applied to analytics transactions so
+	// day/week/month buckets follow the store's calendar, not UTC.
+	storeTimeZone string
+}
+
+// revenueStatusesSQL lists the statuses whose totals count as revenue: orders
+// staff have approved. Pending-review orders may still be rejected, and
+// cancelled ones were never paid.
+const revenueStatusesSQL = "status IN ('recibida', 'en_proceso', 'lista', 'entregada')"
+
+// WithStoreTimeZone sets the IANA time zone used to bucket analytics by
+// calendar day. It returns the repository for chaining.
+func (r *OrderBunRepository) WithStoreTimeZone(name string) *OrderBunRepository {
+	r.storeTimeZone = name
+	return r
+}
+
+// applyStoreTimeZone sets the session time zone for the rest of tx (SET LOCAL
+// semantics), so to_char/date_trunc on timestamptz use store-local time.
+func (r *OrderBunRepository) applyStoreTimeZone(ctx context.Context, tx bun.Tx) error {
+	if r.storeTimeZone == "" {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, "SELECT set_config('TimeZone', ?, true)", r.storeTimeZone); err != nil {
+		return fmt.Errorf("set analytics time zone: %w", err)
+	}
+	return nil
 }
 
 // NewOrderBunRepository creates a new Bun-backed order repository.
@@ -217,11 +244,12 @@ func (r *OrderBunRepository) FindRecentByPhone(ctx context.Context, customerPhon
 	return toOrderDTOsFromModels(orders), nil
 }
 
-// Approve marks an order as approved.
-func (r *OrderBunRepository) Approve(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error) {
+// Approve marks an order as approved. expectedStatus, when non-empty, must match
+// the order's status under the row lock or the update fails with a conflict.
+func (r *OrderBunRepository) Approve(ctx context.Context, id uuid.UUID, reviewerID *string, expectedStatus string) (dto.Order, error) {
 	var result dto.Order
 	err := runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, string(models.OrderStatusRecibida), func(order *models.Order, now time.Time) {
+		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, string(models.OrderStatusRecibida), expectedStatus, func(order *models.Order, now time.Time) {
 			order.Status = models.OrderStatusRecibida
 			order.PaymentStatus = models.OrderPaymentStatusConfirmado
 			order.RejectionReason = nil
@@ -243,17 +271,23 @@ func (r *OrderBunRepository) Approve(ctx context.Context, id uuid.UUID, reviewer
 	return result, nil
 }
 
-// Reject marks an order as rejected.
-func (r *OrderBunRepository) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error) {
+// Reject marks an order as rejected (cancelada) and returns any stock the order
+// still holds, in the same transaction. Restore is net-based, so rejecting an
+// order that never had stock deducted is a no-op for inventory.
+// expectedStatus behaves as in Approve.
+func (r *OrderBunRepository) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string) (dto.Order, error) {
 	var result dto.Order
 	err := runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, string(models.OrderStatusCancelada), func(order *models.Order, now time.Time) {
+		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, string(models.OrderStatusCancelada), expectedStatus, func(order *models.Order, now time.Time) {
 			order.Status = models.OrderStatusCancelada
 			order.RejectionReason = &reason
 			order.ReviewedByUserID = reviewerID
 			order.ReviewedAt = &now
 		})
 		if err != nil {
+			return err
+		}
+		if err := applyStockAdjustment(ctx, tx, id, nil, true); err != nil {
 			return err
 		}
 		if err := r.maybeLog(ctx, tx, fmt.Sprintf("order:%s", id)); err != nil {
@@ -268,11 +302,11 @@ func (r *OrderBunRepository) Reject(ctx context.Context, id uuid.UUID, reason st
 	return result, nil
 }
 
-// UpdateStatus updates an order's status.
-func (r *OrderBunRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
+// UpdateStatus updates an order's status. expectedStatus behaves as in Approve.
+func (r *OrderBunRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error) {
 	var result dto.Order
 	err := runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, status, func(order *models.Order, now time.Time) {
+		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, status, expectedStatus, func(order *models.Order, now time.Time) {
 			order.Status = models.OrderStatus(status)
 		})
 		if err != nil {
@@ -290,52 +324,36 @@ func (r *OrderBunRepository) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 	return result, nil
 }
 
-func (r *OrderBunRepository) updateStatusWithTimestamps(ctx context.Context, db bun.IDB, id uuid.UUID, status string, mutate func(*models.Order, time.Time)) (dto.Order, error) {
-	order, err := r.findOrderModelByID(ctx, db, id)
+// updateStatusWithTimestamps locks the order row, applies mutate, and writes back
+// only the review/status columns mutate may touch, so unrelated fields such as
+// amount_received are never overwritten.
+func (r *OrderBunRepository) updateStatusWithTimestamps(ctx context.Context, db bun.IDB, id uuid.UUID, status, expectedStatus string, mutate func(*models.Order, time.Time)) (dto.Order, error) {
+	order, err := lockOrderForStatusChange(ctx, db, id, expectedStatus)
 	if err != nil {
 		return dto.Order{}, err
 	}
 
 	now := time.Now()
-	model := models.Order{
-		ID:               order.ID,
-		OrderNumber:      order.OrderNumber,
-		CustomerID:       order.CustomerID,
-		CustomerName:     order.CustomerName,
-		CustomerPhone:    order.CustomerPhone,
-		CustomerEmail:    order.CustomerEmail,
-		CustomerIP:       order.CustomerIP,
-		TotalAmount:      order.TotalAmount,
-		Status:           models.OrderStatus(order.Status),
-		PaymentMethod:    models.OrderPaymentMethod(order.PaymentMethod),
-		PaymentStatus:    models.OrderPaymentStatus(order.PaymentStatus),
-		OrderType:        models.OrderType(order.OrderType),
-		TableNumber:      order.TableNumber,
-		Notes:            order.Notes,
-		RejectionReason:  order.RejectionReason,
-		ReviewedByUserID: order.ReviewedByUserID,
-		ReviewedAt:       order.ReviewedAt,
-		CreatedByUserID:  order.CreatedByUserID,
-		IsArchived:       order.IsArchived,
-		StatusTimestamps: order.StatusTimestamps,
-		CreatedAt:        order.CreatedAt,
-		UpdatedAt:        now,
+	order.UpdatedAt = now
+	if order.StatusTimestamps == nil {
+		order.StatusTimestamps = make(map[string]time.Time)
 	}
-	if model.StatusTimestamps == nil {
-		model.StatusTimestamps = make(map[string]time.Time)
-	}
-	model.StatusTimestamps[status] = now
+	order.StatusTimestamps[status] = now
 
-	mutate(&model, now)
+	mutate(&order, now)
 
-	res, err := db.NewUpdate().Model(&model).WherePK().Exec(ctx)
+	res, err := db.NewUpdate().
+		Model(&order).
+		Column("status", "payment_status", "rejection_reason", "reviewed_by_ory_id", "reviewed_at", "status_timestamps", "updated_at").
+		WherePK().
+		Exec(ctx)
 	if err != nil {
 		return dto.Order{}, translateOrderError(err)
 	}
 	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
 		return dto.Order{}, &apperror.NotFoundError{Resource: "order"}
 	}
-	return toOrderDTOFromModel(model, nil), nil
+	return toOrderDTOFromModel(order, nil), nil
 }
 
 // UpdateNotes updates an order's notes.
@@ -534,6 +552,9 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 	}
 
 	if err := runInTx(ctx, r.db, &sql.TxOptions{ReadOnly: true}, func(ctx context.Context, tx bun.Tx) error {
+		if err := r.applyStoreTimeZone(ctx, tx); err != nil {
+			return err
+		}
 		var totals struct {
 			TotalOrders   int64   `bun:"total_orders"`
 			TotalRevenue  float64 `bun:"total_revenue"`
@@ -542,8 +563,8 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 		err := tx.NewSelect().
 			Model((*models.Order)(nil)).
 			ColumnExpr("COUNT(*) AS total_orders").
-			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE status != 'cancelada'), 0) AS total_revenue").
-			ColumnExpr("COALESCE(AVG(total_amount) FILTER (WHERE status != 'cancelada'), 0) AS avg_order_value").
+			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS total_revenue").
+			ColumnExpr("COALESCE(AVG(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS avg_order_value").
 			Where("created_at >= ? AND created_at <= ?", start, end).
 			Scan(ctx, &totals)
 		if err != nil {
@@ -580,7 +601,7 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 			Model((*models.Order)(nil)).
 			Column("payment_method").
 			ColumnExpr("COUNT(*) AS count").
-			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE status != 'cancelada'), 0) AS revenue").
+			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS revenue").
 			Where("created_at >= ? AND created_at <= ?", start, end).
 			Group("payment_method").
 			Scan(ctx, &paymentRows)
@@ -607,6 +628,9 @@ func (r *OrderBunRepository) AnalyticsOrdersOverTime(ctx context.Context, start,
 	var result []dto.AnalyticsTimelinePoint
 
 	if err := runInTx(ctx, r.db, &sql.TxOptions{ReadOnly: true}, func(ctx context.Context, tx bun.Tx) error {
+		if err := r.applyStoreTimeZone(ctx, tx); err != nil {
+			return err
+		}
 		var rows []struct {
 			Date    string  `bun:"date"`
 			Count   int64   `bun:"count"`
@@ -627,7 +651,7 @@ func (r *OrderBunRepository) AnalyticsOrdersOverTime(ctx context.Context, start,
 			Model((*models.Order)(nil)).
 			ColumnExpr(dateExpr+" AS date").
 			ColumnExpr("COUNT(*) AS count").
-			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE status != 'cancelada'), 0) AS revenue").
+			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS revenue").
 			Where("created_at >= ? AND created_at <= ?", start, end).
 			GroupExpr(dateExpr).
 			OrderExpr(dateExpr).
@@ -657,6 +681,9 @@ func (r *OrderBunRepository) AnalyticsTopProducts(ctx context.Context, start, en
 	var result []dto.AnalyticsTopProduct
 
 	if err := runInTx(ctx, r.db, &sql.TxOptions{ReadOnly: true}, func(ctx context.Context, tx bun.Tx) error {
+		if err := r.applyStoreTimeZone(ctx, tx); err != nil {
+			return err
+		}
 		var rows []struct {
 			Name       string  `bun:"name"`
 			TotalSold  int64   `bun:"total_sold"`
@@ -670,7 +697,8 @@ SELECT COALESCE(MAX(p.name), MAX(oi.product_name)) AS name,
 FROM order_items oi
 JOIN orders o ON o.id = oi.order_items
 LEFT JOIN products p ON p.id = oi.product_order_items
-WHERE o.created_at >= ? AND o.created_at <= ? AND o.status != 'cancelada'
+WHERE o.created_at >= ? AND o.created_at <= ?
+  AND o.` + revenueStatusesSQL + `
 GROUP BY oi.product_order_items
 ORDER BY total_sold DESC, total_value DESC
 LIMIT ?

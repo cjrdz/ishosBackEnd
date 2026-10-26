@@ -119,13 +119,13 @@ func TestOrderBunRepository_ApproveAndReject(t *testing.T) {
 	require.NoError(t, err)
 
 	reviewer := "admin"
-	approved, err := repo.Approve(ctx, created.ID, &reviewer)
+	approved, err := repo.Approve(ctx, created.ID, &reviewer, "")
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusRecibida), approved.Status)
 	assert.Equal(t, string(models.OrderPaymentStatusConfirmado), approved.PaymentStatus)
 	assert.Equal(t, "admin", *approved.ReviewedByUserID)
 
-	rejected, err := repo.Reject(ctx, approved.ID, "out of stock", &reviewer)
+	rejected, err := repo.Reject(ctx, approved.ID, "out of stock", &reviewer, "")
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusCancelada), rejected.Status)
 	assert.Equal(t, "out of stock", *rejected.RejectionReason)

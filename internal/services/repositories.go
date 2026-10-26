@@ -37,9 +37,13 @@ type OrderRepository interface {
 	FindByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
 	FindRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
 	Create(ctx context.Context, input repository.CreateOrderInput) (dto.Order, error)
-	Approve(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error)
-	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	// Approve, Reject and UpdateStatus take the status the caller validated the
+	// transition against; the repository re-checks it under a row lock and
+	// returns apperror.ErrConflict if the order changed concurrently.
+	// Reject also returns any stock the order still holds.
+	Approve(ctx context.Context, id uuid.UUID, reviewerID *string, expectedStatus string) (dto.Order, error)
+	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string) (dto.Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error)
 	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
 	SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -119,14 +123,15 @@ type OrderStore interface {
 	FindOrderByIdempotencyKey(ctx context.Context, key uuid.UUID) (dto.Order, error)
 	UpdateOrder(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error)
 	// UpdateOrderWithStockAdjustment updates an order and replaces its items, then
-	// applies an inventory adjustment inside the same transaction. Either deductions
-	// or restore is applied; if both are supplied, deductions take precedence.
+	// applies an inventory adjustment inside the same transaction. When restore is
+	// set, the order's outstanding stock is returned first; deductions are then
+	// applied. Set input.ExpectedStatus to guard against concurrent changes.
 	UpdateOrderWithStockAdjustment(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error)
 	// UpdateStatusWithStockAdjustment updates an order's status and applies an
-	// inventory adjustment inside the same transaction. Either deductions or restore
-	// is applied; if both are supplied, deductions take precedence.
-	UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
+	// inventory adjustment inside the same transaction: restore first (if set),
+	// then deductions. expectedStatus behaves as in OrderRepository.UpdateStatus.
+	UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status, expectedStatus string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
 }
 
 // ContainerTypeRepository defines the container type data access contract.

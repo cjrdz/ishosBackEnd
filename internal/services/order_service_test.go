@@ -86,21 +86,21 @@ func (s *orderRepoStub) Create(ctx context.Context, input repository.CreateOrder
 	return dto.Order{}, nil
 }
 
-func (s *orderRepoStub) Approve(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error) {
+func (s *orderRepoStub) Approve(ctx context.Context, id uuid.UUID, reviewerID *string, expectedStatus string) (dto.Order, error) {
 	if s.approveFn != nil {
 		return s.approveFn(ctx, id, reviewerID)
 	}
 	return dto.Order{}, nil
 }
 
-func (s *orderRepoStub) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error) {
+func (s *orderRepoStub) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string) (dto.Order, error) {
 	if s.rejectFn != nil {
 		return s.rejectFn(ctx, id, reason, reviewerID)
 	}
 	return dto.Order{}, nil
 }
 
-func (s *orderRepoStub) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
+func (s *orderRepoStub) UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error) {
 	if s.updateStatusFn != nil {
 		return s.updateStatusFn(ctx, id, status)
 	}
@@ -205,14 +205,14 @@ func (s *orderStoreStub) UpdateOrderWithStockAdjustment(ctx context.Context, id 
 	return dto.Order{ID: id, Status: input.PaymentMethod}, nil
 }
 
-func (s *orderStoreStub) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {
+func (s *orderStoreStub) UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error) {
 	if s.updateStatusFn != nil {
 		return s.updateStatusFn(ctx, id, status)
 	}
 	return dto.Order{ID: id, Status: status}, nil
 }
 
-func (s *orderStoreStub) UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error) {
+func (s *orderStoreStub) UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status, expectedStatus string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error) {
 	if s.updateStatusWithAdjustmentFn != nil {
 		return s.updateStatusWithAdjustmentFn(ctx, id, status, deductions, restore)
 	}

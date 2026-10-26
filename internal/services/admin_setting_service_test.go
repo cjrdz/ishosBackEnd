@@ -148,7 +148,8 @@ func TestAdminSettingServiceUpdateStoreSettings_Persists(t *testing.T) {
 	_, err := svc.UpdateStoreSettings(context.Background(), StoreSettings{
 		OrdersEnabled: false,
 		Offers: []OfferItem{
-			{ProductID: "prod-1", Label: "Test Offer"},
+			// Shaped like the admin UI's payload: product UUID + RFC 3339 expiry.
+			{ProductID: "6a1f0e9e-2c1b-4c8a-9f3e-1d2c3b4a5f60", Label: "Test Offer", ExpiresAt: "2026-12-31T23:59:00Z"},
 		},
 	}, "admin-1")
 	if err != nil {

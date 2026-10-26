@@ -22,7 +22,7 @@ func NewOrderEnrichmentService() *OrderEnrichmentService {
 // EnrichCustomizations validates and enriches customizations with pricing.
 // Returns (enriched customizations, addon extra cost, error).
 func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw map[string]any) (map[string]any, float64, error) {
-	enriched := s.cloneCustomizations(raw)
+	enriched := s.clientCustomizations(raw)
 	addonExtra := 0.0
 	selectedAddonGroups := make(map[string]bool)
 
@@ -296,16 +296,26 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 	return enriched, addonExtra, nil
 }
 
-// cloneCustomizations creates a shallow copy of customizations map.
-func (s *OrderEnrichmentService) cloneCustomizations(raw map[string]any) map[string]any {
+// maxItemNotesRunes caps the free-text note a customer can attach to an item.
+const maxItemNotesRunes = 300
+
+// clientCustomizations returns the only client-supplied values stored as-is:
+// the item note. Everything else in the stored customizations (flavor and
+// add-on IDs, names, prices, selection markers) is written by
+// EnrichCustomizations from validated catalog data, so a client cannot inject
+// arbitrary keys (e.g. a fake "flavor_name") that staff and tracking display.
+func (s *OrderEnrichmentService) clientCustomizations(raw map[string]any) map[string]any {
 	if raw == nil {
 		return nil
 	}
-	cloned := make(map[string]any, len(raw))
-	for key, value := range raw {
-		cloned[key] = value
+	out := make(map[string]any, 1)
+	if notes, ok := raw["notes"].(string); ok {
+		if runes := []rune(notes); len(runes) > maxItemNotesRunes {
+			notes = string(runes[:maxItemNotesRunes])
+		}
+		out["notes"] = notes
 	}
-	return cloned
+	return out
 }
 
 // extractCustomizationString extracts a single string value from customizations.

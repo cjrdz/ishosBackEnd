@@ -26,6 +26,9 @@ func TestEnsureBunSchema(t *testing.T) {
 		t.Skipf("cannot open postgres (%v); skipping bun migration smoke test", err)
 	}
 	defer func() { _ = rawDB.Close() }()
+	// SET search_path below is per-connection; pin the pool to one connection
+	// so the migration transaction runs in the test schema.
+	rawDB.SetMaxOpenConns(1)
 
 	if err := rawDB.PingContext(ctx); err != nil {
 		t.Skipf("postgres not reachable (%v); skipping bun migration smoke test", err)
@@ -45,6 +48,28 @@ func TestEnsureBunSchema(t *testing.T) {
 
 	db := OpenBunDB(rawDB)
 	require.NoError(t, EnsureBunSchema(ctx, db))
+	// A second run must be a no-op on an up-to-date schema.
+	require.NoError(t, EnsureBunSchema(ctx, db))
+
+	var version int
+	require.NoError(t, rawDB.QueryRowContext(ctx, "SELECT MAX(version) FROM schema_version").Scan(&version))
+	require.Equal(t, schemaVersion, version)
+
+	// Upgrade path: a database migrated before schema_version existed (full
+	// schema + data, no version row) must migrate idempotently and keep its data.
+	_, err = rawDB.ExecContext(ctx, `INSERT INTO categories (id, name, slug, is_active, display_order, created_at, updated_at)
+		VALUES (gen_random_uuid(), 'Conos', 'conos', true, 0, NOW(), NOW())`)
+	require.NoError(t, err)
+	_, err = rawDB.ExecContext(ctx, "DROP TABLE schema_version")
+	require.NoError(t, err)
+
+	require.NoError(t, EnsureBunSchema(ctx, db))
+
+	require.NoError(t, rawDB.QueryRowContext(ctx, "SELECT MAX(version) FROM schema_version").Scan(&version))
+	require.Equal(t, schemaVersion, version)
+	var categories int
+	require.NoError(t, rawDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM categories").Scan(&categories))
+	require.Equal(t, 1, categories, "existing rows must survive the upgrade")
 
 	// Spot-check a few tables exist using the raw *sql.DB.
 	for _, table := range []string{"orders", "order_items", "products", "customers"} {

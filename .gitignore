@@ -50,7 +50,11 @@ Thumbs.db
 debug
 __debug_bin
 
-# githints local change-tracking store (store.db, salt, and rendered markdown)
-.githints/
+# githints-managed agent notes
 AGENTS.md
 tests/testAPI
+
+
+# >>> githints (managed)
+.githints/
+# <<< githints (managed)

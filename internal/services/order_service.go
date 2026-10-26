@@ -87,6 +87,13 @@ func NewOrderService(orderRepo OrderRepository, orderStore OrderStore, customerR
 	}
 }
 
+// SetOfferPrices makes order pricing honour active store offers. It must be
+// called once at wiring time (server.New does); without it orders are priced
+// at regular prices even while the storefront shows an offer.
+func (s *OrderService) SetOfferPrices(src OfferPriceSource) {
+	s.command.offers = src
+}
+
 func (s *OrderService) IssueTrackingAccess(ctx context.Context, orderNumber string) (*TrackingAccess, error) {
 	return s.tracking.IssueTrackingAccess(ctx, orderNumber)
 }

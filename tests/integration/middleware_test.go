@@ -205,6 +205,28 @@ func TestLoginRateLimitMiddleware(t *testing.T) {
 	}
 }
 
+func TestLoginRateLimitMiddleware_UnknownIPIsNotASharedBucket(t *testing.T) {
+	svc := &stubLoginAuthService{attempts: make(map[string]int)}
+	lrl := appmiddleware.NewLoginRateLimit(svc)
+
+	// No client-IP middleware: the IP resolves to "".
+	r := chi.NewRouter()
+	r.With(lrl.Middleware).Post("/login", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	for i := 0; i < 5; i++ {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/login", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected %d, got %d", i, http.StatusOK, rec.Code)
+		}
+	}
+	if svc.attempts[""] != 0 {
+		t.Fatalf("per-IP limiter was consulted with an empty IP %d times", svc.attempts[""])
+	}
+}
+
 func TestInactivityMiddlewareExpiresIdleSession(t *testing.T) {
 	tracker := appmiddleware.NewInactivityTracker()
 	mw := appmiddleware.NewInactivityMiddleware(tracker, nil, services.TokenTTLConfig{
