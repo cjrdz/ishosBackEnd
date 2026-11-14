@@ -30,6 +30,20 @@ var SettingsRegistry = map[string]struct {
 			return json.Unmarshal(raw, &v)
 		},
 	},
+	// StoreHoursKey = "store.hours"
+	// Value shape: {"days": {"mon": [{"open": "HH:MM", "close": "HH:MM"}], ...}}
+	// Semantic rules (format, order, overlaps) live in services.ValidateWeeklyHours.
+	"store.hours": {
+		Validate: func(raw json.RawMessage) error {
+			var v struct {
+				Days map[string][]struct {
+					Open  string `json:"open"`
+					Close string `json:"close"`
+				} `json:"days"`
+			}
+			return json.Unmarshal(raw, &v)
+		},
+	},
 	// OrderArchiveConfigKey = "order.archive.config"
 	// Value shape: {"enabled": bool, "age_days": int, "interval_minutes": int}
 	"order.archive.config": {

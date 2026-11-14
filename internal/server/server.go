@@ -86,7 +86,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	flavorSvc := services.NewFlavorService(flavorRepo)
 	addonSvc := services.NewAddonService(addonRepo)
 	productSvc := services.NewProductService(productRepo)
-	settingsSvc := services.NewAdminSettingService(settingsRepo)
+	settingsSvc := services.NewAdminSettingService(settingsRepo).WithLocation(cfg.StoreLocation())
 	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo, services.WithFlavorRepo(flavorRepo))
 	authService := auth.NewService(
@@ -313,6 +313,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/rate-limits", adminSettingsHandler.UpdatePublicOrderRateLimitConfig)
 				protectedSettings.With(appmiddleware.RequireAdmin).Get("/panel-config", adminSettingsHandler.GetPanelConfig)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/panel-config", adminSettingsHandler.UpdatePanelConfig)
+				protectedSettings.Get("/hours", adminSettingsHandler.GetStoreHours)
+				protectedSettings.With(appmiddleware.RequireAdmin).Put("/hours", adminSettingsHandler.UpdateStoreHours)
 			})
 		})
 

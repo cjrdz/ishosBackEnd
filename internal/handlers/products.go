@@ -410,7 +410,7 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Product deleted"})
 }
 
-// ToggleAvailability flips is_available. Admin only.
+// ToggleAvailability flips is_available. Open to staff (sold-out items during service).
 func (h *ProductHandler) ToggleAvailability(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {

@@ -17,7 +17,11 @@ import (
 // existing step changes). A database whose recorded version is already
 // >= schemaVersion skips migration entirely, so a new step added without a bump
 // never runs on existing databases.
-const schemaVersion = 1
+// Version history:
+//
+//	1 — initial schema
+//	2 — one-time repair of products.free_toppings (see repairFreeToppings)
+const schemaVersion = 2
 
 // Migration timeouts. lock_timeout makes a DDL statement that is blocked by a
 // live transaction (e.g. the previous instance during a rolling deploy) fail
@@ -78,6 +82,11 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 		log.Info().Int("from", current).Int("to", schemaVersion).Msg("migrating database schema")
 		if err := migrateSchema(ctx, tx); err != nil {
 			return err
+		}
+		if current < 2 {
+			if err := repairFreeToppings(ctx, tx); err != nil {
+				return err
+			}
 		}
 		return writeSchemaVersion(ctx, tx, schemaVersion)
 	})
@@ -335,6 +344,21 @@ func ensureFreeToppingsColumn(ctx context.Context, db bun.IDB) error {
 	_, err = db.ExecContext(ctx, `UPDATE products SET free_toppings = 1 WHERE free_toppings IS NULL OR free_toppings < 0`)
 	if err != nil {
 		return fmt.Errorf("backfill products.free_toppings: %w", err)
+	}
+	return nil
+}
+
+// repairFreeToppings runs once (schema v2). A repository bug reset
+// free_toppings to 0 on every product edit, so products started charging for
+// the first topping. Before v2 no product could keep a deliberate 0 (any edit
+// overwrote it), so every 0 is the bug's doing and is restored to the default.
+func repairFreeToppings(ctx context.Context, db bun.IDB) error {
+	res, err := db.ExecContext(ctx, `UPDATE products SET free_toppings = 1 WHERE free_toppings = 0`)
+	if err != nil {
+		return fmt.Errorf("repair products.free_toppings: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Info().Int64("products", n).Msg("restored one free topping on products reset by the update bug")
 	}
 	return nil
 }

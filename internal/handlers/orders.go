@@ -17,6 +17,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
+	orderDomain "github.com/cjrdz/ishosBackEnd/internal/domain/order"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers/requests"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
@@ -158,6 +159,12 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: "Los pedidos están temporalmente desactivados"})
 			return
 		}
+		// Outside opening hours customers can't order; counter staff still can.
+		now := time.Now()
+		if status := h.settingsSvc.StoreOpenStatus(r.Context(), now); !status.IsOpen {
+			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: h.settingsSvc.ClosedMessage(status, now)})
+			return
+		}
 		res := h.rateLimiter.CheckAndRecordPhone(r.Context(), body.CustomerPhone)
 		res.WriteHeaders(w)
 		if !res.Allowed {
@@ -224,6 +231,11 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"tracking_expires_at": trackingAccess.ExpiresAt,
 		"message":             "Orden recibida, te notificaremos pronto 🍦",
 	}
+	// Staff fetch the full order by id to print its tickets right away; public
+	// customers track by number + token and never need the internal id.
+	if isStaff {
+		respBody["id"] = order.ID
+	}
 	if order.AmountReceived != nil {
 		respBody["amount_received"] = *order.AmountReceived
 		respBody["change"] = *order.AmountReceived - order.TotalAmount
@@ -232,7 +244,16 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
+	// status: one status or a comma-separated list (e.g. the board's active columns).
 	status := r.URL.Query().Get("status")
+	if status != "" {
+		for _, s := range strings.Split(status, ",") {
+			if _, err := orderDomain.NewOrderStatus(s); err != nil {
+				response.Error(w, http.StatusBadRequest, "Estado de orden inválido: "+s)
+				return
+			}
+		}
+	}
 	lite := r.URL.Query().Get("lite") == "true"
 	archived := r.URL.Query().Get("archived") == "true"
 	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))

@@ -233,3 +233,24 @@ func TestStatusUpdate_ConcurrentTransitions_DeductOnce(t *testing.T) {
 	assert.Equal(t, racers-1, conflicts, "the rest must be rejected as conflicts")
 	assert.Equal(t, 45, currentStock(t, ctx, invRepo, item.ID), "stock deducted exactly once")
 }
+
+// TestListPaginated_MultipleStatuses backs the admin orders board, which loads
+// every active column in one request.
+func TestListPaginated_MultipleStatuses(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	repo := NewOrderBunRepository(db)
+	createRegressionOrder(t, ctx, repo, "ORD-BD-0001", string(models.OrderStatusRecibida), nil)
+	createRegressionOrder(t, ctx, repo, "ORD-BD-0002", string(models.OrderStatusEnProceso), nil)
+	createRegressionOrder(t, ctx, repo, "ORD-BD-0003", string(models.OrderStatusEntregada), nil)
+
+	orders, total, err := repo.ListPaginated(ctx, "recibida,en_proceso", false, 1, 100)
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, orders, 2)
+
+	single, total, err := repo.ListPaginated(ctx, "entregada", false, 1, 100)
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Equal(t, "ORD-BD-0003", single[0].OrderNumber)
+}

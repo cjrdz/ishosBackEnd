@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -161,7 +162,11 @@ func (r *OrderBunRepository) CreateItem(ctx context.Context, input CreateOrderIt
 // only archived orders.
 func (r *OrderBunRepository) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
 	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("is_archived = ?", archived)
-	if status != "" {
+	// status is a single status or a comma-separated list (validated by the
+	// handler), e.g. the active board columns.
+	if statuses := strings.Split(status, ","); status != "" && len(statuses) > 1 {
+		q = q.Where("status IN (?)", bun.List(statuses))
+	} else if status != "" {
 		q = q.Where("status = ?", status)
 	}
 

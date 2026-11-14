@@ -4,10 +4,12 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
@@ -26,6 +28,7 @@ type TokenTTLConfig struct {
 type AdminSettingService struct {
 	repo  AdminSettingRepository
 	cache *cache.TTLCache
+	loc   *time.Location // store time zone for opening hours
 }
 
 const (
@@ -33,6 +36,7 @@ const (
 	tokenTTLConfigCacheKey       = "settings:token_ttl_config"
 	archiveConfigCacheKey        = "settings:archive_config"
 	publicOrderRateLimitCacheKey = "settings:public_order_rate_limit"
+	storeHoursCacheKey           = "settings:store_hours"
 	settingsCacheTTL             = 10 * time.Second
 )
 
@@ -61,7 +65,78 @@ func NewAdminSettingService(repo AdminSettingRepository) *AdminSettingService {
 	return &AdminSettingService{
 		repo:  repo,
 		cache: cache.New(settingsCacheTTL),
+		loc:   time.UTC,
 	}
+}
+
+// WithLocation sets the store time zone used for opening hours.
+func (s *AdminSettingService) WithLocation(loc *time.Location) *AdminSettingService {
+	if loc != nil {
+		s.loc = loc
+	}
+	return s
+}
+
+// GetStoreHours returns the saved weekly schedule (empty when none is saved).
+func (s *AdminSettingService) GetStoreHours(ctx context.Context) (WeeklyHours, error) {
+	if s.repo == nil {
+		return WeeklyHours{}, nil
+	}
+	if v, ok := s.cache.Get(storeHoursCacheKey); ok {
+		return v.(WeeklyHours), nil
+	}
+	hours := WeeklyHours{}
+	rec, err := s.repo.GetByKey(ctx, StoreHoursKey)
+	if err != nil {
+		if !errors.Is(err, apperror.ErrNotFound) {
+			return nil, err
+		}
+	} else if rawDays, ok := rec.Value["days"]; ok {
+		raw, _ := json.Marshal(rawDays)
+		if err := json.Unmarshal(raw, &hours); err != nil {
+			return nil, fmt.Errorf("decode store hours: %w", err)
+		}
+	}
+	s.cache.Set(storeHoursCacheKey, hours)
+	return hours, nil
+}
+
+// UpdateStoreHours validates and saves the weekly schedule. An empty
+// schedule turns hours off (the store is then always open).
+func (s *AdminSettingService) UpdateStoreHours(ctx context.Context, hours WeeklyHours, changedBy string) (WeeklyHours, error) {
+	if err := ValidateWeeklyHours(hours); err != nil {
+		return nil, err
+	}
+	normalized := NormalizeWeeklyHours(hours)
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, err
+	}
+	var days map[string]any
+	if err := json.Unmarshal(raw, &days); err != nil {
+		return nil, err
+	}
+	if err := s.upsertSetting(ctx, StoreHoursKey, map[string]any{"days": days}, changedBy); err != nil {
+		return nil, fmt.Errorf("failed to save store hours: %w", err)
+	}
+	s.cache.Delete(storeHoursCacheKey)
+	return normalized, nil
+}
+
+// StoreOpenStatus reports whether the store is open at now per its schedule.
+// A read failure fails open: the manual orders switch still applies.
+func (s *AdminSettingService) StoreOpenStatus(ctx context.Context, now time.Time) StoreOpenStatus {
+	hours, err := s.GetStoreHours(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("could not load store hours; treating store as open")
+		hours = nil
+	}
+	return ComputeOpenStatus(hours, now, s.loc)
+}
+
+// ClosedMessage explains when the store opens next, in Spanish.
+func (s *AdminSettingService) ClosedMessage(status StoreOpenStatus, now time.Time) string {
+	return ClosedMessage(status, now, s.loc)
 }
 
 func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults TokenTTLConfig) (TokenTTLConfig, error) {
