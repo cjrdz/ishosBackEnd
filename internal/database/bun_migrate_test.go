@@ -71,6 +71,23 @@ func TestEnsureBunSchema(t *testing.T) {
 	require.NoError(t, rawDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM categories").Scan(&categories))
 	require.Equal(t, 1, categories, "existing rows must survive the upgrade")
 
+	// v1 → v2: products zeroed by the update bug get their free topping back,
+	// once; a 0 set after the upgrade is left alone.
+	_, err = rawDB.ExecContext(ctx, `INSERT INTO products (id, name, description, price, category_products, free_toppings, created_at, updated_at)
+		SELECT gen_random_uuid(), 'Cono', '', 0.9, id, 0, NOW(), NOW() FROM categories LIMIT 1`)
+	require.NoError(t, err)
+	_, err = rawDB.ExecContext(ctx, "DELETE FROM schema_version WHERE version > 1")
+	require.NoError(t, err)
+	require.NoError(t, EnsureBunSchema(ctx, db))
+	var free int
+	require.NoError(t, rawDB.QueryRowContext(ctx, "SELECT free_toppings FROM products WHERE name = 'Cono'").Scan(&free))
+	require.Equal(t, 1, free, "v2 repairs products reset to 0 by the update bug")
+	_, err = rawDB.ExecContext(ctx, "UPDATE products SET free_toppings = 0 WHERE name = 'Cono'")
+	require.NoError(t, err)
+	require.NoError(t, EnsureBunSchema(ctx, db))
+	require.NoError(t, rawDB.QueryRowContext(ctx, "SELECT free_toppings FROM products WHERE name = 'Cono'").Scan(&free))
+	require.Equal(t, 0, free, "the repair runs once; later deliberate zeros stay")
+
 	// Spot-check a few tables exist using the raw *sql.DB.
 	for _, table := range []string{"orders", "order_items", "products", "customers"} {
 		var name string

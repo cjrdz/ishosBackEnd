@@ -24,6 +24,9 @@ type ProductBunRepository struct {
 }
 
 // NewProductBunRepository creates a new Bun-backed product repository.
+// defaultFreeToppings matches the products.free_toppings column default.
+const defaultFreeToppings = 1
+
 func NewProductBunRepository(db bun.IDB) *ProductBunRepository {
 	return &ProductBunRepository{db: db, cache: cache.New(30 * time.Second)}
 }
@@ -190,11 +193,15 @@ func (r *ProductBunRepository) Create(ctx context.Context, input CreateProductIn
 	if input.AllowsMixedFlavors != nil {
 		row.AllowsMixedFlavors = *input.AllowsMixedFlavors
 	}
+	// One free topping unless the caller says otherwise.
+	row.FreeToppings = defaultFreeToppings
 	if input.FreeToppings != nil {
 		row.FreeToppings = *input.FreeToppings
 	}
 
-	if _, err := r.db.NewInsert().Model(&row).Exec(ctx); err != nil {
+	// Written explicitly: with the `default` tag Bun replaces a zero value
+	// with the column default, so a deliberate "0 free toppings" became 1.
+	if _, err := r.db.NewInsert().Model(&row).Value("free_toppings", "?", row.FreeToppings).Exec(ctx); err != nil {
 		return dto.Product{}, err
 	}
 	return r.findByIDWithCategory(ctx, row.ID)
@@ -220,8 +227,11 @@ func (r *ProductBunRepository) Update(ctx context.Context, id uuid.UUID, input U
 		BallBased:            existing.BallBased,
 		BallQuantity:         existing.BallQuantity,
 		AllowsMixedFlavors:   existing.AllowsMixedFlavors,
-		CreatedAt:            existing.CreatedAt,
-		UpdatedAt:            time.Now(),
+		// Was missing: every product edit reset the free toppings to 0, so the
+		// first topping started being charged.
+		FreeToppings: existing.FreeToppings,
+		CreatedAt:    existing.CreatedAt,
+		UpdatedAt:    time.Now(),
 	}
 
 	if input.Name != nil {

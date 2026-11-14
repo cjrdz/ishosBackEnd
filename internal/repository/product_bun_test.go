@@ -41,6 +41,45 @@ func TestProductBunRepository_CreateAndFind(t *testing.T) {
 	assert.Equal(t, "Cones", withCategory.Category.Name)
 }
 
+func TestProductBunRepository_CreateDefaultsToOneFreeTopping(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	repo := NewProductBunRepository(db)
+	category := createTestCategory(t, ctx, db, "Bowls", "bowls")
+
+	// Not specified (e.g. the seed): the first topping is included.
+	created, err := repo.Create(ctx, CreateProductInput{Name: "Bowl", Price: 4.5, CategoryID: category.ID})
+	require.NoError(t, err)
+	assert.Equal(t, 1, created.FreeToppings)
+
+	// An explicit choice, including zero, is kept.
+	zero := 0
+	paid, err := repo.Create(ctx, CreateProductInput{Name: "Bowl sin topping", Price: 4.5, CategoryID: category.ID, FreeToppings: &zero})
+	require.NoError(t, err)
+	assert.Equal(t, 0, paid.FreeToppings)
+}
+
+func TestProductBunRepository_UpdateKeepsFreeToppings(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	repo := NewProductBunRepository(db)
+	category := createTestCategory(t, ctx, db, "Conos", "conos")
+
+	two := 2
+	created, err := repo.Create(ctx, CreateProductInput{Name: "Cono", Price: 0.9, CategoryID: category.ID, FreeToppings: &two})
+	require.NoError(t, err)
+
+	newPrice := 1.0
+	updated, err := repo.Update(ctx, created.ID, UpdateProductInput{Price: &newPrice})
+	require.NoError(t, err)
+	assert.Equal(t, 2, updated.FreeToppings, "editing another field must not reset free toppings")
+
+	zero := 0
+	updated, err = repo.Update(ctx, created.ID, UpdateProductInput{FreeToppings: &zero})
+	require.NoError(t, err)
+	assert.Equal(t, 0, updated.FreeToppings)
+}
+
 func TestProductBunRepository_FindAll(t *testing.T) {
 	ctx := context.Background()
 	db := newTestBunDB(t)
