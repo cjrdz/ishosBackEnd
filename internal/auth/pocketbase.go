@@ -211,6 +211,29 @@ func (pb *PBAuth) UpdateEmployee(id string, email, password, name, phone, role, 
 	return record, nil
 }
 
+// AssignMissingLocations gives every manager and employee without a location
+// the default one (the original shop). Accounts created before locations
+// existed would otherwise be refused at login. Returns how many changed.
+func (pb *PBAuth) AssignMissingLocations(defaultLocationID string) (int, error) {
+	records, err := pb.App.FindRecordsByFilter(
+		"employees",
+		"(role = 'manager' || role = 'employee') && location_id = ''",
+		"",
+		0,
+		0,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("find employees without location: %w", err)
+	}
+	for _, record := range records {
+		record.Set("location_id", defaultLocationID)
+		if err := pb.App.Save(record); err != nil {
+			return 0, fmt.Errorf("assign location to employee %s: %w", record.Id, err)
+		}
+	}
+	return len(records), nil
+}
+
 // DeactivateEmployee disables an employee account so they can no longer log in.
 // The record is not deleted — only its "disabled" flag is set.
 // Existing tokens are effectively invalidated because the middleware checks

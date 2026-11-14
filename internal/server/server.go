@@ -90,6 +90,14 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	settingsSvc := services.NewAdminSettingService(settingsRepo).WithLocation(cfg.StoreLocation())
 	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
 	locationSvc := services.NewLocationService(locationRepo, cfg.StoreLocation())
+	// Staff accounts from before locations existed belong to the first one.
+	if ids, err := locationSvc.ActiveIDs(context.Background()); err == nil && len(ids) > 0 {
+		if n, err := pb.AssignMissingLocations(ids[0].String()); err != nil {
+			log.Error().Err(err).Msg("could not assign a location to existing staff")
+		} else if n > 0 {
+			log.Info().Int("employees", n).Msg("assigned existing staff to the first location")
+		}
+	}
 	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo,
 		services.WithFlavorRepo(flavorRepo), services.WithLocationIDs(locationSvc.ActiveIDs))
 	authService := auth.NewService(

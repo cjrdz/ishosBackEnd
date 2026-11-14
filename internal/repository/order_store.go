@@ -496,7 +496,7 @@ func (s *OrderStore) resolveItems(ctx context.Context, db bun.IDB, locationID uu
 			return 0, nil, fmt.Errorf("%w: %s", apperror.ErrNotFound, item.ProductID)
 		}
 		if !p.IsAvailable || soldOutProducts[p.ID] {
-			return 0, nil, &apperror.ConflictError{Resource: "product", Reason: p.Name + " está agotado"}
+			return 0, nil, &apperror.SoldOutError{Name: p.Name}
 		}
 
 		enriched, addonExtra, err := s.enrichment.EnrichCustomizations(p, item.Customizations)
@@ -505,7 +505,7 @@ func (s *OrderStore) resolveItems(ctx context.Context, db bun.IDB, locationID uu
 		}
 		for _, flavorID := range customizationFlavorIDs(enriched) {
 			if soldOutFlavors[flavorID] {
-				return 0, nil, &apperror.ConflictError{Resource: "flavor", Reason: "un sabor elegido está agotado en esta sucursal"}
+				return 0, nil, &apperror.SoldOutError{Name: soldOutFlavorName(enriched, flavorID)}
 			}
 		}
 		basePrice := p.Price
@@ -631,4 +631,30 @@ func customizationFlavorIDs(customizations map[string]any) []uuid.UUID {
 	}
 	add(customizations["flavor_id"])
 	return ids
+}
+
+// soldOutFlavorName finds a flavour's display name in enriched customizations
+// ("flavor_names" parallels "flavor_ids"); empty when unknown.
+func soldOutFlavorName(customizations map[string]any, flavorID uuid.UUID) string {
+	ids := customizationFlavorIDs(customizations)
+	var names []string
+	switch v := customizations["flavor_names"].(type) {
+	case []string:
+		names = v
+	case []any:
+		for _, n := range v {
+			if s, ok := n.(string); ok {
+				names = append(names, s)
+			}
+		}
+	}
+	for i, id := range ids {
+		if id == flavorID && i < len(names) {
+			return "El sabor " + names[i]
+		}
+	}
+	if name, ok := customizations["flavor_name"].(string); ok && name != "" {
+		return "El sabor " + name
+	}
+	return ""
 }
