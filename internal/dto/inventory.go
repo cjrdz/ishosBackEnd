@@ -8,6 +8,7 @@ import (
 
 type InventoryItem struct {
 	ID                uuid.UUID  `json:"id"`
+	LocationID        uuid.UUID  `json:"location_id"`
 	Name              string     `json:"name"`
 	Type              string     `json:"type"`
 	CurrentStock      int        `json:"current_stock"`
@@ -20,6 +21,7 @@ type InventoryItem struct {
 
 type StockMovement struct {
 	ID                 uuid.UUID  `json:"id"`
+	LocationID         uuid.UUID  `json:"location_id"`
 	Type               string     `json:"type"`
 	Quantity           int        `json:"quantity"`
 	QuantityContainers *int       `json:"quantity_containers,omitempty"`

@@ -65,7 +65,11 @@ func NewAnalyticsHandler(orderRepo services.OrderRepository, cfg *config.Config)
 
 func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	// cache key includes the full query string so period variants are cached independently.
-	cacheKey := "analytics:overview:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:overview:" + loc.String() + ":" + r.URL.RawQuery
 	var cached dto.AnalyticsOverview
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
@@ -83,7 +87,7 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.orderRepo.AnalyticsOverview(r.Context(), start, time.Now())
+	result, err := h.orderRepo.AnalyticsOverview(r.Context(), loc, start, time.Now())
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
 		return
@@ -95,7 +99,11 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request) {
-	cacheKey := "analytics:orders-over-time:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:orders-over-time:" + loc.String() + ":" + r.URL.RawQuery
 	var cached []dto.AnalyticsTimelinePoint
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
@@ -117,7 +125,7 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	points, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), start, end, groupBy)
+	points, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), loc, start, end, groupBy)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
 		return
@@ -143,7 +151,11 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 }
 
 func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
-	cacheKey := "analytics:top-products:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:top-products:" + loc.String() + ":" + r.URL.RawQuery
 	var cached []dto.AnalyticsTopProduct
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
@@ -156,7 +168,7 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.orderRepo.AnalyticsTopProducts(r.Context(), start, end, limit)
+	result, err := h.orderRepo.AnalyticsTopProducts(r.Context(), loc, start, end, limit)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
 		return
@@ -170,7 +182,11 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 // response. All three sections are computed from the same start/end date range
 // so the overview period always matches the timeline and top-products window.
 func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
-	cacheKey := "analytics:dashboard:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:dashboard:" + loc.String() + ":" + r.URL.RawQuery
 	var cached dto.AnalyticsDashboard
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
@@ -198,14 +214,14 @@ func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	overview, err := h.orderRepo.AnalyticsOverview(r.Context(), start, end)
+	overview, err := h.orderRepo.AnalyticsOverview(r.Context(), loc, start, end)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
 		return
 	}
 	overview.Period = "custom"
 
-	rawPoints, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), start, end, groupBy)
+	rawPoints, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), loc, start, end, groupBy)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
 		return
@@ -224,7 +240,7 @@ func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		ordersOverTime = append(ordersOverTime, dto.AnalyticsTimelinePoint{Date: key, Count: 0, Revenue: 0})
 	}
 
-	topProducts, err := h.orderRepo.AnalyticsTopProducts(r.Context(), start, end, limit)
+	topProducts, err := h.orderRepo.AnalyticsTopProducts(r.Context(), loc, start, end, limit)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
 		return

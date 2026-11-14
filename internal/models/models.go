@@ -44,6 +44,7 @@ type AuditLog struct {
 	Resource      string         `bun:",notnull"`
 	Changes       map[string]any `bun:",type:jsonb"`
 	IP            *string        `bun:",type:varchar(255)"`
+	LocationID    *uuid.UUID     `bun:"location_id,type:uuid"`
 	CreatedAt     time.Time      `bun:",notnull,default:current_timestamp"`
 }
 
@@ -128,7 +129,8 @@ const (
 type InventoryItem struct {
 	bun.BaseModel     `bun:"table:inventory_items,alias:ii"`
 	ID                uuid.UUID         `bun:",pk,type:uuid"`
-	Name              string            `bun:",notnull,type:varchar(200),unique"`
+	LocationID        uuid.UUID         `bun:"location_id,notnull,type:uuid"`
+	Name              string            `bun:",notnull,type:varchar(200)"`
 	Type              InventoryItemType `bun:"type,notnull,type:varchar(20),default:'ball_based'"`
 	CurrentStock      int               `bun:"current_stock,notnull,default:0"`
 	LowStockThreshold int               `bun:"low_stock_threshold,notnull,default:0"`
@@ -181,6 +183,7 @@ type Order struct {
 	bun.BaseModel    `bun:"table:orders,alias:o"`
 	ID               uuid.UUID            `bun:",pk,type:uuid"`
 	OrderNumber      string               `bun:"order_number,notnull,unique"`
+	LocationID       uuid.UUID            `bun:"location_id,notnull,type:uuid"`
 	CustomerID       *uuid.UUID           `bun:"customer_id,type:uuid"`
 	CustomerName     string               `bun:"customer_name,notnull,type:varchar(200)"`
 	CustomerPhone    string               `bun:"customer_phone,notnull,type:varchar(20)"`
@@ -288,10 +291,61 @@ type StockMovement struct {
 	Quantity           int               `bun:",notnull,default:0"`
 	QuantityContainers *int              `bun:"quantity_containers"`
 	InventoryItemID    uuid.UUID         `bun:"inventory_item_id,notnull,type:uuid"`
+	LocationID         uuid.UUID         `bun:"location_id,notnull,type:uuid"`
 	ContainerTypeID    *uuid.UUID        `bun:"container_type_id,type:uuid"`
 	FlavorID           *uuid.UUID        `bun:"flavor_id,type:uuid"`
 	Reason             *string           `bun:"reason,type:text"`
 	OrderID            *uuid.UUID        `bun:"order_id,type:uuid"`
 	CreatedByUserID    *string           `bun:"created_by_user_id,type:varchar(255)"`
 	CreatedAt          time.Time         `bun:",notnull,default:current_timestamp"`
+}
+
+// HoursWindow is one opening window of a day in store-local "HH:MM".
+type HoursWindow struct {
+	Open  string `json:"open"`
+	Close string `json:"close"`
+}
+
+// Location mirrors the locations table: one row per sucursal. The catalog and
+// prices are shared; hours, the order switches, contact details, stock,
+// Agotados, orders and staff belong to one location.
+type Location struct {
+	bun.BaseModel `bun:"table:locations,alias:loc"`
+	ID            uuid.UUID `bun:",pk,type:uuid"`
+	Slug          string    `bun:",notnull,type:varchar(60),unique"`
+	Name          string    `bun:",notnull,type:varchar(120)"`
+	Address       string    `bun:",notnull,type:varchar(255),default:''"`
+	MapsURL       string    `bun:"maps_url,notnull,type:text,default:''"`
+	MapsEmbedURL  string    `bun:"maps_embed_url,notnull,type:text,default:''"`
+	WhatsApp      string    `bun:"whatsapp,notnull,type:varchar(30),default:''"`
+	Phone         string    `bun:",notnull,type:varchar(30),default:''"`
+	// Hours maps mon…sun to opening windows; empty means "not configured".
+	Hours map[string][]HoursWindow `bun:",type:jsonb,notnull,default:'{}'"`
+	// OrdersEnabled is the manual "orders on/off" switch (staff and online).
+	OrdersEnabled bool `bun:"orders_enabled,notnull,default:true"`
+	// OnlineOrdersEnabled lets customers order from the website.
+	OnlineOrdersEnabled bool      `bun:"online_orders_enabled,notnull,default:false"`
+	IsActive            bool      `bun:",notnull,default:true"`
+	SortOrder           int       `bun:"sort_order,notnull,default:0"`
+	CreatedAt           time.Time `bun:",notnull,default:current_timestamp"`
+	UpdatedAt           time.Time `bun:",notnull,default:current_timestamp"`
+}
+
+// AvailabilityItemType is the enum for location_availability.item_type.
+type AvailabilityItemType string
+
+const (
+	AvailabilityItemProduct AvailabilityItemType = "product"
+	AvailabilityItemFlavor  AvailabilityItemType = "flavor"
+)
+
+// LocationAvailability marks a product or flavour as sold out ("Agotado") at
+// one location. Only sold-out rows exist: no row means available.
+type LocationAvailability struct {
+	bun.BaseModel `bun:"table:location_availability,alias:la"`
+	LocationID    uuid.UUID            `bun:"location_id,pk,type:uuid"`
+	ItemType      AvailabilityItemType `bun:"item_type,pk,type:varchar(20)"`
+	ItemID        uuid.UUID            `bun:"item_id,pk,type:uuid"`
+	UpdatedBy     *string              `bun:"updated_by,type:varchar(255)"`
+	UpdatedAt     time.Time            `bun:",notnull,default:current_timestamp"`
 }

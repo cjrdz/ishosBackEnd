@@ -16,6 +16,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/auditctx"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // transactionalAuditLogger is the subset of audit.Service needed by repositories
@@ -97,6 +98,7 @@ func (r *OrderBunRepository) Create(ctx context.Context, input CreateOrderInput)
 		order := models.Order{
 			ID:              uuid.New(),
 			OrderNumber:     input.OrderNumber,
+			LocationID:      input.LocationID,
 			CustomerID:      input.CustomerID,
 			CustomerName:    input.CustomerName,
 			CustomerPhone:   input.CustomerPhone,
@@ -160,8 +162,9 @@ func (r *OrderBunRepository) CreateItem(ctx context.Context, input CreateOrderIt
 // removes one Neon round-trip per request.
 // archived=false excludes orders that have been archived; archived=true returns
 // only archived orders.
-func (r *OrderBunRepository) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+func (r *OrderBunRepository) ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
 	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("is_archived = ?", archived)
+	q = whereLocation(q, "location_id", loc)
 	// status is a single status or a comma-separated list (validated by the
 	// handler), e.g. the active board columns.
 	if statuses := strings.Split(status, ","); status != "" && len(statuses) > 1 {
@@ -498,8 +501,9 @@ func (r *OrderBunRepository) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 // FindByDateRange returns orders within a date range.
-func (r *OrderBunRepository) FindByDateRange(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error) {
+func (r *OrderBunRepository) FindByDateRange(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error) {
 	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("created_at >= ? AND created_at <= ?", start, end)
+	q = whereLocation(q, "location_id", loc)
 	if len(statuses) > 0 {
 		q = q.Where("status IN (?)", bun.List(statuses))
 	}
@@ -512,8 +516,9 @@ func (r *OrderBunRepository) FindByDateRange(ctx context.Context, start, end tim
 }
 
 // FindByDateRangeWithItems returns orders with items within a date range.
-func (r *OrderBunRepository) FindByDateRangeWithItems(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error) {
+func (r *OrderBunRepository) FindByDateRangeWithItems(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error) {
 	q := r.db.NewSelect().Model((*models.Order)(nil)).Where("created_at >= ? AND created_at <= ?", start, end)
+	q = whereLocation(q, "location_id", loc)
 	if len(statuses) > 0 {
 		q = q.Where("status IN (?)", bun.List(statuses))
 	}
@@ -526,8 +531,9 @@ func (r *OrderBunRepository) FindByDateRangeWithItems(ctx context.Context, start
 }
 
 // FindOrderItemsByOrderDateRange returns order items for orders in a date range excluding statuses.
-func (r *OrderBunRepository) FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error) {
+func (r *OrderBunRepository) FindOrderItemsByOrderDateRange(ctx context.Context, loc scope.Location, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error) {
 	orderQ := r.db.NewSelect().Model((*models.Order)(nil)).Column("id").Where("created_at >= ? AND created_at <= ?", start, end)
+	orderQ = whereLocation(orderQ, "location_id", loc)
 	if len(excludeStatuses) > 0 {
 		orderQ = orderQ.Where("status NOT IN (?)", bun.List(excludeStatuses))
 	}
@@ -551,7 +557,7 @@ func (r *OrderBunRepository) FindOrderItemsByOrderDateRange(ctx context.Context,
 }
 
 // AnalyticsOverview aggregates order metrics for a date range in PostgreSQL.
-func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end time.Time) (dto.AnalyticsOverview, error) {
+func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, loc scope.Location, start, end time.Time) (dto.AnalyticsOverview, error) {
 	overview := dto.AnalyticsOverview{
 		StatusBreakdown: make(map[string]int),
 	}
@@ -571,6 +577,7 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS total_revenue").
 			ColumnExpr("COALESCE(AVG(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS avg_order_value").
 			Where("created_at >= ? AND created_at <= ?", start, end).
+			Apply(func(q *bun.SelectQuery) *bun.SelectQuery { return whereLocation(q, "location_id", loc) }).
 			Scan(ctx, &totals)
 		if err != nil {
 			return err
@@ -588,6 +595,7 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 			Column("status").
 			ColumnExpr("COUNT(*) AS count").
 			Where("created_at >= ? AND created_at <= ?", start, end).
+			Apply(func(q *bun.SelectQuery) *bun.SelectQuery { return whereLocation(q, "location_id", loc) }).
 			Group("status").
 			Scan(ctx, &statusRows)
 		if err != nil {
@@ -608,6 +616,7 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 			ColumnExpr("COUNT(*) AS count").
 			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS revenue").
 			Where("created_at >= ? AND created_at <= ?", start, end).
+			Apply(func(q *bun.SelectQuery) *bun.SelectQuery { return whereLocation(q, "location_id", loc) }).
 			Group("payment_method").
 			Scan(ctx, &paymentRows)
 		if err != nil {
@@ -629,7 +638,7 @@ func (r *OrderBunRepository) AnalyticsOverview(ctx context.Context, start, end t
 }
 
 // AnalyticsOrdersOverTime aggregates order counts and revenue by day/week/month.
-func (r *OrderBunRepository) AnalyticsOrdersOverTime(ctx context.Context, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error) {
+func (r *OrderBunRepository) AnalyticsOrdersOverTime(ctx context.Context, loc scope.Location, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error) {
 	var result []dto.AnalyticsTimelinePoint
 
 	if err := runInTx(ctx, r.db, &sql.TxOptions{ReadOnly: true}, func(ctx context.Context, tx bun.Tx) error {
@@ -658,6 +667,7 @@ func (r *OrderBunRepository) AnalyticsOrdersOverTime(ctx context.Context, start,
 			ColumnExpr("COUNT(*) AS count").
 			ColumnExpr("COALESCE(SUM(total_amount) FILTER (WHERE "+revenueStatusesSQL+"), 0) AS revenue").
 			Where("created_at >= ? AND created_at <= ?", start, end).
+			Apply(func(q *bun.SelectQuery) *bun.SelectQuery { return whereLocation(q, "location_id", loc) }).
 			GroupExpr(dateExpr).
 			OrderExpr(dateExpr).
 			Scan(ctx, &rows)
@@ -682,7 +692,7 @@ func (r *OrderBunRepository) AnalyticsOrdersOverTime(ctx context.Context, start,
 }
 
 // AnalyticsTopProducts aggregates top products by product_id for a date range.
-func (r *OrderBunRepository) AnalyticsTopProducts(ctx context.Context, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error) {
+func (r *OrderBunRepository) AnalyticsTopProducts(ctx context.Context, loc scope.Location, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error) {
 	var result []dto.AnalyticsTopProduct
 
 	if err := runInTx(ctx, r.db, &sql.TxOptions{ReadOnly: true}, func(ctx context.Context, tx bun.Tx) error {
@@ -694,6 +704,7 @@ func (r *OrderBunRepository) AnalyticsTopProducts(ctx context.Context, start, en
 			TotalSold  int64   `bun:"total_sold"`
 			TotalValue float64 `bun:"total_value"`
 		}
+		locFilter, locArgs := locationSQL("o.location_id", loc)
 
 		query := `
 SELECT COALESCE(MAX(p.name), MAX(oi.product_name)) AS name,
@@ -703,12 +714,13 @@ FROM order_items oi
 JOIN orders o ON o.id = oi.order_items
 LEFT JOIN products p ON p.id = oi.product_order_items
 WHERE o.created_at >= ? AND o.created_at <= ?
-  AND o.` + revenueStatusesSQL + `
+  AND o.` + revenueStatusesSQL + locFilter + `
 GROUP BY oi.product_order_items
 ORDER BY total_sold DESC, total_value DESC
 LIMIT ?
 `
-		err := tx.NewRaw(query, start, end, limit).Scan(ctx, &rows)
+		args := append(append([]any{start, end}, locArgs...), limit)
+		err := tx.NewRaw(query, args...).Scan(ctx, &rows)
 		if err != nil {
 			return err
 		}
@@ -730,7 +742,7 @@ LIMIT ?
 }
 
 // StreamOrderExportRows streams order export rows in batches without loading the full range into memory.
-func (r *OrderBunRepository) StreamOrderExportRows(ctx context.Context, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error {
+func (r *OrderBunRepository) StreamOrderExportRows(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error {
 	if batchSize <= 0 {
 		batchSize = 500
 	}
@@ -758,9 +770,10 @@ LEFT JOIN order_items oi ON oi.order_items = o.id
 WHERE o.created_at >= ? AND o.created_at <= ?
 `
 
+		locFilter, locArgs := locationSQL("o.location_id", loc)
 		for offset := 0; ; offset += batchSize {
-			args := []interface{}{start, end}
-			query := baseQuery
+			args := append([]interface{}{start, end}, locArgs...)
+			query := baseQuery + locFilter
 			if len(statuses) > 0 {
 				query += " AND o.status IN (?)"
 				args = append(args, bun.List(statuses))
@@ -786,11 +799,12 @@ WHERE o.created_at >= ? AND o.created_at <= ?
 }
 
 // Purge deletes orders and items within a date range matching statuses.
-func (r *OrderBunRepository) Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error) {
+func (r *OrderBunRepository) Purge(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) (int, int, error) {
 	var deletedOrders, deletedItems int
 
 	err := runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
 		q := tx.NewSelect().Model((*models.Order)(nil)).Column("id").Where("created_at >= ? AND created_at <= ?", start, end)
+		q = whereLocation(q, "location_id", loc)
 		if len(statuses) > 0 {
 			q = q.Where("status IN (?)", bun.List(statuses))
 		}

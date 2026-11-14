@@ -11,6 +11,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 type orderRepoStub struct {
@@ -30,7 +31,7 @@ type orderRepoStub struct {
 	deleteFn                     func(ctx context.Context, id uuid.UUID) error
 }
 
-func (s *orderRepoStub) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+func (s *orderRepoStub) ListPaginated(ctx context.Context, _ scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
 	if s.listFn != nil {
 		return s.listFn(ctx, status, archived, page, limit)
 	}
@@ -128,19 +129,19 @@ func (s *orderRepoStub) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *orderRepoStub) FindByDateRange(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error) {
+func (s *orderRepoStub) FindByDateRange(ctx context.Context, _ scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error) {
 	return nil, nil
 }
 
-func (s *orderRepoStub) FindByDateRangeWithItems(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error) {
+func (s *orderRepoStub) FindByDateRangeWithItems(ctx context.Context, _ scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error) {
 	return nil, nil
 }
 
-func (s *orderRepoStub) FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error) {
+func (s *orderRepoStub) FindOrderItemsByOrderDateRange(ctx context.Context, _ scope.Location, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error) {
 	return nil, nil
 }
 
-func (s *orderRepoStub) Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error) {
+func (s *orderRepoStub) Purge(ctx context.Context, _ scope.Location, start, end time.Time, statuses []string) (int, int, error) {
 	return 0, 0, nil
 }
 
@@ -152,19 +153,19 @@ func (s *orderRepoStub) ArchiveOrders(ctx context.Context, ids []uuid.UUID) (int
 	return 0, nil
 }
 
-func (s *orderRepoStub) AnalyticsOverview(ctx context.Context, start, end time.Time) (dto.AnalyticsOverview, error) {
+func (s *orderRepoStub) AnalyticsOverview(ctx context.Context, _ scope.Location, start, end time.Time) (dto.AnalyticsOverview, error) {
 	return dto.AnalyticsOverview{StatusBreakdown: map[string]int{}}, nil
 }
 
-func (s *orderRepoStub) AnalyticsOrdersOverTime(ctx context.Context, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error) {
+func (s *orderRepoStub) AnalyticsOrdersOverTime(ctx context.Context, _ scope.Location, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error) {
 	return nil, nil
 }
 
-func (s *orderRepoStub) AnalyticsTopProducts(ctx context.Context, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error) {
+func (s *orderRepoStub) AnalyticsTopProducts(ctx context.Context, _ scope.Location, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error) {
 	return nil, nil
 }
 
-func (s *orderRepoStub) StreamOrderExportRows(ctx context.Context, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error {
+func (s *orderRepoStub) StreamOrderExportRows(ctx context.Context, _ scope.Location, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error {
 	return nil
 }
 
@@ -237,7 +238,7 @@ func TestOrderQueryService_ListPaginated(t *testing.T) {
 	}}
 	svc := NewOrderQueryService(repo)
 
-	orders, total, err := svc.ListPaginated(context.Background(), "", false, 1, 10)
+	orders, total, err := svc.ListPaginated(context.Background(), scope.All(), "", false, 1, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -348,6 +349,7 @@ func TestOrderCommandService_Create_LinksExistingCustomer(t *testing.T) {
 
 	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:    testLocation,
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",
 		PaymentMethod: "efectivo",
@@ -379,6 +381,7 @@ func TestOrderCommandService_Create_CreatesCustomerWhenMissing(t *testing.T) {
 
 	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:    testLocation,
 		CustomerName:  "John",
 		CustomerPhone: "5551111",
 		CustomerEmail: strPtr("john@example.com"),
@@ -395,7 +398,7 @@ func TestOrderCommandService_Create_CreatesCustomerWhenMissing(t *testing.T) {
 
 func TestOrderCommandService_Create_WithIdempotencyKey_ExistingOrder_ReturnsOriginalWithoutCreating(t *testing.T) {
 	key := uuid.New()
-	existing := dto.Order{ID: uuid.New(), OrderNumber: "ORD-IK-001"}
+	existing := dto.Order{ID: uuid.New(), OrderNumber: "ORD-IK-001", LocationID: testLocation}
 
 	store := &orderStoreStub{
 		findByIdempotencyKeyFn: func(_ context.Context, got uuid.UUID) (dto.Order, error) {
@@ -412,6 +415,7 @@ func TestOrderCommandService_Create_WithIdempotencyKey_ExistingOrder_ReturnsOrig
 
 	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 	got, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:     testLocation,
 		IdempotencyKey: &key,
 		CustomerName:   "Jane",
 		CustomerPhone:  "5550000",
@@ -451,6 +455,7 @@ func TestOrderCommandService_Create_WithIdempotencyKey_NoExisting_CreatesNormall
 
 	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:     testLocation,
 		IdempotencyKey: &key,
 		CustomerName:   "Jane",
 		CustomerPhone:  "5550000",
@@ -485,6 +490,7 @@ func TestOrderCommandService_Create_WithoutIdempotencyKey_Unaffected(t *testing.
 
 	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	_, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:    testLocation,
 		CustomerName:  "Jane",
 		CustomerPhone: "5550000",
 		PaymentMethod: "efectivo",
@@ -500,7 +506,7 @@ func TestOrderCommandService_Create_WithoutIdempotencyKey_Unaffected(t *testing.
 
 func TestOrderCommandService_Create_IdempotencyKeyRaceLoser_FetchesWinner(t *testing.T) {
 	key := uuid.New()
-	winner := dto.Order{ID: uuid.New(), OrderNumber: "ORD-IK-WINNER"}
+	winner := dto.Order{ID: uuid.New(), OrderNumber: "ORD-IK-WINNER", LocationID: testLocation}
 	customerRepo := &customerRepoStub{
 		findByPhone: func(_ context.Context, _ string) (dto.Customer, error) {
 			return dto.Customer{ID: uuid.New()}, nil
@@ -521,6 +527,7 @@ func TestOrderCommandService_Create_IdempotencyKeyRaceLoser_FetchesWinner(t *tes
 
 	svc := NewOrderCommandService(&orderRepoStub{}, store, customerRepo, &productRepoStub{}, nil, nil, nil)
 	got, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:     testLocation,
 		IdempotencyKey: &key,
 		CustomerName:   "Jane",
 		CustomerPhone:  "5550000",
@@ -895,5 +902,83 @@ func TestOrderCommandService_Update_PendienteStatusWithItems_UsesPlainUpdate(t *
 	}
 	if atomicCalled {
 		t.Fatal("atomic UpdateOrderWithStockAdjustment should not be called when order has no deducted stock")
+	}
+}
+
+// testLocation is the location service-level order tests create orders at.
+var testLocation = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
+// An idempotency key reused at another location must not hand back (or leak)
+// that location's order.
+func TestOrderCommandService_Create_IdempotencyKeyFromOtherLocation_Conflicts(t *testing.T) {
+	key := uuid.New()
+	otherLocation := uuid.New()
+	store := &orderStoreStub{
+		findByIdempotencyKeyFn: func(_ context.Context, _ uuid.UUID) (dto.Order, error) {
+			return dto.Order{ID: uuid.New(), OrderNumber: "ORD-OTHER", LocationID: otherLocation}, nil
+		},
+		createFn: func(_ context.Context, _ repository.StoreOrderInput) (dto.Order, error) {
+			t.Fatal("CreateOrder should not be called")
+			return dto.Order{}, nil
+		},
+	}
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
+
+	got, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:     testLocation,
+		IdempotencyKey: &key,
+		CustomerName:   "Ana",
+		CustomerPhone:  "70000000",
+		PaymentMethod:  "efectivo",
+		OrderType:      "para_llevar",
+		Items:          []OrderItemInput{{ProductID: uuid.New(), Quantity: 1}},
+	})
+	if !errors.Is(err, apperror.ErrConflict) {
+		t.Fatalf("expected conflict, got order %+v err %v", got, err)
+	}
+	if got.OrderNumber != "" {
+		t.Fatal("must not return the other location's order")
+	}
+}
+
+func TestOrderCommandService_Create_AcceptsOnlyStaffOrders(t *testing.T) {
+	var got []bool
+	store := &orderStoreStub{
+		createFn: func(_ context.Context, input repository.StoreOrderInput) (dto.Order, error) {
+			got = append(got, input.Accepted)
+			return dto.Order{ID: uuid.New()}, nil
+		},
+	}
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
+	staff := "staff-1"
+	for _, createdBy := range []*string{&staff, nil} {
+		if _, err := svc.Create(context.Background(), CreateOrderInput{
+			LocationID:    testLocation,
+			CustomerName:  "Ana",
+			CustomerPhone: "70000000",
+			PaymentMethod: "efectivo",
+			OrderType:     "para_llevar",
+			Items:         []OrderItemInput{{ProductID: uuid.New(), Quantity: 1}},
+			CreatedByID:   createdBy,
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if len(got) != 2 || !got[0] || got[1] {
+		t.Fatalf("staff order must be accepted and online order not; got %v", got)
+	}
+}
+
+func TestOrderService_IsOrderEditable_CounterOrderWhileAccepted(t *testing.T) {
+	svc := &OrderService{}
+	staff := "staff-1"
+	if !svc.IsOrderEditable(dto.Order{Status: "recibida", CreatedByUserID: &staff}) {
+		t.Fatal("a counter order must stay editable while accepted")
+	}
+	if svc.IsOrderEditable(dto.Order{Status: "recibida"}) {
+		t.Fatal("an accepted online order stays locked")
+	}
+	if svc.IsOrderEditable(dto.Order{Status: "entregada", CreatedByUserID: &staff}) {
+		t.Fatal("delivered orders stay locked")
 	}
 }

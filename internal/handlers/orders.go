@@ -32,6 +32,7 @@ type OrderHandler struct {
 	tracker        *services.TrackingTokenService
 	mapper         *services.OrderResponseMapper
 	settingsSvc    *services.AdminSettingService
+	locations      *services.LocationService
 	archiver       *services.OrderArchiver
 	publicStoreURL string
 	listCache      *cache.TTLCache
@@ -44,6 +45,7 @@ func NewOrderHandler(
 	tracker *services.TrackingTokenService,
 	mapper *services.OrderResponseMapper,
 	settingsSvc *services.AdminSettingService,
+	locations *services.LocationService,
 	archiver *services.OrderArchiver,
 	publicStoreURL string,
 	rl *middleware.OrderRateLimiter,
@@ -55,6 +57,7 @@ func NewOrderHandler(
 		tracker:        tracker,
 		mapper:         mapper,
 		settingsSvc:    settingsSvc,
+		locations:      locations,
 		archiver:       archiver,
 		publicStoreURL: publicStoreURL,
 		// The frontend polls the orders list every 25 s; a 25 s TTL means most
@@ -111,6 +114,35 @@ func isNotModified(r *http.Request, lastModified time.Time) bool {
 	return !lastModified.After(clientTime)
 }
 
+// RequireOrderInScope guards every /orders/{id} route: an order of another
+// location answers 404, exactly like an order that does not exist.
+func (h *OrderHandler) RequireOrderInScope(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		loc, ok := requestScope(w, r)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "Invalid order ID")
+			return
+		}
+		order, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+		if err == nil {
+			err = loc.Check("order", order.LocationID)
+		}
+		if err != nil {
+			if errors.Is(err, apperror.ErrNotFound) {
+				response.Error(w, http.StatusNotFound, "Order not found")
+				return
+			}
+			writeAppError(w, err, "Failed to fetch order")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body requests.CreateOrderRequest
 	if err := decodeJSON(r, &body); err != nil {
@@ -154,17 +186,35 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.TableNumber = nil
 	}
 
+	// Which location the order goes to. Staff always order for the location
+	// they work at (admins: the one they selected); customers choose one.
+	var locationID uuid.UUID
+	if isStaff {
+		loc, ok := requestScope(w, r)
+		if !ok {
+			return
+		}
+		id, err := loc.Require()
+		if err != nil {
+			response.WriteOrError(w, nil, err)
+			return
+		}
+		locationID = id
+	} else {
+		if body.LocationID == nil || *body.LocationID == uuid.Nil {
+			response.WriteOrError(w, nil, &apperror.ValidationError{Fields: map[string]string{"location_id": "Elige una sucursal"}})
+			return
+		}
+		locationID = *body.LocationID
+	}
+	// Customers also need online ordering on and the location open; counter
+	// staff only need the location's orders switch.
+	if err := h.locations.CheckCanOrder(r.Context(), locationID, !isStaff, time.Now()); err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
+
 	if !isStaff {
-		if !h.settingsSvc.AreOrdersEnabled(r.Context()) {
-			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: "Los pedidos están temporalmente desactivados"})
-			return
-		}
-		// Outside opening hours customers can't order; counter staff still can.
-		now := time.Now()
-		if status := h.settingsSvc.StoreOpenStatus(r.Context(), now); !status.IsOpen {
-			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: h.settingsSvc.ClosedMessage(status, now)})
-			return
-		}
 		res := h.rateLimiter.CheckAndRecordPhone(r.Context(), body.CustomerPhone)
 		res.WriteHeaders(w)
 		if !res.Allowed {
@@ -196,6 +246,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, staffID)
 
 	order, err := h.orderSvc.Create(ctx, services.CreateOrderInput{
+		LocationID:     locationID,
 		IdempotencyKey: idempotencyKey,
 		CustomerName:   body.CustomerName,
 		CustomerPhone:  body.CustomerPhone,
@@ -254,10 +305,14 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	lite := r.URL.Query().Get("lite") == "true"
 	archived := r.URL.Query().Get("archived") == "true"
 	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
-	cacheKey := fmt.Sprintf("orders:%s:%t:%t:%d:%d", status, lite, archived, params.Page, params.PerPage)
+	cacheKey := fmt.Sprintf("orders:%s:%s:%t:%t:%d:%d", loc, status, lite, archived, params.Page, params.PerPage)
 
 	if cached, ok := h.listCache.Get(cacheKey); ok {
 		entry := cached.(cachedOrderList)
@@ -271,7 +326,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, archived, params.Page, params.PerPage)
+	orders, total, err := h.orderSvc.ListPaginated(r.Context(), loc, status, archived, params.Page, params.PerPage)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -394,8 +449,18 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 		publicItems = append(publicItems, publicItem)
 	}
 
+	// Where to pick the order up.
+	var pickup map[string]any
+	if l, err := h.locations.Get(r.Context(), order.LocationID); err == nil {
+		pickup = map[string]any{
+			"id": l.ID, "name": l.Name, "address": l.Address,
+			"maps_url": l.MapsURL, "whatsapp": l.WhatsApp, "phone": l.Phone,
+		}
+	}
+
 	response.JSON(w, http.StatusOK, map[string]any{
 		"order_number":      order.OrderNumber,
+		"location":          pickup,
 		"customer_name":     order.CustomerName,
 		"status":            order.Status,
 		"updated_at":        order.UpdatedAt,
@@ -540,7 +605,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
 		return
 	}
-	if !h.orderSvc.IsOrderEditable(existing.Status) {
+	if !h.orderSvc.IsOrderEditable(existing) {
 		response.Error(w, http.StatusConflict, "No se puede editar una orden que ya fue aceptada, rechazada, entregada o cancelada")
 		return
 	}
@@ -669,7 +734,7 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
 		return
 	}
-	if !h.orderSvc.IsOrderEditable(existing.Status) {
+	if !h.orderSvc.IsOrderEditable(existing) {
 		response.Error(w, http.StatusConflict, "No se puede eliminar una orden que ya fue aceptada, rechazada, entregada o cancelada")
 		return
 	}

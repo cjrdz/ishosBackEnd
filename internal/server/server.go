@@ -79,6 +79,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	customerRepo := repository.NewCustomerBunRepository(bunDB)
 	containerTypeRepo := repository.NewContainerTypeBunRepository(bunDB)
 	inventoryRepo := repository.NewInventoryBunRepository(bunDB)
+	locationRepo := repository.NewLocationBunRepository(bunDB)
 
 	// ── Services ─────────────────────────────────────────────────────────
 	categorySvc := services.NewCategoryService(categoryRepo)
@@ -88,7 +89,17 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	productSvc := services.NewProductService(productRepo)
 	settingsSvc := services.NewAdminSettingService(settingsRepo).WithLocation(cfg.StoreLocation())
 	containerTypeSvc := services.NewContainerTypeService(containerTypeRepo)
-	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo, services.WithFlavorRepo(flavorRepo))
+	locationSvc := services.NewLocationService(locationRepo, cfg.StoreLocation())
+	// Staff accounts from before locations existed belong to the first one.
+	if ids, err := locationSvc.ActiveIDs(context.Background()); err == nil && len(ids) > 0 {
+		if n, err := pb.AssignMissingLocations(ids[0].String()); err != nil {
+			log.Error().Err(err).Msg("could not assign a location to existing staff")
+		} else if n > 0 {
+			log.Info().Int("employees", n).Msg("assigned existing staff to the first location")
+		}
+	}
+	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo,
+		services.WithFlavorRepo(flavorRepo), services.WithLocationIDs(locationSvc.ActiveIDs))
 	authService := auth.NewService(
 		pb,
 		cfg.LoginAttemptsPerMinute,
@@ -157,8 +168,9 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	publicStoreURL := strings.TrimRight(strings.TrimSpace(cfg.PublicStoreURL), "/")
 
 	// ── Handlers ─────────────────────────────────────────────────────────
-	authHandler := handlers.NewAuthHandler(pb, authService, cfg, settingsSvc)
-	employeeHandler := handlers.NewEmployeeHandler(pb, auditSvc)
+	authHandler := handlers.NewAuthHandler(pb, authService, cfg, settingsSvc, locationSvc)
+	employeeHandler := handlers.NewEmployeeHandler(pb, auditSvc, locationSvc)
+	locationHandler := handlers.NewLocationHandler(locationSvc, auditSvc)
 	categoryHandler := handlers.NewCategoryHandler(categorySvc, auditSvc)
 	productHandler := handlers.NewProductHandler(productSvc, cfg, inventoryService, auditSvc)
 	// Pre-warm the product list cache so the first admin login request is fast.
@@ -182,7 +194,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	analyticsHandler := handlers.NewAnalyticsHandler(orderRepo, cfg)
 	exportHandler := handlers.NewExportHandler(orderRepo, auditSvc, cfg.StoreLocation())
 	userHandler := handlers.NewUserHandler(customerSvc, auditSvc)
-	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc, auditSvc)
+	adminSettingsHandler := handlers.NewAdminSettingsHandler(settingsSvc, locationSvc, auditSvc)
 
 	// Inventory handler
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService, auditSvc)
@@ -206,13 +218,26 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		cfg.RedisURL,
 		cfg.RedisPrefix,
 	)
-	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, orderArchiver, publicStoreURL, orderRateLimiter, auditSvc)
+	orderHandler := handlers.NewOrderHandler(orderSvc, trackingTokenService, orderResponseMapper, settingsSvc, locationSvc, orderArchiver, publicStoreURL, orderRateLimiter, auditSvc)
 
 	// ── Middleware ───────────────────────────────────────────────────────
 	loginRateLimiter := appmiddleware.NewLoginRateLimit(authService)
 	authMiddleware := appmiddleware.NewAuth(authService)
 	inactivityTracker := appmiddleware.NewInactivityTracker()
 	inactivityMiddleware := appmiddleware.NewInactivityMiddleware(inactivityTracker, settingsSvc, defaultTokenTTLs)
+	resolveLocation := appmiddleware.ResolveLocation(locationSvc)
+	// Public order creation also serves the admin POS: when a staff session is
+	// present, resolve its location the same way protected routes do.
+	resolveLocationIfSession := func(next http.Handler) http.Handler {
+		withLocation := resolveLocation(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := auth.GetRecord(r.Context()); ok {
+				withLocation.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 
 	// ── Router setup ─────────────────────────────────────────────────────
 	r := chi.NewRouter()
@@ -234,7 +259,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			return isOriginAllowed(origin, allowedOrigins)
 		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", appmiddleware.LocationHeader},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -293,8 +318,12 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Get("/addons/{id}", addonHandler.Get)
 
 		// Orders (public create; optionally capture authenticated staff identity)
-		api.With(authMiddleware.OptionalSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
+		api.With(authMiddleware.OptionalSession, resolveLocationIfSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
 		api.Get("/orders/track", orderHandler.TrackPublic)
+
+		// Locations (public: list with hours/status and Agotados per location)
+		api.Get("/locations", locationHandler.ListPublic)
+		api.Get("/locations/{id}/availability", locationHandler.GetAvailability)
 
 		// ── Settings routes (mixed public + protected) ──────────────
 		api.Route("/settings", func(settings chi.Router) {
@@ -313,8 +342,6 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/rate-limits", adminSettingsHandler.UpdatePublicOrderRateLimitConfig)
 				protectedSettings.With(appmiddleware.RequireAdmin).Get("/panel-config", adminSettingsHandler.GetPanelConfig)
 				protectedSettings.With(appmiddleware.RequireAdmin).Patch("/panel-config", adminSettingsHandler.UpdatePanelConfig)
-				protectedSettings.Get("/hours", adminSettingsHandler.GetStoreHours)
-				protectedSettings.With(appmiddleware.RequireAdmin).Put("/hours", adminSettingsHandler.UpdateStoreHours)
 			})
 		})
 
@@ -322,7 +349,17 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Group(func(protected chi.Router) {
 			protected.Use(authMiddleware.RequireSession)
 			protected.Use(inactivityMiddleware.Middleware)
+			// Every protected route knows its location scope: admins choose one
+			// (or all), managers and employees are fixed to their own.
+			protected.Use(resolveLocation)
 			protected.With(appmiddleware.RequireAdmin).Post("/auth/lockout/reset", authHandler.ResetLoginLockout)
+
+			// Locations: admins manage all; a manager edits hours and the
+			// orders switch of their own; any staff marks Agotados at theirs.
+			protected.Get("/locations/manage", locationHandler.ListManaged)
+			protected.With(appmiddleware.RequireAdmin).Post("/locations", locationHandler.Create)
+			protected.With(appmiddleware.RequireRole(auth.RoleAdmin, auth.RoleManager)).Patch("/locations/{id}", locationHandler.Update)
+			protected.Put("/locations/{id}/availability", locationHandler.SetAvailability)
 
 			// Employees management
 			protected.With(appmiddleware.RequireAdmin).Get("/employees", employeeHandler.List)
@@ -344,7 +381,9 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			// admin-only; staff may still toggle availability during service.
 			protected.With(appmiddleware.RequireAdmin).Post("/products", productHandler.Create)
 			protected.With(appmiddleware.RequireAdmin).Patch("/products/{id}", productHandler.Update)
-			protected.Patch("/products/{id}/availability", productHandler.ToggleAvailability)
+			// Global on/off of a product in the catalog (admin). Per-location
+			// "Agotado" is PUT /locations/{id}/availability.
+			protected.With(appmiddleware.RequireAdmin).Patch("/products/{id}/availability", productHandler.ToggleAvailability)
 			protected.With(appmiddleware.RequireAdmin).Delete("/products/{id}", productHandler.Delete)
 
 			// Product-Flavor linking
@@ -370,16 +409,20 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Patch("/categories/{id}", categoryHandler.Update)
 			protected.With(appmiddleware.RequireAdmin).Delete("/categories/{id}", categoryHandler.Delete)
 
-			// Orders management
+			// Orders management. Every /orders/{id} route is behind
+			// RequireOrderInScope: another location's order is a 404.
 			protected.Get("/orders", orderHandler.List)
-			protected.Get("/orders/{id}", orderHandler.Get)
-			protected.Patch("/orders/{id}", orderHandler.Update)
-			protected.Post("/orders/{id}/approve", orderHandler.Approve)
-			protected.Post("/orders/{id}/reject", orderHandler.Reject)
-			protected.Patch("/orders/{id}/status", orderHandler.UpdateStatus)
-			protected.Patch("/orders/{id}/notes", orderHandler.UpdateNotes)
-			protected.Patch("/orders/{id}/archive", orderHandler.Archive)
-			protected.With(appmiddleware.RequireAdmin).Delete("/orders/{id}", orderHandler.Delete)
+			protected.Route("/orders/{id}", func(order chi.Router) {
+				order.Use(orderHandler.RequireOrderInScope)
+				order.Get("/", orderHandler.Get)
+				order.Patch("/", orderHandler.Update)
+				order.Post("/approve", orderHandler.Approve)
+				order.Post("/reject", orderHandler.Reject)
+				order.Patch("/status", orderHandler.UpdateStatus)
+				order.Patch("/notes", orderHandler.UpdateNotes)
+				order.Patch("/archive", orderHandler.Archive)
+				order.With(appmiddleware.RequireAdmin).Delete("/", orderHandler.Delete)
+			})
 
 			// Internal order creation (staff/back-office, bypasses public rate limits)
 			protected.Post("/orders/internal", orderHandler.Create)
@@ -393,13 +436,13 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/top-products", analyticsHandler.TopProducts)
 			protected.With(appmiddleware.RequireAdmin).Get("/analytics/dashboard", analyticsHandler.Dashboard)
 
-			// Inventory (admin only)
-			protected.With(appmiddleware.RequireAdmin).Route("/inventory", func(inv chi.Router) {
+			// Inventory: admins (any location) and managers (their own).
+			protected.With(appmiddleware.RequireRole(auth.RoleAdmin, auth.RoleManager)).Route("/inventory", func(inv chi.Router) {
 				inv.Get("/", inventoryHandler.List)
 				inv.Get("/dashboard", inventoryHandler.Dashboard)
 				inv.Get("/flavors", inventoryHandler.ListFlavorInventory)
 				inv.Get("/unit-products", inventoryHandler.ListUnitInventory)
-				inv.Post("/unit-products", inventoryHandler.CreateUnitInventoryItem)
+				inv.With(appmiddleware.RequireAdmin).Post("/unit-products", inventoryHandler.CreateUnitInventoryItem)
 				inv.Get("/stats", inventoryHandler.GetStats)
 				inv.Get("/low-stock", inventoryHandler.GetLowStock)
 				inv.Get("/{id}", inventoryHandler.Get)
@@ -407,18 +450,19 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 				inv.Post("/{id}/entries", inventoryHandler.RecordEntry)
 				inv.Post("/{id}/unit-entries", inventoryHandler.RecordUnitEntry)
 				inv.Post("/{id}/adjustments", inventoryHandler.RecordAdjustment)
-				inv.Post("/{id}/products/{productId}", inventoryHandler.LinkInventoryItemToProduct)
-				inv.Delete("/{id}/products/{productId}", inventoryHandler.UnlinkInventoryItemFromProduct)
+				inv.With(appmiddleware.RequireAdmin).Post("/{id}/products/{productId}", inventoryHandler.LinkInventoryItemToProduct)
+				inv.With(appmiddleware.RequireAdmin).Delete("/{id}/products/{productId}", inventoryHandler.UnlinkInventoryItemFromProduct)
 				inv.Get("/flavors/{id}/stock", inventoryHandler.GetStockForFlavor)
 			})
 
-			// Container types (admin only)
-			protected.With(appmiddleware.RequireAdmin).Route("/container-types", func(ct chi.Router) {
+			// Container types: managers read them to record stock entries;
+			// only admins change them.
+			protected.With(appmiddleware.RequireRole(auth.RoleAdmin, auth.RoleManager)).Route("/container-types", func(ct chi.Router) {
 				ct.Get("/", containerTypeHandler.List)
-				ct.Post("/", containerTypeHandler.Create)
+				ct.With(appmiddleware.RequireAdmin).Post("/", containerTypeHandler.Create)
 				ct.Get("/{id}", containerTypeHandler.Get)
-				ct.Patch("/{id}", containerTypeHandler.Update)
-				ct.Delete("/{id}", containerTypeHandler.Delete)
+				ct.With(appmiddleware.RequireAdmin).Patch("/{id}", containerTypeHandler.Update)
+				ct.With(appmiddleware.RequireAdmin).Delete("/{id}", containerTypeHandler.Delete)
 			})
 
 			// Export and purge (admin only)

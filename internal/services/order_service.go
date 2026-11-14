@@ -10,6 +10,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/events"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 var (
@@ -42,6 +43,8 @@ type OrderService struct {
 }
 
 type CreateOrderInput struct {
+	// LocationID is the sucursal the order is placed at (required).
+	LocationID     uuid.UUID
 	IdempotencyKey *uuid.UUID
 	CustomerName   string
 	CustomerPhone  string
@@ -98,8 +101,8 @@ func (s *OrderService) IssueTrackingAccess(ctx context.Context, orderNumber stri
 	return s.tracking.IssueTrackingAccess(ctx, orderNumber)
 }
 
-func (s *OrderService) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
-	return s.query.ListPaginated(ctx, status, archived, page, limit)
+func (s *OrderService) ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+	return s.query.ListPaginated(ctx, loc, status, archived, page, limit)
 }
 
 func (s *OrderService) GetByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error) {
@@ -162,7 +165,12 @@ var nonEditableStatuses = map[string]bool{
 	"cancelada": true,
 }
 
-// IsOrderEditable returns false when the order status is locked (recibida, lista, entregada, cancelada).
-func (s *OrderService) IsOrderEditable(status string) bool {
-	return !nonEditableStatuses[status]
+// IsOrderEditable returns false when the order is locked (recibida, lista,
+// entregada, cancelada). Counter orders (created by staff) stay editable while
+// "recibida": they start accepted, and the customer is still at the counter.
+func (s *OrderService) IsOrderEditable(order dto.Order) bool {
+	if order.Status == "recibida" && order.CreatedByUserID != nil && *order.CreatedByUserID != "" {
+		return true
+	}
+	return !nonEditableStatuses[order.Status]
 }

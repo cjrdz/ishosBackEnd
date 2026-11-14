@@ -30,7 +30,9 @@ type StoreOrderItemInput struct {
 
 // StoreOrderInput is the raw data required to create an order transactionally.
 type StoreOrderInput struct {
-	OrderNumber    string
+	OrderNumber string
+	// LocationID is the sucursal the order belongs to (required).
+	LocationID     uuid.UUID
 	IdempotencyKey *uuid.UUID
 	CustomerID     *uuid.UUID
 	CustomerName   string
@@ -46,6 +48,10 @@ type StoreOrderInput struct {
 	Items          []StoreOrderItemInput
 	// BasePrices overrides a product's base price (active store offers).
 	BasePrices map[uuid.UUID]float64
+	// Accepted creates the order already accepted ("recibida"), reviewed by
+	// CreatedByID: counter orders need no review. Online orders leave it false
+	// and start in "pendiente_revision".
+	Accepted bool
 }
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
@@ -150,7 +156,10 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 	var result dto.Order
 
 	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
-		total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items, input.BasePrices)
+		if input.LocationID == uuid.Nil {
+			return &apperror.ValidationError{Fields: map[string]string{"location_id": "required"}}
+		}
+		total, snapshots, err := s.resolveItems(ctx, tx, input.LocationID, input.Items, input.BasePrices)
 		if err != nil {
 			return err
 		}
@@ -163,6 +172,7 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 		order := models.Order{
 			ID:              uuid.New(),
 			OrderNumber:     input.OrderNumber,
+			LocationID:      input.LocationID,
 			CustomerID:      input.CustomerID,
 			CustomerName:    input.CustomerName,
 			CustomerPhone:   input.CustomerPhone,
@@ -182,6 +192,12 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
+		}
+		if input.Accepted {
+			order.Status = models.OrderStatusRecibida
+			order.StatusTimestamps[string(models.OrderStatusRecibida)] = now
+			order.ReviewedByUserID = input.CreatedByID
+			order.ReviewedAt = &now
 		}
 
 		if _, err := tx.NewInsert().Model(&order).Exec(ctx); err != nil {
@@ -312,7 +328,7 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 		return existingOrder, nil, nil
 	}
 
-	total, snapshots, err := s.resolveItems(ctx, s.productRepo, input.Items, input.BasePrices)
+	total, snapshots, err := s.resolveItems(ctx, db, existingOrder.LocationID, input.Items, input.BasePrices)
 	if err != nil {
 		return models.Order{}, nil, err
 	}
@@ -466,22 +482,41 @@ type itemSnapshot struct {
 // resolveItems validates products, enriches customizations, and computes
 // pricing. basePrices, when it has an entry for a product, replaces that
 // product's base price (active offers); add-on extras are charged on top.
-func (s *OrderStore) resolveItems(ctx context.Context, productRepo productResolver, items []StoreOrderItemInput, basePrices map[uuid.UUID]float64) (float64, []itemSnapshot, error) {
+// Products and flavours marked sold out ("Agotado") at locationID are refused.
+func (s *OrderStore) resolveItems(ctx context.Context, db bun.IDB, locationID uuid.UUID, items []StoreOrderItemInput, basePrices map[uuid.UUID]float64) (float64, []itemSnapshot, error) {
 	total := 0.0
 	snapshots := make([]itemSnapshot, 0, len(items))
 
+	soldOut, err := loadSoldOut(ctx, db, locationID)
+	if err != nil {
+		return 0, nil, err
+	}
+	soldOutProducts := make(map[uuid.UUID]bool, len(soldOut.Products))
+	for _, id := range soldOut.Products {
+		soldOutProducts[id] = true
+	}
+	soldOutFlavors := make(map[uuid.UUID]bool, len(soldOut.Flavors))
+	for _, id := range soldOut.Flavors {
+		soldOutFlavors[id] = true
+	}
+
 	for _, item := range items {
-		p, err := productRepo.FindByIDWithCategoryAndOptions(ctx, item.ProductID)
+		p, err := s.productRepo.FindByIDWithCategoryAndOptions(ctx, item.ProductID)
 		if err != nil {
 			return 0, nil, fmt.Errorf("%w: %s", apperror.ErrNotFound, item.ProductID)
 		}
-		if !p.IsAvailable {
-			return 0, nil, fmt.Errorf("%w: %s", apperror.ErrConflict, p.Name)
+		if !p.IsAvailable || soldOutProducts[p.ID] {
+			return 0, nil, &apperror.SoldOutError{Name: p.Name}
 		}
 
 		enriched, addonExtra, err := s.enrichment.EnrichCustomizations(p, item.Customizations)
 		if err != nil {
 			return 0, nil, err
+		}
+		for _, flavorID := range customizationFlavorIDs(enriched) {
+			if soldOutFlavors[flavorID] {
+				return 0, nil, &apperror.SoldOutError{Name: soldOutFlavorName(enriched, flavorID)}
+			}
 		}
 		basePrice := p.Price
 		if offerPrice, ok := basePrices[p.ID]; ok && offerPrice > 0 {
@@ -557,6 +592,7 @@ func (s *OrderStore) toDTOOrder(order models.Order, snapshots []itemSnapshot) dt
 	return dto.Order{
 		ID:               order.ID,
 		OrderNumber:      order.OrderNumber,
+		LocationID:       order.LocationID,
 		CustomerID:       order.CustomerID,
 		CustomerName:     order.CustomerName,
 		CustomerPhone:    order.CustomerPhone,
@@ -580,4 +616,55 @@ func (s *OrderStore) toDTOOrder(order models.Order, snapshots []itemSnapshot) dt
 		StatusTimestamps: order.StatusTimestamps,
 		Items:            items,
 	}
+}
+
+// customizationFlavorIDs reads the flavour IDs an item uses ("flavor_ids" or
+// the legacy single "flavor_id").
+func customizationFlavorIDs(customizations map[string]any) []uuid.UUID {
+	var ids []uuid.UUID
+	add := func(v any) {
+		if str, ok := v.(string); ok {
+			if id, err := uuid.Parse(str); err == nil {
+				ids = append(ids, id)
+			}
+		}
+	}
+	switch v := customizations["flavor_ids"].(type) {
+	case []any:
+		for _, x := range v {
+			add(x)
+		}
+	case []string:
+		for _, x := range v {
+			add(x)
+		}
+	}
+	add(customizations["flavor_id"])
+	return ids
+}
+
+// soldOutFlavorName finds a flavour's display name in enriched customizations
+// ("flavor_names" parallels "flavor_ids"); empty when unknown.
+func soldOutFlavorName(customizations map[string]any, flavorID uuid.UUID) string {
+	ids := customizationFlavorIDs(customizations)
+	var names []string
+	switch v := customizations["flavor_names"].(type) {
+	case []string:
+		names = v
+	case []any:
+		for _, n := range v {
+			if s, ok := n.(string); ok {
+				names = append(names, s)
+			}
+		}
+	}
+	for i, id := range ids {
+		if id == flavorID && i < len(names) {
+			return "El sabor " + names[i]
+		}
+	}
+	if name, ok := customizations["flavor_name"].(string); ok && name != "" {
+		return "El sabor " + name
+	}
+	return ""
 }

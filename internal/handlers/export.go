@@ -34,6 +34,10 @@ func NewExportHandler(orderRepo services.OrderRepository, auditSvc audit.Service
 const maxExportWindowDays = 90
 
 func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), maxExportWindowDays, h.loc)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
@@ -69,7 +73,7 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
 		var rows []dto.ExportOrderRow
-		streamErr := h.orderRepo.StreamOrderExportRows(r.Context(), start, end, statuses, 500, func(row dto.ExportOrderRow) error {
+		streamErr := h.orderRepo.StreamOrderExportRows(r.Context(), loc, start, end, statuses, 500, func(row dto.ExportOrderRow) error {
 			rows = append(rows, row)
 			return nil
 		})
@@ -116,7 +120,7 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 	})
 
 	var exportedCount int
-	streamErr := h.orderRepo.StreamOrderExportRows(r.Context(), start, end, statuses, 500, func(row dto.ExportOrderRow) error {
+	streamErr := h.orderRepo.StreamOrderExportRows(r.Context(), loc, start, end, statuses, 500, func(row dto.ExportOrderRow) error {
 		exportedCount++
 		tableNumber := ""
 		if row.TableNumber != nil {
@@ -166,6 +170,10 @@ func (h *ExportHandler) ExportOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ExportHandler) PurgeOrders(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	start, end, err := parseDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), h.loc)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
@@ -178,7 +186,7 @@ func (h *ExportHandler) PurgeOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deletedOrdersCount, deletedItemsCount, err := h.orderRepo.Purge(r.Context(), start, end, statuses)
+	deletedOrdersCount, deletedItemsCount, err := h.orderRepo.Purge(r.Context(), loc, start, end, statuses)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to purge orders")
 		return

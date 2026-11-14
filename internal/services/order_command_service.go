@@ -20,6 +20,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/events"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // OfferPriceSource provides the special base prices of active store offers.
@@ -85,6 +86,10 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 	if input.IdempotencyKey != nil {
 		existing, err := s.orderStore.FindOrderByIdempotencyKey(ctx, *input.IdempotencyKey)
 		if err == nil {
+			// A key reused at another location must not reveal that order.
+			if existing.LocationID != input.LocationID {
+				return dto.Order{}, fmt.Errorf("%w: idempotency key already used", apperror.ErrConflict)
+			}
 			return existing, nil
 		}
 		if !errors.Is(err, apperror.ErrNotFound) {
@@ -98,7 +103,12 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		return dto.Order{}, err
 	}
 
+	if input.LocationID == uuid.Nil {
+		return dto.Order{}, scope.ErrLocationRequired
+	}
+
 	storeInput := repository.StoreOrderInput{
+		LocationID:     input.LocationID,
 		IdempotencyKey: input.IdempotencyKey,
 		CustomerID:     customerID,
 		CustomerName:   input.CustomerName,
@@ -113,6 +123,9 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		CreatedByID:    input.CreatedByID,
 		Items:          toStoreOrderItemInputs(input.Items),
 		BasePrices:     s.activeOfferPrices(ctx),
+		// Orders taken at the counter are accepted on creation; online
+		// orders wait for staff review.
+		Accepted: input.CreatedByID != nil && *input.CreatedByID != "",
 	}
 
 	createCtx := auditContext(ctx, audit.ActionOrderCreated, map[string]any{
@@ -127,7 +140,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		// surfacing a conflict to the customer who did nothing wrong.
 		if input.IdempotencyKey != nil && apperror.IsUniqueViolation(err) {
 			existing, findErr := s.orderStore.FindOrderByIdempotencyKey(ctx, *input.IdempotencyKey)
-			if findErr == nil {
+			if findErr == nil && existing.LocationID == input.LocationID {
 				return existing, nil
 			}
 		}
@@ -298,7 +311,7 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 		if err != nil {
 			return dto.Order{}, err
 		}
-		deductions, err := s.inventory.DeductionsFor(ctx, orderWithItems.Items)
+		deductions, err := s.inventory.DeductionsFor(ctx, orderWithItems.LocationID, orderWithItems.Items)
 		if err != nil {
 			return dto.Order{}, err
 		}
@@ -380,7 +393,7 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		if err != nil {
 			return dto.Order{}, err
 		}
-		deductions, err := s.inventory.DeductionsFor(ctx, newItems)
+		deductions, err := s.inventory.DeductionsFor(ctx, existing.LocationID, newItems)
 		if err != nil {
 			return dto.Order{}, err
 		}

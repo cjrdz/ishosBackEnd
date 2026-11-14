@@ -221,3 +221,20 @@ func StatusCode(err error) int {
 func IsAppError(err error) bool {
 	return StatusCode(err) != http.StatusInternalServerError
 }
+
+// SoldOutError is returned when an order asks for a product or flavour marked
+// "Agotado" at its location. Its message is shown to staff and customers as is.
+type SoldOutError struct {
+	Name string
+}
+
+func (e *SoldOutError) Error() string {
+	if e.Name == "" {
+		return "Un producto o sabor elegido está agotado en esta sucursal"
+	}
+	return e.Name + " está agotado en esta sucursal"
+}
+
+func (e *SoldOutError) Unwrap() error {
+	return ErrConflict
+}

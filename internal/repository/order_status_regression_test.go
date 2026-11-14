@@ -22,11 +22,13 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 func createRegressionOrder(t *testing.T, ctx context.Context, repo *OrderBunRepository, number, status string, amountReceived *float64) dto.Order {
 	t.Helper()
 	order, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:     testLocationID(t, repo.db),
 		OrderNumber:    number,
 		CustomerName:   "Regression",
 		CustomerPhone:  "555-" + number[len(number)-4:],
@@ -43,6 +45,7 @@ func createRegressionOrder(t *testing.T, ctx context.Context, repo *OrderBunRepo
 func createRegressionInventoryItem(t *testing.T, ctx context.Context, repo *InventoryBunRepository, name string, stock int) dto.InventoryItem {
 	t.Helper()
 	item, err := repo.Create(ctx, CreateInventoryItemInput{
+		LocationID:   testLocationID(t, repo.db),
 		Name:         name,
 		Type:         string(models.InventoryItemTypeUnitBased),
 		CurrentStock: stock,
@@ -244,12 +247,12 @@ func TestListPaginated_MultipleStatuses(t *testing.T) {
 	createRegressionOrder(t, ctx, repo, "ORD-BD-0002", string(models.OrderStatusEnProceso), nil)
 	createRegressionOrder(t, ctx, repo, "ORD-BD-0003", string(models.OrderStatusEntregada), nil)
 
-	orders, total, err := repo.ListPaginated(ctx, "recibida,en_proceso", false, 1, 100)
+	orders, total, err := repo.ListPaginated(ctx, scope.All(), "recibida,en_proceso", false, 1, 100)
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, orders, 2)
 
-	single, total, err := repo.ListPaginated(ctx, "entregada", false, 1, 100)
+	single, total, err := repo.ListPaginated(ctx, scope.All(), "entregada", false, 1, 100)
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	assert.Equal(t, "ORD-BD-0003", single[0].OrderNumber)

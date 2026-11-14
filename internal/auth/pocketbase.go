@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -136,11 +137,11 @@ func (pb *PBAuth) FindEmployeeByEmail(email string) (*core.Record, error) {
 	return pb.App.FindAuthRecordByEmail("employees", strings.TrimSpace(email))
 }
 
-// ListEmployees returns all employee/admin records.
+// ListEmployees returns all admin, manager and employee records.
 func (pb *PBAuth) ListEmployees() ([]*core.Record, error) {
 	return pb.App.FindRecordsByFilter(
 		"employees",
-		"role = 'admin' || role = 'employee'",
+		"role = 'admin' || role = 'manager' || role = 'employee'",
 		"",
 		200,
 		0,
@@ -149,7 +150,9 @@ func (pb *PBAuth) ListEmployees() ([]*core.Record, error) {
 
 // CreateEmployee creates a new employee in the PocketBase auth collection.
 // PocketBase handles password hashing internally.
-func (pb *PBAuth) CreateEmployee(email, password, name, phone, role string, disabled bool) (*core.Record, error) {
+// locationID is required for managers and employees and empty for admins
+// (the handler validates this).
+func (pb *PBAuth) CreateEmployee(email, password, name, phone, role, locationID string, disabled bool) (*core.Record, error) {
 	collection, err := pb.App.FindCollectionByNameOrId("employees")
 	if err != nil {
 		return nil, fmt.Errorf("find employees collection: %w", err)
@@ -161,6 +164,7 @@ func (pb *PBAuth) CreateEmployee(email, password, name, phone, role string, disa
 	record.Set("name", name)
 	record.Set("phone", phone)
 	record.Set("role", role)
+	record.Set("location_id", locationID)
 	record.Set("disabled", disabled)
 
 	if err := pb.App.Save(record); err != nil {
@@ -172,7 +176,7 @@ func (pb *PBAuth) CreateEmployee(email, password, name, phone, role string, disa
 
 // UpdateEmployee updates mutable employee fields.
 // Password is optional; when omitted the current password remains unchanged.
-func (pb *PBAuth) UpdateEmployee(id string, email, password, name, phone, role *string, disabled *bool) (*core.Record, error) {
+func (pb *PBAuth) UpdateEmployee(id string, email, password, name, phone, role, locationID *string, disabled *bool) (*core.Record, error) {
 	record, err := pb.App.FindRecordById("employees", id)
 	if err != nil {
 		return nil, fmt.Errorf("find employee: %w", err)
@@ -193,6 +197,9 @@ func (pb *PBAuth) UpdateEmployee(id string, email, password, name, phone, role *
 	if role != nil {
 		record.Set("role", strings.TrimSpace(*role))
 	}
+	if locationID != nil {
+		record.Set("location_id", strings.TrimSpace(*locationID))
+	}
 	if disabled != nil {
 		record.Set("disabled", *disabled)
 	}
@@ -202,6 +209,29 @@ func (pb *PBAuth) UpdateEmployee(id string, email, password, name, phone, role *
 	}
 
 	return record, nil
+}
+
+// AssignMissingLocations gives every manager and employee without a location
+// the default one (the original shop). Accounts created before locations
+// existed would otherwise be refused at login. Returns how many changed.
+func (pb *PBAuth) AssignMissingLocations(defaultLocationID string) (int, error) {
+	records, err := pb.App.FindRecordsByFilter(
+		"employees",
+		"(role = 'manager' || role = 'employee') && location_id = ''",
+		"",
+		0,
+		0,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("find employees without location: %w", err)
+	}
+	for _, record := range records {
+		record.Set("location_id", defaultLocationID)
+		if err := pb.App.Save(record); err != nil {
+			return 0, fmt.Errorf("assign location to employee %s: %w", record.Id, err)
+		}
+	}
+	return len(records), nil
 }
 
 // DeactivateEmployee disables an employee account so they can no longer log in.
@@ -273,7 +303,7 @@ func (pb *PBAuth) StartAdminUI(httpAddr string, allowedOrigins []string) error {
 // Close cleanly shuts down the PocketBase app.
 func (pb *PBAuth) Close() error {
 	if pb.App != nil {
-		if err := pb.App.ResetBootstrapState(); err != nil {
+		if err := pb.App.ClearBootstrap(); err != nil {
 			return fmt.Errorf("reset bootstrap state: %w", err)
 		}
 	}
@@ -335,12 +365,27 @@ func (pb *PBAuth) ensureEmployeesCollectionFields(collection *core.Collection) b
 		changed = true
 	}
 
-	if collection.Fields.GetByName("role") == nil {
+	if existing, ok := collection.Fields.GetByName("role").(*core.SelectField); ok {
+		// Collections created before locations only allowed admin/employee.
+		if !slices.Equal(existing.Values, EmployeeRoles) {
+			existing.Values = append([]string{}, EmployeeRoles...)
+			changed = true
+		}
+	} else if collection.Fields.GetByName("role") == nil {
 		collection.Fields.Add(&core.SelectField{
 			Name:      "role",
 			Required:  true,
-			Values:    []string{"admin", "employee"},
+			Values:    append([]string{}, EmployeeRoles...),
 			MaxSelect: 1,
+		})
+		changed = true
+	}
+
+	// The location (sucursal) a manager or employee works at; empty for admins.
+	if collection.Fields.GetByName("location_id") == nil {
+		collection.Fields.Add(&core.TextField{
+			Name: "location_id",
+			Max:  36,
 		})
 		changed = true
 	}
@@ -372,6 +417,25 @@ func (pb *PBAuth) ensureEmployeesAuthTokenDuration(collection *core.Collection) 
 // ---------------------------------------------------------------------------
 // Record helpers
 // ---------------------------------------------------------------------------
+
+// Roles. Admins see every location; managers and employees only their own.
+const (
+	RoleAdmin    = "admin"
+	RoleManager  = "manager"
+	RoleEmployee = "employee"
+)
+
+// EmployeeRoles lists the values of the employees.role field.
+var EmployeeRoles = []string{RoleAdmin, RoleManager, RoleEmployee}
+
+// LocationIDFromRecord returns the location an employee record belongs to
+// ("" for admins or unassigned accounts).
+func LocationIDFromRecord(record *core.Record) string {
+	if record == nil {
+		return ""
+	}
+	return record.GetString("location_id")
+}
 
 // RoleFromRecord extracts the role string from a PocketBase employee record.
 func RoleFromRecord(record *core.Record) string {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // ProductRepository defines the product data access contract.
@@ -29,7 +30,7 @@ type ProductRepository interface {
 
 // OrderRepository defines the order data access contract.
 type OrderRepository interface {
-	ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
+	ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	FindByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	FindByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error)
@@ -49,18 +50,18 @@ type OrderRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// Reporting and bulk operations
-	FindByDateRange(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error)
-	FindByDateRangeWithItems(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error)
-	FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error)
-	Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error)
+	FindByDateRange(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error)
+	FindByDateRangeWithItems(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error)
+	FindOrderItemsByOrderDateRange(ctx context.Context, loc scope.Location, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error)
+	Purge(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) (int, int, error)
 
 	// SQL-aggregated analytics (avoid loading full date ranges into memory).
-	AnalyticsOverview(ctx context.Context, start, end time.Time) (dto.AnalyticsOverview, error)
-	AnalyticsOrdersOverTime(ctx context.Context, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error)
-	AnalyticsTopProducts(ctx context.Context, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error)
+	AnalyticsOverview(ctx context.Context, loc scope.Location, start, end time.Time) (dto.AnalyticsOverview, error)
+	AnalyticsOrdersOverTime(ctx context.Context, loc scope.Location, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error)
+	AnalyticsTopProducts(ctx context.Context, loc scope.Location, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error)
 
 	// Streaming export rows (CSV) without loading the full date range into memory.
-	StreamOrderExportRows(ctx context.Context, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error
+	StreamOrderExportRows(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error
 
 	// Archiving
 	FindEligibleForArchive(ctx context.Context, terminalStatuses []string, cutoff time.Time, limit int) ([]dto.Order, error)
@@ -152,12 +153,12 @@ type TrackingTokenStore interface {
 
 // InventoryRepository defines the inventory data access contract.
 type InventoryRepository interface {
-	List(ctx context.Context) ([]dto.InventoryItem, error)
-	ListByType(ctx context.Context, itemType string) ([]dto.InventoryItem, error)
-	ListLinked(ctx context.Context) ([]dto.InventoryItem, error)
+	List(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)
+	ListByType(ctx context.Context, loc scope.Location, itemType string) ([]dto.InventoryItem, error)
+	ListLinked(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error)
-	FindByFlavorID(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error)
-	FindByProductID(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error)
+	FindByFlavorID(ctx context.Context, locationID, flavorID uuid.UUID) (dto.InventoryItem, error)
+	FindByProductID(ctx context.Context, locationID, productID uuid.UUID) (dto.InventoryItem, error)
 	Create(ctx context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.UpdateInventoryItemInput) (dto.InventoryItem, error)
 	Delete(ctx context.Context, id uuid.UUID) error
