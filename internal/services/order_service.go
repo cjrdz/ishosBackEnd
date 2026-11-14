@@ -165,7 +165,12 @@ var nonEditableStatuses = map[string]bool{
 	"cancelada": true,
 }
 
-// IsOrderEditable returns false when the order status is locked (recibida, lista, entregada, cancelada).
-func (s *OrderService) IsOrderEditable(status string) bool {
-	return !nonEditableStatuses[status]
+// IsOrderEditable returns false when the order is locked (recibida, lista,
+// entregada, cancelada). Counter orders (created by staff) stay editable while
+// "recibida": they start accepted, and the customer is still at the counter.
+func (s *OrderService) IsOrderEditable(order dto.Order) bool {
+	if order.Status == "recibida" && order.CreatedByUserID != nil && *order.CreatedByUserID != "" {
+		return true
+	}
+	return !nonEditableStatuses[order.Status]
 }

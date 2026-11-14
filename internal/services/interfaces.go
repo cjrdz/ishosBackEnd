@@ -28,7 +28,7 @@ type OrderServiceInterface interface {
 	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
 	SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	IsOrderEditable(status string) bool
+	IsOrderEditable(order dto.Order) bool
 }
 
 type ProductServiceInterface interface {

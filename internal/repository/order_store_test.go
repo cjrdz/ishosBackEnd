@@ -341,3 +341,40 @@ func TestOrderStore_CreateOrder_AppliesOfferBasePrice(t *testing.T) {
 	require.NoError(t, err)
 	assert.InDelta(t, 2*3.5+2.0, order.TotalAmount, 0.001, "offer price replaces the base price; others unchanged")
 }
+
+// Counter orders start accepted ("recibida") and record who accepted them;
+// online orders start in review.
+func TestOrderStore_CreateOrder_AcceptedCounterOrder(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	store := NewOrderStore(db, NewProductBunRepository(db), noopEnrichment{})
+	product, _ := createTestProduct(t, ctx, db, "Counter-Product", 2.0)
+	staff := "staff-1"
+
+	base := StoreOrderInput{
+		LocationID:    testLocationID(t, db),
+		CustomerName:  "Mostrador",
+		CustomerPhone: "555-8001",
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+		Items:         []StoreOrderItemInput{{ProductID: product.ID, Quantity: 1}},
+	}
+
+	counter := base
+	counter.OrderNumber = "ORD-CTR-001"
+	counter.CreatedByID = &staff
+	counter.Accepted = true
+	created, err := store.CreateOrder(ctx, counter)
+	require.NoError(t, err)
+	assert.Equal(t, string(models.OrderStatusRecibida), created.Status)
+	require.NotNil(t, created.ReviewedByUserID)
+	assert.Equal(t, staff, *created.ReviewedByUserID)
+	assert.Contains(t, created.StatusTimestamps, string(models.OrderStatusRecibida))
+
+	online := base
+	online.OrderNumber = "ORD-WEB-001"
+	created, err = store.CreateOrder(ctx, online)
+	require.NoError(t, err)
+	assert.Equal(t, string(models.OrderStatusPendienteRevision), created.Status)
+	assert.Nil(t, created.ReviewedByUserID)
+}

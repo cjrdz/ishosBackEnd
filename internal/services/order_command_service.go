@@ -123,6 +123,9 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		CreatedByID:    input.CreatedByID,
 		Items:          toStoreOrderItemInputs(input.Items),
 		BasePrices:     s.activeOfferPrices(ctx),
+		// Orders taken at the counter are accepted on creation; online
+		// orders wait for staff review.
+		Accepted: input.CreatedByID != nil && *input.CreatedByID != "",
 	}
 
 	createCtx := auditContext(ctx, audit.ActionOrderCreated, map[string]any{

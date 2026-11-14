@@ -940,3 +940,45 @@ func TestOrderCommandService_Create_IdempotencyKeyFromOtherLocation_Conflicts(t 
 		t.Fatal("must not return the other location's order")
 	}
 }
+
+func TestOrderCommandService_Create_AcceptsOnlyStaffOrders(t *testing.T) {
+	var got []bool
+	store := &orderStoreStub{
+		createFn: func(_ context.Context, input repository.StoreOrderInput) (dto.Order, error) {
+			got = append(got, input.Accepted)
+			return dto.Order{ID: uuid.New()}, nil
+		},
+	}
+	svc := NewOrderCommandService(&orderRepoStub{}, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
+	staff := "staff-1"
+	for _, createdBy := range []*string{&staff, nil} {
+		if _, err := svc.Create(context.Background(), CreateOrderInput{
+			LocationID:    testLocation,
+			CustomerName:  "Ana",
+			CustomerPhone: "70000000",
+			PaymentMethod: "efectivo",
+			OrderType:     "para_llevar",
+			Items:         []OrderItemInput{{ProductID: uuid.New(), Quantity: 1}},
+			CreatedByID:   createdBy,
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	if len(got) != 2 || !got[0] || got[1] {
+		t.Fatalf("staff order must be accepted and online order not; got %v", got)
+	}
+}
+
+func TestOrderService_IsOrderEditable_CounterOrderWhileAccepted(t *testing.T) {
+	svc := &OrderService{}
+	staff := "staff-1"
+	if !svc.IsOrderEditable(dto.Order{Status: "recibida", CreatedByUserID: &staff}) {
+		t.Fatal("a counter order must stay editable while accepted")
+	}
+	if svc.IsOrderEditable(dto.Order{Status: "recibida"}) {
+		t.Fatal("an accepted online order stays locked")
+	}
+	if svc.IsOrderEditable(dto.Order{Status: "entregada", CreatedByUserID: &staff}) {
+		t.Fatal("delivered orders stay locked")
+	}
+}

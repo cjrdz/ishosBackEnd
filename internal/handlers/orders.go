@@ -605,7 +605,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
 		return
 	}
-	if !h.orderSvc.IsOrderEditable(existing.Status) {
+	if !h.orderSvc.IsOrderEditable(existing) {
 		response.Error(w, http.StatusConflict, "No se puede editar una orden que ya fue aceptada, rechazada, entregada o cancelada")
 		return
 	}
@@ -734,7 +734,7 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
 		return
 	}
-	if !h.orderSvc.IsOrderEditable(existing.Status) {
+	if !h.orderSvc.IsOrderEditable(existing) {
 		response.Error(w, http.StatusConflict, "No se puede eliminar una orden que ya fue aceptada, rechazada, entregada o cancelada")
 		return
 	}

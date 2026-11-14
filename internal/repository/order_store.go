@@ -48,6 +48,10 @@ type StoreOrderInput struct {
 	Items          []StoreOrderItemInput
 	// BasePrices overrides a product's base price (active store offers).
 	BasePrices map[uuid.UUID]float64
+	// Accepted creates the order already accepted ("recibida"), reviewed by
+	// CreatedByID: counter orders need no review. Online orders leave it false
+	// and start in "pendiente_revision".
+	Accepted bool
 }
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
@@ -188,6 +192,12 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
+		}
+		if input.Accepted {
+			order.Status = models.OrderStatusRecibida
+			order.StatusTimestamps[string(models.OrderStatusRecibida)] = now
+			order.ReviewedByUserID = input.CreatedByID
+			order.ReviewedAt = &now
 		}
 
 		if _, err := tx.NewInsert().Model(&order).Exec(ctx); err != nil {
