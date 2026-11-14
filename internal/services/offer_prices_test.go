@@ -97,6 +97,7 @@ func TestOrderCommandService_Create_PassesOfferPricesToStore(t *testing.T) {
 	svc.offers = offerSourceStub{prices: map[uuid.UUID]float64{product: 1.99}}
 
 	_, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:   testLocation,
 		CustomerName: "Ana", CustomerPhone: "71234567", PaymentMethod: "efectivo", OrderType: "para_llevar",
 		Items: []OrderItemInput{{ProductID: product, Quantity: 1}},
 	})
@@ -121,6 +122,7 @@ func TestOrderCommandService_Create_OfferOutageFallsBackToRegularPrices(t *testi
 	svc.offers = offerSourceStub{err: errors.New("settings unavailable")}
 
 	if _, err := svc.Create(context.Background(), CreateOrderInput{
+		LocationID:   testLocation,
 		CustomerName: "Ana", CustomerPhone: "71234567", PaymentMethod: "efectivo", OrderType: "para_llevar",
 		Items: []OrderItemInput{{ProductID: uuid.New(), Quantity: 1}},
 	}); err != nil {

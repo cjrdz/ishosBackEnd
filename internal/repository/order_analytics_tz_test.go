@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 func TestAnalytics_StoreTimeZoneAndApprovedRevenue(t *testing.T) {
@@ -32,20 +33,20 @@ func TestAnalytics_StoreTimeZoneAndApprovedRevenue(t *testing.T) {
 	start := time.Date(2026, 10, 25, 0, 0, 0, 0, loc)
 	end := start.AddDate(0, 0, 1).Add(-time.Nanosecond)
 
-	timeline, err := repo.AnalyticsOrdersOverTime(ctx, start, end, "day")
+	timeline, err := repo.AnalyticsOrdersOverTime(ctx, scope.All(), start, end, "day")
 	require.NoError(t, err)
 	require.Len(t, timeline, 1)
 	assert.Equal(t, "2026-10-25", timeline[0].Date, "late-evening orders belong to the store's local day")
 	assert.Equal(t, 2, timeline[0].Count)
 	assert.InDelta(t, 10.0, timeline[0].Revenue, 0.001, "only the approved order counts as revenue")
 
-	overview, err := repo.AnalyticsOverview(ctx, start, end)
+	overview, err := repo.AnalyticsOverview(ctx, scope.All(), start, end)
 	require.NoError(t, err)
 	assert.Equal(t, 2, overview.TotalOrders)
 	assert.InDelta(t, 10.0, overview.TotalRevenue, 0.001, "pending-review orders are not revenue")
 
 	// Without a store time zone the same orders land on the UTC day.
-	utcTimeline, err := NewOrderBunRepository(db).AnalyticsOrdersOverTime(ctx, start, end, "day")
+	utcTimeline, err := NewOrderBunRepository(db).AnalyticsOrdersOverTime(ctx, scope.All(), start, end, "day")
 	require.NoError(t, err)
 	require.Len(t, utcTimeline, 1)
 	assert.Equal(t, "2026-10-26", utcTimeline[0].Date)

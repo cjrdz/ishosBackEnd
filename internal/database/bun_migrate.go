@@ -21,7 +21,9 @@ import (
 //
 //	1 — initial schema
 //	2 — one-time repair of products.free_toppings (see repairFreeToppings)
-const schemaVersion = 2
+//	3 — locations (sucursales): location_id on orders/stock, per-location
+//	    Agotados; existing data moves to the first location (see ensureLocations)
+const schemaVersion = 3
 
 // Migration timeouts. lock_timeout makes a DDL statement that is blocked by a
 // live transaction (e.g. the previous instance during a rolling deploy) fail
@@ -88,6 +90,11 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 				return err
 			}
 		}
+		if current < 3 {
+			if err := migrateSingleStoreToLocations(ctx, tx); err != nil {
+				return err
+			}
+		}
 		return writeSchemaVersion(ctx, tx, schemaVersion)
 	})
 }
@@ -112,6 +119,9 @@ func migrateSchema(ctx context.Context, db bun.IDB) error {
 		return err
 	}
 	if err := ensureFreeToppingsColumn(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureLocations(ctx, db); err != nil {
 		return err
 	}
 	if err := runBackfills(ctx, db); err != nil {
@@ -164,6 +174,8 @@ func createTables(ctx context.Context, db bun.IDB) error {
 	// adding FKs later, avoids ordering problems. Bun's NewCreateTable does not
 	// emit FKs by default; we add them explicitly below.
 	tables := []interface{}{
+		(*models.Location)(nil),
+		(*models.LocationAvailability)(nil),
 		(*models.Addon)(nil),
 		(*models.AdminSetting)(nil),
 		(*models.AuditLog)(nil),

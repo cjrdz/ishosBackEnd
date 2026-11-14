@@ -27,6 +27,7 @@ type OrderItemResponse struct {
 type OrderResponse struct {
 	ID               uuid.UUID            `json:"id"`
 	OrderNumber      string               `json:"order_number"`
+	LocationID       uuid.UUID            `json:"location_id"`
 	CustomerID       *uuid.UUID           `json:"customer_id,omitempty"`
 	CustomerName     string               `json:"customer_name"`
 	CustomerPhone    string               `json:"customer_phone"`
@@ -80,6 +81,7 @@ func (m *OrderResponseMapper) Map(order dto.Order) OrderResponse {
 type OrderLiteResponse struct {
 	ID           uuid.UUID `json:"id"`
 	OrderNumber  string    `json:"order_number"`
+	LocationID   uuid.UUID `json:"location_id"`
 	CustomerName string    `json:"customer_name"`
 	Status       string    `json:"status"`
 	TotalAmount  float64   `json:"total_amount"`
@@ -92,6 +94,7 @@ func (m *OrderResponseMapper) MapLite(order dto.Order) OrderLiteResponse {
 	return OrderLiteResponse{
 		ID:           order.ID,
 		OrderNumber:  order.OrderNumber,
+		LocationID:   order.LocationID,
 		CustomerName: order.CustomerName,
 		Status:       order.Status,
 		TotalAmount:  order.TotalAmount,
@@ -186,6 +189,7 @@ func (m *OrderResponseMapper) mapInternal(order dto.Order) OrderResponse {
 	resp := OrderResponse{
 		ID:               order.ID,
 		OrderNumber:      order.OrderNumber,
+		LocationID:       order.LocationID,
 		CustomerID:       order.CustomerID,
 		CustomerName:     order.CustomerName,
 		CustomerPhone:    order.CustomerPhone,

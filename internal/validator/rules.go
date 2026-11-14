@@ -42,8 +42,8 @@ func ValidateEmployeeCreate(email, password, name, phone, role, state string) Va
 		errs.Add("password", "must be at least 12 chars and include uppercase, lowercase, number, and symbol")
 	}
 
-	if role != "employee" && role != "admin" {
-		errs.Add("role", "must be 'employee' or 'admin'")
+	if role != "employee" && role != "manager" && role != "admin" {
+		errs.Add("role", "must be 'employee', 'manager' or 'admin'")
 	}
 
 	if state != "" && state != "active" && state != "inactive" {
@@ -82,8 +82,8 @@ func ValidateEmployeeUpdate(email, password, name, phone, role, state *string) V
 
 	if role != nil {
 		v := strings.TrimSpace(*role)
-		if v != "employee" && v != "admin" {
-			errs.Add("role", "must be 'employee' or 'admin'")
+		if v != "employee" && v != "manager" && v != "admin" {
+			errs.Add("role", "must be 'employee', 'manager' or 'admin'")
 		}
 	}
 

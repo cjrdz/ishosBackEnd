@@ -12,6 +12,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 var (
@@ -31,6 +32,7 @@ type InventoryService struct {
 	repo              InventoryRepository
 	containerTypeRepo ContainerTypeRepository
 	flavorRepo        FlavorRepository
+	locationIDs       func(ctx context.Context) ([]uuid.UUID, error)
 }
 
 // InventoryServiceOption configures an InventoryService.
@@ -40,6 +42,25 @@ type InventoryServiceOption func(*InventoryService)
 // auto-create inventory items for flavors that are not yet tracked.
 func WithFlavorRepo(r FlavorRepository) InventoryServiceOption {
 	return func(s *InventoryService) { s.flavorRepo = r }
+}
+
+// WithLocationIDs lets the service create a tracked product's inventory row
+// at every location at once.
+func WithLocationIDs(fn func(ctx context.Context) ([]uuid.UUID, error)) InventoryServiceOption {
+	return func(s *InventoryService) { s.locationIDs = fn }
+}
+
+// itemInScope loads an inventory item and hides it when it belongs to a
+// location outside loc.
+func (s *InventoryService) itemInScope(ctx context.Context, loc scope.Location, id uuid.UUID) (dto.InventoryItem, error) {
+	item, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return dto.InventoryItem{}, err
+	}
+	if err := loc.Check("inventory_item", item.LocationID); err != nil {
+		return dto.InventoryItem{}, err
+	}
+	return item, nil
 }
 
 // NewInventoryService creates a new inventory service.
@@ -52,13 +73,13 @@ func NewInventoryService(repo InventoryRepository, containerTypeRepo ContainerTy
 }
 
 // List returns all inventory items.
-func (s *InventoryService) List(ctx context.Context) ([]dto.InventoryItem, error) {
-	return s.repo.List(ctx)
+func (s *InventoryService) List(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error) {
+	return s.repo.List(ctx, loc)
 }
 
 // GetFlavorInventory returns only ball-based items linked to a flavor.
-func (s *InventoryService) GetFlavorInventory(ctx context.Context) ([]dto.InventoryItem, error) {
-	items, err := s.repo.ListByType(ctx, "ball_based")
+func (s *InventoryService) GetFlavorInventory(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error) {
+	items, err := s.repo.ListByType(ctx, loc, "ball_based")
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +94,8 @@ func (s *InventoryService) GetFlavorInventory(ctx context.Context) ([]dto.Invent
 }
 
 // GetUnitInventory returns only unit-based items linked to a product.
-func (s *InventoryService) GetUnitInventory(ctx context.Context) ([]dto.InventoryItem, error) {
-	items, err := s.repo.ListByType(ctx, "unit_based")
+func (s *InventoryService) GetUnitInventory(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error) {
+	items, err := s.repo.ListByType(ctx, loc, "unit_based")
 	if err != nil {
 		return nil, err
 	}
@@ -89,13 +110,13 @@ func (s *InventoryService) GetUnitInventory(ctx context.Context) ([]dto.Inventor
 }
 
 // GetByID returns a single inventory item by ID.
-func (s *InventoryService) GetByID(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error) {
-	return s.repo.FindByID(ctx, id)
+func (s *InventoryService) GetByID(ctx context.Context, loc scope.Location, id uuid.UUID) (dto.InventoryItem, error) {
+	return s.itemInScope(ctx, loc, id)
 }
 
 // GetLowStockItems returns items below their threshold, excluding orphaned items.
-func (s *InventoryService) GetLowStockItems(ctx context.Context) ([]dto.InventoryItem, error) {
-	items, err := s.repo.ListLinked(ctx)
+func (s *InventoryService) GetLowStockItems(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error) {
+	items, err := s.repo.ListLinked(ctx, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +131,8 @@ func (s *InventoryService) GetLowStockItems(ctx context.Context) ([]dto.Inventor
 }
 
 // CheckStock verifies if there is enough stock for a specific flavor at a given quantity.
-func (s *InventoryService) CheckStock(ctx context.Context, flavorID uuid.UUID, quantity int) (bool, error) {
-	invItem, err := s.repo.FindByFlavorID(ctx, flavorID)
+func (s *InventoryService) CheckStock(ctx context.Context, locationID, flavorID uuid.UUID, quantity int) (bool, error) {
+	invItem, err := s.repo.FindByFlavorID(ctx, locationID, flavorID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return true, nil // No inventory tracking = always available
@@ -125,7 +146,8 @@ func (s *InventoryService) CheckStock(ctx context.Context, flavorID uuid.UUID, q
 // DeductionsFor builds the list of stock deductions required for an order's
 // items without mutating stock. Untracked products are skipped silently; real
 // lookup errors are returned so callers can decide how to handle them.
-func (s *InventoryService) DeductionsFor(ctx context.Context, items []dto.OrderItem) ([]repository.StockDeductionInput, error) {
+// Only locationID's inventory is used: each location has its own stock.
+func (s *InventoryService) DeductionsFor(ctx context.Context, locationID uuid.UUID, items []dto.OrderItem) ([]repository.StockDeductionInput, error) {
 	deductions := make([]repository.StockDeductionInput, 0)
 
 	for _, item := range items {
@@ -147,7 +169,7 @@ func (s *InventoryService) DeductionsFor(ctx context.Context, items []dto.OrderI
 				flavorCounts[flavorID]++
 			}
 			for flavorID, count := range flavorCounts {
-				invItem, err := s.repo.FindByFlavorID(ctx, flavorID)
+				invItem, err := s.repo.FindByFlavorID(ctx, locationID, flavorID)
 				if err != nil {
 					if errors.Is(err, apperror.ErrNotFound) {
 						continue
@@ -162,7 +184,7 @@ func (s *InventoryService) DeductionsFor(ctx context.Context, items []dto.OrderI
 				})
 			}
 		} else {
-			invItem, err := s.repo.FindByProductID(ctx, item.ProductID)
+			invItem, err := s.repo.FindByProductID(ctx, locationID, item.ProductID)
 			if err != nil {
 				if errors.Is(err, apperror.ErrNotFound) {
 					continue
@@ -182,8 +204,8 @@ func (s *InventoryService) DeductionsFor(ctx context.Context, items []dto.OrderI
 
 // DeductForOrder deducts stock for an order's items.
 // Returns the created stock movements for potential rollback.
-func (s *InventoryService) DeductForOrder(ctx context.Context, orderID uuid.UUID, items []dto.OrderItem, createdByID string) ([]dto.StockMovement, error) {
-	deductions, err := s.DeductionsFor(ctx, items)
+func (s *InventoryService) DeductForOrder(ctx context.Context, locationID, orderID uuid.UUID, items []dto.OrderItem, createdByID string) ([]dto.StockMovement, error) {
+	deductions, err := s.DeductionsFor(ctx, locationID, items)
 	if err != nil {
 		return nil, err
 	}
@@ -256,8 +278,9 @@ func (s *InventoryService) RestoreForOrder(ctx context.Context, orderID uuid.UUI
 // RecordEntry records a stock entry for a flavor (containers received).
 // If the flavor does not have an inventory item yet, it is created automatically
 // provided the service was configured with a FlavorRepository.
-func (s *InventoryService) RecordEntry(ctx context.Context, flavorID, containerTypeID uuid.UUID, quantityContainers int, ballsPerContainer int, createdByID string) (dto.StockMovement, error) {
-	invItem, err := s.repo.FindByFlavorID(ctx, flavorID)
+// The entry goes to locationID's stock.
+func (s *InventoryService) RecordEntry(ctx context.Context, locationID, flavorID, containerTypeID uuid.UUID, quantityContainers int, ballsPerContainer int, createdByID string) (dto.StockMovement, error) {
+	invItem, err := s.repo.FindByFlavorID(ctx, locationID, flavorID)
 	if err != nil {
 		if !errors.Is(err, apperror.ErrNotFound) {
 			return dto.StockMovement{}, err
@@ -277,6 +300,7 @@ func (s *InventoryService) RecordEntry(ctx context.Context, flavorID, containerT
 		}
 
 		created, createErr := s.repo.Create(ctx, repository.CreateInventoryItemInput{
+			LocationID:        locationID,
 			Name:              flavor.Name,
 			Type:              inventoryTypeBallBased,
 			CurrentStock:      0,
@@ -318,9 +342,12 @@ func (s *InventoryService) RecordEntry(ctx context.Context, flavorID, containerT
 }
 
 // RecordUnitEntry records a stock entry for a unit-based product.
-func (s *InventoryService) RecordUnitEntry(ctx context.Context, inventoryItemID uuid.UUID, quantity int, createdByID string) (dto.StockMovement, error) {
+func (s *InventoryService) RecordUnitEntry(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID, quantity int, createdByID string) (dto.StockMovement, error) {
 	if quantity <= 0 {
 		return dto.StockMovement{}, fmt.Errorf("%w: quantity must be positive", apperror.ErrValidation)
+	}
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return dto.StockMovement{}, err
 	}
 
 	return s.repo.RecordUnitEntry(ctx, repository.RecordUnitEntryInput{
@@ -330,20 +357,43 @@ func (s *InventoryService) RecordUnitEntry(ctx context.Context, inventoryItemID 
 	})
 }
 
-// CreateUnitInventoryItem creates a new unit-based inventory item linked to a product.
-func (s *InventoryService) CreateUnitInventoryItem(ctx context.Context, name string, productID uuid.UUID, lowStockThreshold int) (dto.InventoryItem, error) {
-	return s.repo.Create(ctx, repository.CreateInventoryItemInput{
-		Name:              name,
-		Type:              "unit_based",
-		ProductID:         &productID,
-		LowStockThreshold: lowStockThreshold,
-		CurrentStock:      0,
-	})
+// CreateUnitInventoryItem starts tracking a unit-based product at every
+// location (zero stock each) and returns the created rows. Locations that
+// already track the product are skipped.
+func (s *InventoryService) CreateUnitInventoryItem(ctx context.Context, name string, productID uuid.UUID, lowStockThreshold int) ([]dto.InventoryItem, error) {
+	if s.locationIDs == nil {
+		return nil, fmt.Errorf("inventory service has no location source")
+	}
+	ids, err := s.locationIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	created := make([]dto.InventoryItem, 0, len(ids))
+	for _, locationID := range ids {
+		if _, err := s.repo.FindByProductID(ctx, locationID, productID); err == nil {
+			continue
+		} else if !errors.Is(err, apperror.ErrNotFound) {
+			return nil, err
+		}
+		item, err := s.repo.Create(ctx, repository.CreateInventoryItemInput{
+			LocationID:        locationID,
+			Name:              name,
+			Type:              "unit_based",
+			ProductID:         &productID,
+			LowStockThreshold: lowStockThreshold,
+			CurrentStock:      0,
+		})
+		if err != nil {
+			return nil, err
+		}
+		created = append(created, item)
+	}
+	return created, nil
 }
 
 // RecordAdjustment records a manual adjustment for an inventory item.
-func (s *InventoryService) RecordAdjustment(ctx context.Context, inventoryItemID uuid.UUID, quantity int, reason string, createdByID string) (dto.StockMovement, error) {
-	invItem, err := s.repo.FindByID(ctx, inventoryItemID)
+func (s *InventoryService) RecordAdjustment(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID, quantity int, reason string, createdByID string) (dto.StockMovement, error) {
+	invItem, err := s.itemInScope(ctx, loc, inventoryItemID)
 	if err != nil {
 		return dto.StockMovement{}, ErrInventoryNotFound
 	}
@@ -362,8 +412,8 @@ func (s *InventoryService) RecordAdjustment(ctx context.Context, inventoryItemID
 }
 
 // GetStockForFlavor returns the stock status for a flavor.
-func (s *InventoryService) GetStockForFlavor(ctx context.Context, flavorID uuid.UUID) (*StockStatus, error) {
-	invItem, err := s.repo.FindByFlavorID(ctx, flavorID)
+func (s *InventoryService) GetStockForFlavor(ctx context.Context, locationID, flavorID uuid.UUID) (*StockStatus, error) {
+	invItem, err := s.repo.FindByFlavorID(ctx, locationID, flavorID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
 			return &StockStatus{Status: "not_tracked"}, nil
@@ -401,43 +451,58 @@ type StockStatus struct {
 }
 
 // GetMovementHistory returns stock movements for an inventory item.
-func (s *InventoryService) GetMovementHistory(ctx context.Context, inventoryItemID uuid.UUID, limit, offset int) ([]dto.StockMovement, int, error) {
+func (s *InventoryService) GetMovementHistory(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID, limit, offset int) ([]dto.StockMovement, int, error) {
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return nil, 0, err
+	}
 	return s.repo.FindStockMovementsByInventoryItem(ctx, inventoryItemID, limit, offset)
 }
 
 // GetInventoryItemByProductID returns the inventory item for a unit-based product.
-func (s *InventoryService) GetInventoryItemByProductID(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error) {
-	return s.repo.FindByProductID(ctx, productID)
+func (s *InventoryService) GetInventoryItemByProductID(ctx context.Context, locationID, productID uuid.UUID) (dto.InventoryItem, error) {
+	return s.repo.FindByProductID(ctx, locationID, productID)
 }
 
 // GetInventoryItemByFlavorID returns the inventory item for a flavor.
-func (s *InventoryService) GetInventoryItemByFlavorID(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error) {
-	return s.repo.FindByFlavorID(ctx, flavorID)
+func (s *InventoryService) GetInventoryItemByFlavorID(ctx context.Context, locationID, flavorID uuid.UUID) (dto.InventoryItem, error) {
+	return s.repo.FindByFlavorID(ctx, locationID, flavorID)
 }
 
 // LinkInventoryItemToProduct links an inventory item to a product.
-func (s *InventoryService) LinkInventoryItemToProduct(ctx context.Context, inventoryItemID, productID uuid.UUID) (dto.InventoryItem, error) {
+func (s *InventoryService) LinkInventoryItemToProduct(ctx context.Context, loc scope.Location, inventoryItemID, productID uuid.UUID) (dto.InventoryItem, error) {
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return dto.InventoryItem{}, err
+	}
 	return s.repo.LinkToProduct(ctx, inventoryItemID, productID)
 }
 
 // UnlinkInventoryItemFromProduct removes the product link from an inventory item.
-func (s *InventoryService) UnlinkInventoryItemFromProduct(ctx context.Context, inventoryItemID uuid.UUID) (dto.InventoryItem, error) {
+func (s *InventoryService) UnlinkInventoryItemFromProduct(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID) (dto.InventoryItem, error) {
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return dto.InventoryItem{}, err
+	}
 	return s.repo.UnlinkFromProduct(ctx, inventoryItemID)
 }
 
 // LinkInventoryItemToFlavor links an inventory item to a flavor.
-func (s *InventoryService) LinkInventoryItemToFlavor(ctx context.Context, inventoryItemID, flavorID uuid.UUID) (dto.InventoryItem, error) {
+func (s *InventoryService) LinkInventoryItemToFlavor(ctx context.Context, loc scope.Location, inventoryItemID, flavorID uuid.UUID) (dto.InventoryItem, error) {
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return dto.InventoryItem{}, err
+	}
 	return s.repo.LinkToFlavor(ctx, inventoryItemID, flavorID)
 }
 
 // UnlinkInventoryItemFromFlavor removes the flavor link from an inventory item.
-func (s *InventoryService) UnlinkInventoryItemFromFlavor(ctx context.Context, inventoryItemID uuid.UUID) (dto.InventoryItem, error) {
+func (s *InventoryService) UnlinkInventoryItemFromFlavor(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID) (dto.InventoryItem, error) {
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return dto.InventoryItem{}, err
+	}
 	return s.repo.UnlinkFromFlavor(ctx, inventoryItemID)
 }
 
 // GetInventoryStats returns aggregate inventory statistics for linked items only.
-func (s *InventoryService) GetInventoryStats(ctx context.Context) (*InventoryStats, error) {
-	items, err := s.repo.ListLinked(ctx)
+func (s *InventoryService) GetInventoryStats(ctx context.Context, loc scope.Location) (*InventoryStats, error) {
+	items, err := s.repo.ListLinked(ctx, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -491,8 +556,8 @@ type InventoryDashboard struct {
 
 // GetInventoryDashboard returns flavor inventory, unit inventory and aggregate
 // stats in one shot.
-func (s *InventoryService) GetInventoryDashboard(ctx context.Context) (*InventoryDashboard, error) {
-	items, err := s.repo.ListLinked(ctx)
+func (s *InventoryService) GetInventoryDashboard(ctx context.Context, loc scope.Location) (*InventoryDashboard, error) {
+	items, err := s.repo.ListLinked(ctx, loc)
 	if err != nil {
 		return nil, err
 	}

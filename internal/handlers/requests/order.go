@@ -7,14 +7,17 @@ import (
 
 // CreateOrderRequest is the payload for POST /api/v1/orders.
 type CreateOrderRequest struct {
-	CustomerName   string   `json:"customer_name"`
-	CustomerPhone  string   `json:"customer_phone"`
-	CustomerEmail  string   `json:"customer_email,omitempty"`
-	PaymentMethod  string   `json:"payment_method"`
-	AmountReceived *float64 `json:"amount_received,omitempty"`
-	OrderType      string   `json:"order_type"`
-	TableNumber    *int     `json:"table_number,omitempty"`
-	Notes          string   `json:"notes,omitempty"`
+	// LocationID is required for online (public) orders; staff orders use the
+	// staff member's location and ignore it.
+	LocationID     *uuid.UUID `json:"location_id,omitempty"`
+	CustomerName   string     `json:"customer_name"`
+	CustomerPhone  string     `json:"customer_phone"`
+	CustomerEmail  string     `json:"customer_email,omitempty"`
+	PaymentMethod  string     `json:"payment_method"`
+	AmountReceived *float64   `json:"amount_received,omitempty"`
+	OrderType      string     `json:"order_type"`
+	TableNumber    *int       `json:"table_number,omitempty"`
+	Notes          string     `json:"notes,omitempty"`
 	Items          []struct {
 		ProductID      uuid.UUID      `json:"product_id"`
 		Quantity       int            `json:"quantity"`

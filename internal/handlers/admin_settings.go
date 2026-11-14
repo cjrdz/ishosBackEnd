@@ -16,12 +16,14 @@ import (
 
 type AdminSettingsHandler struct {
 	settingsSvc *services.AdminSettingService
+	locations   *services.LocationService
 	auditSvc    audit.Service
 }
 
-func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService, auditSvc audit.Service) *AdminSettingsHandler {
+func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService, locations *services.LocationService, auditSvc audit.Service) *AdminSettingsHandler {
 	return &AdminSettingsHandler{
 		settingsSvc: settingsSvc,
+		locations:   locations,
 		auditSvc:    auditSvc,
 	}
 }
@@ -132,6 +134,9 @@ func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.
 // GetPublicStoreStatus returns public-facing store status.
 // No authentication required. Filters expired offers.
 //
+// orders_enabled is true when at least one location takes online orders;
+// per-location hours and status come from GET /locations.
+//
 // GET /api/v1/settings/store/public
 func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.settingsSvc.GetStoreSettings(r.Context())
@@ -139,62 +144,22 @@ func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *ht
 		response.Error(w, http.StatusInternalServerError, "No se pudo cargar estado de tienda")
 		return
 	}
-
-	now := time.Now()
-	activeOffers := services.ActiveOffers(settings.Offers, now)
-	hours := h.settingsSvc.StoreOpenStatus(r.Context(), now)
+	locations, err := h.locations.List(r.Context())
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "No se pudo cargar estado de tienda")
+		return
+	}
+	online := false
+	for _, l := range locations {
+		if l.IsActive && l.OrdersEnabled && l.OnlineOrdersEnabled {
+			online = true
+		}
+	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"orders_enabled": settings.OrdersEnabled,
-		"offers":         activeOffers,
-		"hours":          hours,
+		"orders_enabled": online,
+		"offers":         services.ActiveOffers(settings.Offers, time.Now()),
 	})
-}
-
-// GetStoreHours returns the weekly opening schedule (all seven days, sorted).
-//
-// GET /api/v1/settings/hours
-func (h *AdminSettingsHandler) GetStoreHours(w http.ResponseWriter, r *http.Request) {
-	hours, err := h.settingsSvc.GetStoreHours(r.Context())
-	if err != nil {
-		response.Error(w, http.StatusInternalServerError, "No se pudo cargar el horario")
-		return
-	}
-	response.JSON(w, http.StatusOK, map[string]any{"days": services.NormalizeWeeklyHours(hours)})
-}
-
-// UpdateStoreHours replaces the weekly opening schedule. An empty schedule
-// turns hours off (orders then follow only the manual switch).
-//
-// PUT /api/v1/settings/hours
-// Body: {"days": {"mon": [{"open": "14:00", "close": "21:00"}], ...}}
-func (h *AdminSettingsHandler) UpdateStoreHours(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Days services.WeeklyHours `json:"days"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
-		return
-	}
-	saved, err := h.settingsSvc.UpdateStoreHours(r.Context(), body.Days, getAdminID(r))
-	if err != nil {
-		if errors.Is(err, apperror.ErrValidation) {
-			response.JSON(w, http.StatusBadRequest, map[string]any{
-				"error":  "Revisa el horario: usa HH:MM, la hora de cierre después de la apertura y sin rangos encimados",
-				"fields": validationFields(err),
-			})
-			return
-		}
-		response.Error(w, http.StatusInternalServerError, "No se pudo guardar el horario")
-		return
-	}
-
-	actorID := ""
-	if rec, ok := auth.GetRecord(r.Context()); ok {
-		actorID = auth.RecordID(rec)
-	}
-	_ = h.auditSvc.Log(r.Context(), audit.ActionSettingsUpdated, actorID, "settings:hours", map[string]any{"days": saved}, auth.ClientIP(r))
-	response.JSON(w, http.StatusOK, map[string]any{"days": saved})
 }
 
 // validationFields extracts per-field messages from a validation error.

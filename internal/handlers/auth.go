@@ -29,6 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
@@ -44,15 +46,17 @@ type AuthHandler struct {
 	authService auth.Service
 	cfg         *config.Config
 	settingsSvc *services.AdminSettingService
+	locations   *services.LocationService
 	defaults    services.TokenTTLConfig
 }
 
-func NewAuthHandler(pb *auth.PBAuth, authService auth.Service, cfg *config.Config, settingsSvc *services.AdminSettingService) *AuthHandler {
+func NewAuthHandler(pb *auth.PBAuth, authService auth.Service, cfg *config.Config, settingsSvc *services.AdminSettingService, locations *services.LocationService) *AuthHandler {
 	return &AuthHandler{
 		pb:          pb,
 		authService: authService,
 		cfg:         cfg,
 		settingsSvc: settingsSvc,
+		locations:   locations,
 		defaults: services.TokenTTLConfig{
 			AuthCookieTTLHours:    cfg.AuthCookieTTLHours,
 			AuthTokenTTLHours:     cfg.AuthTokenTTLHours,
@@ -135,14 +139,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"employee": map[string]any{
-			"id":     auth.RecordID(record),
-			"email":  record.Email(),
-			"name":   record.GetString("name"),
-			"phone":  record.GetString("phone"),
-			"role":   auth.RoleFromRecord(record),
-			"active": !auth.IsDisabled(record),
-		},
+		"employee": h.sessionJSON(r, record),
 	})
 }
 
@@ -170,14 +167,31 @@ func (h *AuthHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]any{
-		"id":     auth.RecordID(record),
-		"email":  record.Email(),
-		"name":   record.GetString("name"),
-		"phone":  record.GetString("phone"),
-		"role":   auth.RoleFromRecord(record),
-		"active": !auth.IsDisabled(record),
-	})
+	response.JSON(w, http.StatusOK, h.sessionJSON(r, record))
+}
+
+// sessionJSON describes the signed-in employee, including the location they
+// work at (empty for admins, who switch between locations).
+func (h *AuthHandler) sessionJSON(r *http.Request, record *core.Record) map[string]any {
+	out := map[string]any{
+		"id":            auth.RecordID(record),
+		"email":         record.Email(),
+		"name":          record.GetString("name"),
+		"phone":         record.GetString("phone"),
+		"role":          auth.RoleFromRecord(record),
+		"active":        !auth.IsDisabled(record),
+		"location_id":   nil,
+		"location_name": nil,
+	}
+	if raw := auth.LocationIDFromRecord(record); raw != "" && h.locations != nil {
+		if id, err := uuid.Parse(raw); err == nil {
+			if l, err := h.locations.Get(r.Context(), id); err == nil {
+				out["location_id"] = l.ID
+				out["location_name"] = l.Name
+			}
+		}
+	}
+	return out
 }
 
 // Logout validates the current token, revokes it, and clears the auth cookie.

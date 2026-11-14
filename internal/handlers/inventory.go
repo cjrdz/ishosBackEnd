@@ -26,7 +26,11 @@ func NewInventoryHandler(inventory *services.InventoryService, auditSvc audit.Se
 
 // List returns all inventory items.
 func (h *InventoryHandler) List(w http.ResponseWriter, r *http.Request) {
-	items, err := h.inventory.List(r.Context())
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	items, err := h.inventory.List(r.Context(), loc)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -37,7 +41,11 @@ func (h *InventoryHandler) List(w http.ResponseWriter, r *http.Request) {
 // Dashboard returns flavor inventory, unit inventory and stats in a single
 // response so the admin UI can render the inventory tab with one request.
 func (h *InventoryHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
-	dashboard, err := h.inventory.GetInventoryDashboard(r.Context())
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	dashboard, err := h.inventory.GetInventoryDashboard(r.Context(), loc)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -47,13 +55,17 @@ func (h *InventoryHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 // Get returns a single inventory item with its movement history.
 func (h *InventoryHandler) Get(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
 		return
 	}
 
-	item, err := h.inventory.GetByID(r.Context(), id)
+	item, err := h.inventory.GetByID(r.Context(), loc, id)
 	if err != nil {
 		writeAppError(w, err, "Failed to fetch inventory item")
 		return
@@ -64,6 +76,15 @@ func (h *InventoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 // RecordEntry records a stock entry.
 func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	locationID, err := loc.Require()
+	if err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
@@ -83,7 +104,7 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 	createdByID := getAdminID(r)
 	ctx := audit.ContextFromRequest(r, createdByID)
 
-	movement, err := h.inventory.RecordEntry(ctx, id, body.ContainerTypeID, body.QuantityContainers, body.BallsPerContainer, createdByID)
+	movement, err := h.inventory.RecordEntry(ctx, locationID, id, body.ContainerTypeID, body.QuantityContainers, body.BallsPerContainer, createdByID)
 	if err != nil {
 		writeAppError(w, err, "Failed to record entry")
 		return
@@ -100,6 +121,10 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 
 // RecordAdjustment records a manual adjustment.
 func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
@@ -123,7 +148,7 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 	createdByID := getAdminID(r)
 	ctx := audit.ContextFromRequest(r, createdByID)
 
-	movement, err := h.inventory.RecordAdjustment(ctx, id, body.Quantity, body.Reason, createdByID)
+	movement, err := h.inventory.RecordAdjustment(ctx, loc, id, body.Quantity, body.Reason, createdByID)
 	if err != nil {
 		writeAppError(w, err, "Failed to record adjustment")
 		return
@@ -141,7 +166,11 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 
 // GetLowStock returns low stock items.
 func (h *InventoryHandler) GetLowStock(w http.ResponseWriter, r *http.Request) {
-	items, err := h.inventory.GetLowStockItems(r.Context())
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	items, err := h.inventory.GetLowStockItems(r.Context(), loc)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -151,6 +180,10 @@ func (h *InventoryHandler) GetLowStock(w http.ResponseWriter, r *http.Request) {
 
 // GetMovementHistory returns stock movements for an inventory item.
 func (h *InventoryHandler) GetMovementHistory(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
@@ -176,7 +209,7 @@ func (h *InventoryHandler) GetMovementHistory(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	movements, total, err := h.inventory.GetMovementHistory(r.Context(), id, limit, offset)
+	movements, total, err := h.inventory.GetMovementHistory(r.Context(), loc, id, limit, offset)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -193,13 +226,22 @@ func (h *InventoryHandler) GetMovementHistory(w http.ResponseWriter, r *http.Req
 
 // GetStockForFlavor returns stock status for a flavor.
 func (h *InventoryHandler) GetStockForFlavor(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	locationID, err := loc.Require()
+	if err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
 		return
 	}
 
-	stock, err := h.inventory.GetStockForFlavor(r.Context(), id)
+	stock, err := h.inventory.GetStockForFlavor(r.Context(), locationID, id)
 	if err != nil {
 		writeAppError(w, err, "Failed to get stock status")
 		return
@@ -210,7 +252,11 @@ func (h *InventoryHandler) GetStockForFlavor(w http.ResponseWriter, r *http.Requ
 
 // ListFlavorInventory returns only ball-based items linked to flavors.
 func (h *InventoryHandler) ListFlavorInventory(w http.ResponseWriter, r *http.Request) {
-	items, err := h.inventory.GetFlavorInventory(r.Context())
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	items, err := h.inventory.GetFlavorInventory(r.Context(), loc)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -220,7 +266,11 @@ func (h *InventoryHandler) ListFlavorInventory(w http.ResponseWriter, r *http.Re
 
 // ListUnitInventory returns only unit-based items linked to products.
 func (h *InventoryHandler) ListUnitInventory(w http.ResponseWriter, r *http.Request) {
-	items, err := h.inventory.GetUnitInventory(r.Context())
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	items, err := h.inventory.GetUnitInventory(r.Context(), loc)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -230,6 +280,10 @@ func (h *InventoryHandler) ListUnitInventory(w http.ResponseWriter, r *http.Requ
 
 // RecordUnitEntry records a stock entry for a unit-based product.
 func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
@@ -247,7 +301,7 @@ func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Reques
 	createdByID := getAdminID(r)
 	ctx := audit.ContextFromRequest(r, createdByID)
 
-	movement, err := h.inventory.RecordUnitEntry(ctx, id, body.Quantity, createdByID)
+	movement, err := h.inventory.RecordUnitEntry(ctx, loc, id, body.Quantity, createdByID)
 	if err != nil {
 		writeAppError(w, err, "Failed to record unit entry")
 		return
@@ -264,6 +318,10 @@ func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Reques
 
 // CreateUnitInventoryItem creates a new unit-based inventory item.
 func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	var body struct {
 		Name              string    `json:"name"`
 		ProductID         uuid.UUID `json:"product_id"`
@@ -282,10 +340,21 @@ func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *htt
 	actorID := getAdminID(r)
 	ctx := audit.ContextFromRequest(r, actorID)
 
-	item, err := h.inventory.CreateUnitInventoryItem(ctx, body.Name, body.ProductID, body.LowStockThreshold)
+	created, err := h.inventory.CreateUnitInventoryItem(ctx, body.Name, body.ProductID, body.LowStockThreshold)
 	if err != nil {
 		writeAppError(w, err, "Failed to create inventory item")
 		return
+	}
+	if len(created) == 0 {
+		response.Error(w, http.StatusConflict, "Ya se lleva inventario de este artículo en todas las sucursales")
+		return
+	}
+	// Answer with the row of the location being viewed (or the first one).
+	item := created[0]
+	for _, c := range created {
+		if id, one := loc.ID(); one && c.LocationID == id {
+			item = c
+		}
 	}
 
 	ip := auth.ClientIP(r)
@@ -300,7 +369,11 @@ func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *htt
 
 // GetStats returns aggregate inventory statistics.
 func (h *InventoryHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.inventory.GetInventoryStats(r.Context())
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	stats, err := h.inventory.GetInventoryStats(r.Context(), loc)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -310,6 +383,10 @@ func (h *InventoryHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 // LinkInventoryItemToProduct links an inventory item to a product.
 func (h *InventoryHandler) LinkInventoryItemToProduct(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	inventoryItemID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
@@ -325,7 +402,7 @@ func (h *InventoryHandler) LinkInventoryItemToProduct(w http.ResponseWriter, r *
 	actorID := getAdminID(r)
 	ctx := audit.ContextFromRequest(r, actorID)
 
-	item, err := h.inventory.LinkInventoryItemToProduct(ctx, inventoryItemID, productID)
+	item, err := h.inventory.LinkInventoryItemToProduct(ctx, loc, inventoryItemID, productID)
 	if err != nil {
 		writeAppError(w, err, "Failed to link inventory item")
 		return
@@ -341,6 +418,10 @@ func (h *InventoryHandler) LinkInventoryItemToProduct(w http.ResponseWriter, r *
 
 // UnlinkInventoryItemFromProduct removes the product link from an inventory item.
 func (h *InventoryHandler) UnlinkInventoryItemFromProduct(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	inventoryItemID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
@@ -350,7 +431,7 @@ func (h *InventoryHandler) UnlinkInventoryItemFromProduct(w http.ResponseWriter,
 	actorID := getAdminID(r)
 	ctx := audit.ContextFromRequest(r, actorID)
 
-	item, err := h.inventory.UnlinkInventoryItemFromProduct(ctx, inventoryItemID)
+	item, err := h.inventory.UnlinkInventoryItemFromProduct(ctx, loc, inventoryItemID)
 	if err != nil {
 		writeAppError(w, err, "Failed to unlink inventory item")
 		return

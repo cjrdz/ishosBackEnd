@@ -22,6 +22,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/database"
 	"github.com/cjrdz/ishosBackEnd/internal/models"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // seedCategory matches the JSON shape from products_category.json
@@ -485,70 +486,80 @@ func main() {
 		inventoryRepo := repository.NewInventoryBunRepository(bunDB)
 		flavorRepo := repository.NewFlavorBunRepository(bunDB)
 		productRepo := repository.NewProductBunRepository(bunDB)
+		locations, locErr := repository.NewLocationBunRepository(bunDB).List(ctx)
+		if locErr != nil {
+			// Without locations no inventory row can be created; skip that part.
+			log.Error().Err(locErr).Msg("Failed to list locations; skipping inventory seed")
+			locations = nil
+		}
 
-		// Seed inventory items
-		for _, sii := range seedInventoryData.InventoryItems {
-			existing, _ := inventoryRepo.List(ctx)
-			var exists bool
-			for _, ii := range existing {
-				if ii.Name == sii.Name {
-					exists = true
-					break
-				}
-			}
-			if exists {
-				log.Info().Str("name", sii.Name).Msg("Inventory item already exists, skipping")
-				continue
-			}
-
-			input := repository.CreateInventoryItemInput{
-				Name:              sii.Name,
-				Type:              sii.Type,
-				LowStockThreshold: sii.LowStockThreshold,
-			}
-
-			// For ball-based items: link to matching flavor
-			if sii.Type == "ball_based" {
-				flavors, flvErr := flavorRepo.FindAll(ctx, false)
-				if flvErr == nil {
-					for _, f := range flavors {
-						if f.Name == sii.Name {
-							input.FlavorID = &f.ID
-							log.Info().Str("name", sii.Name).Str("flavor_id", f.ID.String()).Msg("Linked inventory item to flavor")
-							break
-						}
+		// Seed inventory items: every location tracks the same items, each
+		// with its own stock.
+		for _, location := range locations {
+			for _, sii := range seedInventoryData.InventoryItems {
+				existing, _ := inventoryRepo.List(ctx, scope.Only(location.ID))
+				var exists bool
+				for _, ii := range existing {
+					if ii.Name == sii.Name {
+						exists = true
+						break
 					}
 				}
-				if input.FlavorID == nil {
-					log.Warn().Str("name", sii.Name).Msg("No matching flavor found for inventory item")
+				if exists {
+					log.Info().Str("name", sii.Name).Msg("Inventory item already exists, skipping")
+					continue
 				}
-			}
 
-			// For unit-based items: link to matching product
-			if sii.Type == "unit_based" {
-				products, prodErr := productRepo.FindAll(ctx, "", false)
-				if prodErr == nil {
-					for _, p := range products {
-						if p.Name == sii.Name {
-							input.ProductID = &p.ID
-							log.Info().Str("name", sii.Name).Str("product_id", p.ID.String()).Msg("Linked inventory item to product")
-							break
+				input := repository.CreateInventoryItemInput{
+					LocationID:        location.ID,
+					Name:              sii.Name,
+					Type:              sii.Type,
+					LowStockThreshold: sii.LowStockThreshold,
+				}
+
+				// For ball-based items: link to matching flavor
+				if sii.Type == "ball_based" {
+					flavors, flvErr := flavorRepo.FindAll(ctx, false)
+					if flvErr == nil {
+						for _, f := range flavors {
+							if f.Name == sii.Name {
+								input.FlavorID = &f.ID
+								log.Info().Str("name", sii.Name).Str("flavor_id", f.ID.String()).Msg("Linked inventory item to flavor")
+								break
+							}
 						}
 					}
+					if input.FlavorID == nil {
+						log.Warn().Str("name", sii.Name).Msg("No matching flavor found for inventory item")
+					}
 				}
-				if input.ProductID == nil {
-					log.Warn().Str("name", sii.Name).Msg("No matching product found for inventory item")
+
+				// For unit-based items: link to matching product
+				if sii.Type == "unit_based" {
+					products, prodErr := productRepo.FindAll(ctx, "", false)
+					if prodErr == nil {
+						for _, p := range products {
+							if p.Name == sii.Name {
+								input.ProductID = &p.ID
+								log.Info().Str("name", sii.Name).Str("product_id", p.ID.String()).Msg("Linked inventory item to product")
+								break
+							}
+						}
+					}
+					if input.ProductID == nil {
+						log.Warn().Str("name", sii.Name).Msg("No matching product found for inventory item")
+					}
 				}
-			}
 
-			created, createErr := inventoryRepo.Create(ctx, input)
-			if createErr != nil {
-				log.Error().Err(createErr).Str("name", sii.Name).Msg("Failed to create inventory item")
-				continue
-			}
+				created, createErr := inventoryRepo.Create(ctx, input)
+				if createErr != nil {
+					log.Error().Err(createErr).Str("name", sii.Name).Msg("Failed to create inventory item")
+					continue
+				}
 
-			createdInventoryItems++
-			log.Info().Str("name", sii.Name).Str("id", created.ID.String()).Msg("Inventory item created")
+				createdInventoryItems++
+				log.Info().Str("name", sii.Name).Str("id", created.ID.String()).Msg("Inventory item created")
+			}
 		}
 
 		// ── Cleanup orphaned inventory items ─────────────────────────────
@@ -565,30 +576,33 @@ func main() {
 		if err := bunDB.NewSelect().Model(&unitProducts).Where("ball_based = ?", false).Scan(ctx); err != nil {
 			log.Error().Err(err).Msg("Failed to fetch unit-based products")
 		} else {
-			existingItems, _ := inventoryRepo.ListByType(ctx, string(models.InventoryItemTypeUnitBased))
-			linkedProductIDs := make(map[uuid.UUID]struct{})
-			for _, ii := range existingItems {
-				if ii.ProductID != nil {
-					linkedProductIDs[*ii.ProductID] = struct{}{}
-				}
-			}
-
-			for _, prod := range unitProducts {
-				if _, ok := linkedProductIDs[prod.ID]; ok {
-					continue
+			for _, location := range locations {
+				existingItems, _ := inventoryRepo.ListByType(ctx, scope.Only(location.ID), string(models.InventoryItemTypeUnitBased))
+				linkedProductIDs := make(map[uuid.UUID]struct{})
+				for _, ii := range existingItems {
+					if ii.ProductID != nil {
+						linkedProductIDs[*ii.ProductID] = struct{}{}
+					}
 				}
 
-				_, createErr := inventoryRepo.Create(ctx, repository.CreateInventoryItemInput{
-					Name:              prod.Name,
-					Type:              string(models.InventoryItemTypeUnitBased),
-					ProductID:         &prod.ID,
-					LowStockThreshold: 10,
-				})
-				if createErr != nil {
-					log.Error().Err(createErr).Str("product", prod.Name).Msg("Failed to auto-create inventory item")
-				} else {
-					createdInventoryItems++
-					log.Info().Str("product", prod.Name).Str("id", prod.ID.String()).Msg("Auto-created unit-based inventory item")
+				for _, prod := range unitProducts {
+					if _, ok := linkedProductIDs[prod.ID]; ok {
+						continue
+					}
+
+					_, createErr := inventoryRepo.Create(ctx, repository.CreateInventoryItemInput{
+						LocationID:        location.ID,
+						Name:              prod.Name,
+						Type:              string(models.InventoryItemTypeUnitBased),
+						ProductID:         &prod.ID,
+						LowStockThreshold: 10,
+					})
+					if createErr != nil {
+						log.Error().Err(createErr).Str("product", prod.Name).Msg("Failed to auto-create inventory item")
+					} else {
+						createdInventoryItems++
+						log.Info().Str("product", prod.Name).Str("id", prod.ID.String()).Msg("Auto-created unit-based inventory item")
+					}
 				}
 			}
 		}

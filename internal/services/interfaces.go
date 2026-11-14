@@ -8,12 +8,13 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // Service interfaces let handlers depend on behavior contracts instead of concrete structs.
 type OrderServiceInterface interface {
 	IssueTrackingAccess(ctx context.Context, orderNumber string) (*TrackingAccess, error)
-	ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
+	ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error)
 	GetByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	GetByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	GetByOrderNumber(ctx context.Context, orderNumber string) (dto.Order, error)

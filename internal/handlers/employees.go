@@ -17,12 +17,17 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/rs/zerolog/log"
 
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
+	"github.com/cjrdz/ishosBackEnd/internal/services"
 	"github.com/cjrdz/ishosBackEnd/internal/validator"
 	"github.com/cjrdz/ishosBackEnd/pkg/response"
 )
@@ -30,12 +35,44 @@ import (
 // EmployeeHandler manages employee records in the PocketBase "employees"
 // auth collection via the PBAuth Go API wrapper.
 type EmployeeHandler struct {
-	pb       *auth.PBAuth
-	auditSvc audit.Service
+	pb        *auth.PBAuth
+	auditSvc  audit.Service
+	locations *services.LocationService
 }
 
-func NewEmployeeHandler(pb *auth.PBAuth, auditSvc audit.Service) *EmployeeHandler {
-	return &EmployeeHandler{pb: pb, auditSvc: auditSvc}
+func NewEmployeeHandler(pb *auth.PBAuth, auditSvc audit.Service, locations *services.LocationService) *EmployeeHandler {
+	return &EmployeeHandler{pb: pb, auditSvc: auditSvc, locations: locations}
+}
+
+// resolveEmployeeLocation enforces "admins have no location; managers and
+// employees belong to exactly one existing location" and returns the value to
+// store.
+func (h *EmployeeHandler) resolveEmployeeLocation(r *http.Request, role, locationID string) (string, error) {
+	locationID = strings.TrimSpace(locationID)
+	if role == auth.RoleAdmin {
+		return "", nil
+	}
+	invalid := &apperror.ValidationError{Fields: map[string]string{"location_id": "Elige la sucursal donde trabaja"}}
+	id, err := uuid.Parse(locationID)
+	if err != nil {
+		return "", invalid
+	}
+	if _, err := h.locations.Get(r.Context(), id); err != nil {
+		return "", invalid
+	}
+	return id.String(), nil
+}
+
+func employeeJSON(rec *core.Record) map[string]any {
+	return map[string]any{
+		"id":          auth.RecordID(rec),
+		"email":       rec.Email(),
+		"name":        rec.GetString("name"),
+		"phone":       rec.GetString("phone"),
+		"role":        auth.RoleFromRecord(rec),
+		"location_id": auth.LocationIDFromRecord(rec),
+		"state":       stateFromDisabled(auth.IsDisabled(rec)),
+	}
 }
 
 // List fetches all employee/admin records from the PocketBase auth collection.
@@ -50,14 +87,7 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	employees := make([]map[string]any, 0, len(records))
 	for _, rec := range records {
-		employees = append(employees, map[string]any{
-			"id":    auth.RecordID(rec),
-			"email": rec.Email(),
-			"name":  rec.GetString("name"),
-			"phone": rec.GetString("phone"),
-			"role":  auth.RoleFromRecord(rec),
-			"state": stateFromDisabled(auth.IsDisabled(rec)),
-		})
+		employees = append(employees, employeeJSON(rec))
 	}
 
 	response.JSON(w, http.StatusOK, response.NewPaginated(employees, 1, len(employees), len(employees)))
@@ -72,12 +102,13 @@ func (h *EmployeeHandler) List(w http.ResponseWriter, r *http.Request) {
 // The employee can then log in via POST /api/v1/auth/login.
 func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Name     string `json:"name"`
-		Phone    string `json:"phone"`
-		Role     string `json:"role"`
-		State    string `json:"state"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		Name       string `json:"name"`
+		Phone      string `json:"phone"`
+		Role       string `json:"role"`
+		LocationID string `json:"location_id"`
+		State      string `json:"state"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -88,10 +119,15 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, http.StatusBadRequest, errs.Error())
 		return
 	}
+	locationID, err := h.resolveEmployeeLocation(r, body.Role, body.LocationID)
+	if err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
 
 	disabled := body.State == "inactive"
 
-	record, err := h.pb.CreateEmployee(body.Email, body.Password, body.Name, body.Phone, body.Role, disabled)
+	record, err := h.pb.CreateEmployee(body.Email, body.Password, body.Name, body.Phone, body.Role, locationID, disabled)
 	if err != nil {
 		log.Error().Err(err).Str("email", body.Email).Msg("Failed to create employee")
 		response.Error(w, http.StatusInternalServerError, "Failed to create employee")
@@ -104,20 +140,15 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := auth.ClientIP(r)
 	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeAdded, actorID, "employee:"+auth.RecordID(record), map[string]any{
-		"email": record.Email(),
-		"name":  record.GetString("name"),
-		"role":  auth.RoleFromRecord(record),
+		"email":       record.Email(),
+		"name":        record.GetString("name"),
+		"role":        auth.RoleFromRecord(record),
+		"location_id": auth.LocationIDFromRecord(record),
 	}, ip)
 
-	response.JSON(w, http.StatusCreated, map[string]any{
-		"id":      auth.RecordID(record),
-		"email":   record.Email(),
-		"name":    record.GetString("name"),
-		"phone":   record.GetString("phone"),
-		"role":    auth.RoleFromRecord(record),
-		"state":   stateFromDisabled(auth.IsDisabled(record)),
-		"message": "Employee created. They can log in at the admin panel.",
-	})
+	resp := employeeJSON(record)
+	resp["message"] = "Employee created. They can log in at the admin panel."
+	response.JSON(w, http.StatusCreated, resp)
 }
 
 // Update edits an employee account.
@@ -131,12 +162,13 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Email    *string `json:"email"`
-		Password *string `json:"password"`
-		Name     *string `json:"name"`
-		Phone    *string `json:"phone"`
-		Role     *string `json:"role"`
-		State    *string `json:"state"`
+		Email      *string `json:"email"`
+		Password   *string `json:"password"`
+		Name       *string `json:"name"`
+		Phone      *string `json:"phone"`
+		Role       *string `json:"role"`
+		LocationID *string `json:"location_id"`
+		State      *string `json:"state"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Invalid request body")
@@ -148,13 +180,34 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate the resulting role/location pair, not just the changed fields:
+	// turning an admin into an employee must come with a location.
+	existing, err := h.pb.FindEmployeeByID(id)
+	if err != nil {
+		response.Error(w, http.StatusNotFound, "Employee not found")
+		return
+	}
+	finalRole := auth.RoleFromRecord(existing)
+	if body.Role != nil {
+		finalRole = strings.TrimSpace(*body.Role)
+	}
+	finalLocation := auth.LocationIDFromRecord(existing)
+	if body.LocationID != nil {
+		finalLocation = *body.LocationID
+	}
+	resolvedLocation, err := h.resolveEmployeeLocation(r, finalRole, finalLocation)
+	if err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
+
 	var disabled *bool
 	if body.State != nil {
 		value := *body.State == "inactive"
 		disabled = &value
 	}
 
-	record, err := h.pb.UpdateEmployee(id, body.Email, body.Password, body.Name, body.Phone, body.Role, disabled)
+	record, err := h.pb.UpdateEmployee(id, body.Email, body.Password, body.Name, body.Phone, body.Role, &resolvedLocation, disabled)
 	if err != nil {
 		log.Error().Err(err).Str("id", id).Msg("Failed to update employee")
 		response.Error(w, http.StatusInternalServerError, "Failed to update employee")
@@ -167,19 +220,13 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := auth.ClientIP(r)
 	_ = h.auditSvc.Log(r.Context(), audit.ActionEmployeeUpdated, actorID, "employee:"+id, map[string]any{
-		"email": record.Email(),
-		"name":  record.GetString("name"),
-		"role":  auth.RoleFromRecord(record),
+		"email":       record.Email(),
+		"name":        record.GetString("name"),
+		"role":        auth.RoleFromRecord(record),
+		"location_id": auth.LocationIDFromRecord(record),
 	}, ip)
 
-	response.JSON(w, http.StatusOK, map[string]any{
-		"id":    auth.RecordID(record),
-		"email": record.Email(),
-		"name":  record.GetString("name"),
-		"phone": record.GetString("phone"),
-		"role":  auth.RoleFromRecord(record),
-		"state": stateFromDisabled(auth.IsDisabled(record)),
-	})
+	response.JSON(w, http.StatusOK, employeeJSON(record))
 }
 
 // Deactivate disables an employee account (they can no longer log in).
