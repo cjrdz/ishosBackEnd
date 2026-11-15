@@ -101,7 +101,7 @@ func TestOrderReject_InProgress_RestoresStock(t *testing.T) {
 	require.Equal(t, 45, currentStock(t, ctx, invRepo, item.ID))
 
 	reviewer := "reviewer-1"
-	rejected, err := orderRepo.Reject(ctx, order.ID, "customer left", &reviewer, string(models.OrderStatusEnProceso))
+	rejected, err := orderRepo.Reject(ctx, order.ID, "customer left", &reviewer, string(models.OrderStatusEnProceso), nil)
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusCancelada), rejected.Status)
 	assert.Equal(t, 50, currentStock(t, ctx, invRepo, item.ID), "rejecting an in-progress order must return its stock")
@@ -164,7 +164,7 @@ func TestUpdateOrderWithStockAdjustment_RestoresBeforeDeducting(t *testing.T) {
 
 	// Cancelling afterwards returns exactly what is still held.
 	reviewer := "reviewer-1"
-	_, err = orderRepo.Reject(ctx, order.ID, "cancelled", &reviewer, string(models.OrderStatusEnProceso))
+	_, err = orderRepo.Reject(ctx, order.ID, "cancelled", &reviewer, string(models.OrderStatusEnProceso), nil)
 	require.NoError(t, err)
 	assert.Equal(t, 50, currentStock(t, ctx, invRepo, item.ID))
 }
@@ -256,4 +256,55 @@ func TestListPaginated_MultipleStatuses(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	assert.Equal(t, "ORD-BD-0003", single[0].OrderNumber)
+}
+
+// TestOrderReject_Ready_PartialRestockRecordsWaste covers cancelling an order
+// that is already Lista: only what can be resold goes back (the water), the
+// served ice cream is recorded as waste, and the order is fully settled.
+func TestOrderReject_Ready_PartialRestockRecordsWaste(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	orderRepo := NewOrderBunRepository(db)
+	invRepo := NewInventoryBunRepository(db)
+	store := NewOrderStore(db, NewProductBunRepository(db), noopEnrichment{})
+
+	order := createRegressionOrder(t, ctx, orderRepo, "ORD-RG-0090", string(models.OrderStatusRecibida), nil)
+	water := createRegressionInventoryItem(t, ctx, invRepo, "Regression-Agua", 10)
+	mango := createRegressionInventoryItem(t, ctx, invRepo, "Regression-Mango", 30)
+
+	_, err := store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), string(models.OrderStatusRecibida),
+		[]StockDeductionInput{{InventoryItemID: water.ID, Quantity: 2}, {InventoryItemID: mango.ID, Quantity: 3}}, false)
+	require.NoError(t, err)
+	_, err = orderRepo.UpdateStatus(ctx, order.ID, string(models.OrderStatusLista), string(models.OrderStatusEnProceso))
+	require.NoError(t, err)
+
+	held, err := invRepo.OrderStock(ctx, order.ID)
+	require.NoError(t, err)
+	require.Len(t, held, 2, "the order holds water and mango")
+
+	reviewer := "manager-1"
+	_, err = orderRepo.Reject(ctx, order.ID, "Cliente se fue", &reviewer, string(models.OrderStatusLista),
+		map[uuid.UUID]int{water.ID: 2})
+	require.NoError(t, err)
+
+	assert.Equal(t, 10, currentStock(t, ctx, invRepo, water.ID), "unopened water goes back")
+	assert.Equal(t, 27, currentStock(t, ctx, invRepo, mango.ID), "served ice cream stays out of stock")
+
+	held, err = invRepo.OrderStock(ctx, order.ID)
+	require.NoError(t, err)
+	assert.Empty(t, held, "the cancelled order is fully settled")
+
+	var waste []models.StockMovement
+	require.NoError(t, db.NewSelect().Model(&waste).
+		Where("order_id = ? AND type = ?", order.ID, models.StockMovementTypeWaste).Scan(ctx))
+	require.Len(t, waste, 1)
+	assert.Equal(t, mango.ID, waste[0].InventoryItemID)
+	assert.Equal(t, 3, waste[0].Quantity)
+	require.NotNil(t, waste[0].Reason)
+	assert.Contains(t, *waste[0].Reason, "Cliente se fue")
+
+	// A second restore (e.g. reactivate, then cancel again) gives nothing back.
+	_, err = invRepo.RestoreStockForOrder(ctx, order.ID, "")
+	require.NoError(t, err)
+	assert.Equal(t, 27, currentStock(t, ctx, invRepo, mango.ID))
 }

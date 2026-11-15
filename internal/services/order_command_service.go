@@ -254,7 +254,7 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 }
 
 // Reject transitions an order to rejected status.
-func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string) (dto.Order, error) {
+func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string, restock map[uuid.UUID]int) (dto.Order, error) {
 	order, err := s.orderRepo.FindByID(ctx, id)
 	if err != nil {
 		return dto.Order{}, err
@@ -272,7 +272,7 @@ func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, 
 		"order_number": order.OrderNumber,
 		"reason":       reason,
 	})
-	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID, order.Status)
+	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID, order.Status, restock)
 	if err != nil {
 		return dto.Order{}, err
 	}

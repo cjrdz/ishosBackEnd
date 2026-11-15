@@ -525,10 +525,33 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Reason string `json:"reason"`
+		// Restock, when sent, says how much of each inventory item the order
+		// took goes back to stock; the rest is recorded as waste (merma).
+		// Omitted: everything goes back.
+		Restock *[]struct {
+			InventoryItemID uuid.UUID `json:"inventory_item_id"`
+			Quantity        int       `json:"quantity"`
+		} `json:"restock"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
+	}
+
+	var restock map[uuid.UUID]int
+	if body.Restock != nil {
+		if len(*body.Restock) > 200 {
+			response.Error(w, http.StatusBadRequest, "Demasiados artículos para devolver")
+			return
+		}
+		restock = make(map[uuid.UUID]int, len(*body.Restock))
+		for _, line := range *body.Restock {
+			if line.Quantity < 0 || line.InventoryItemID == uuid.Nil {
+				response.Error(w, http.StatusBadRequest, "Cantidad a devolver inválida")
+				return
+			}
+			restock[line.InventoryItemID] += line.Quantity
+		}
 	}
 
 	if errs := validator.ValidateRejectReason(body.Reason); errs.HasErrors() {
@@ -556,7 +579,7 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := audit.ContextFromRequest(r, reviewerID)
-	updated, err := h.orderSvc.Reject(ctx, id, body.Reason, reviewerID)
+	updated, err := h.orderSvc.Reject(ctx, id, body.Reason, reviewerID, restock)
 	if err != nil {
 		writeAppError(w, err, "No se pudo rechazar la orden")
 		return

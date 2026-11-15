@@ -119,6 +119,25 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, movement)
 }
 
+// OrderStock lists what an order took from inventory and still holds, so a
+// cancellation can choose what goes back. Mounted under /orders/{id}, behind
+// the order scope check.
+//
+// GET /api/v1/orders/{id}/stock
+func (h *InventoryHandler) OrderStock(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
+		return
+	}
+	lines, err := h.inventory.OrderStock(r.Context(), id)
+	if err != nil {
+		writeAppError(w, err, "No se pudo cargar el stock de la orden")
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]any{"data": lines})
+}
+
 // UpdateThreshold sets the minimum below which an item shows as "Stock bajo".
 //
 // PATCH /api/v1/inventory/{id}

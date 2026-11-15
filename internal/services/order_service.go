@@ -133,8 +133,8 @@ func (s *OrderService) Approve(ctx context.Context, id uuid.UUID, reviewerID str
 	return s.command.Approve(ctx, id, reviewerID, allowOverride)
 }
 
-func (s *OrderService) Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string) (dto.Order, error) {
-	return s.command.Reject(ctx, id, reason, reviewerID)
+func (s *OrderService) Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string, restock map[uuid.UUID]int) (dto.Order, error) {
+	return s.command.Reject(ctx, id, reason, reviewerID, restock)
 }
 
 func (s *OrderService) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error) {

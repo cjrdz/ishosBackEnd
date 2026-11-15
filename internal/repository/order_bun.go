@@ -296,7 +296,9 @@ func (r *OrderBunRepository) Approve(ctx context.Context, id uuid.UUID, reviewer
 // still holds, in the same transaction. Restore is net-based, so rejecting an
 // order that never had stock deducted is a no-op for inventory.
 // expectedStatus behaves as in Approve.
-func (r *OrderBunRepository) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string) (dto.Order, error) {
+// restock, when non-nil, limits what goes back to stock per inventory item;
+// the rest is recorded as waste (see InventoryBunRepository.restoreStock).
+func (r *OrderBunRepository) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string, restock map[uuid.UUID]int) (dto.Order, error) {
 	var result dto.Order
 	err := runInTx(ctx, r.db, nil, func(ctx context.Context, tx bun.Tx) error {
 		updated, err := r.updateStatusWithTimestamps(ctx, tx, id, string(models.OrderStatusCancelada), expectedStatus, func(order *models.Order, now time.Time) {
@@ -308,7 +310,11 @@ func (r *OrderBunRepository) Reject(ctx context.Context, id uuid.UUID, reason st
 		if err != nil {
 			return err
 		}
-		if err := applyStockAdjustment(ctx, tx, id, nil, true); err != nil {
+		actor := ""
+		if reviewerID != nil {
+			actor = *reviewerID
+		}
+		if err := applyStockAdjustmentWith(ctx, tx, id, nil, true, restock, reason, actor); err != nil {
 			return err
 		}
 		if err := r.maybeLog(ctx, tx, fmt.Sprintf("order:%s", id)); err != nil {

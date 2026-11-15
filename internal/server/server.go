@@ -421,6 +421,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 				order.Patch("/", orderHandler.Update)
 				order.Post("/approve", orderHandler.Approve)
 				order.Post("/reject", orderHandler.Reject)
+				order.With(appmiddleware.RequireRole(auth.RoleAdmin, auth.RoleManager)).Get("/stock", inventoryHandler.OrderStock)
 				order.Patch("/status", orderHandler.UpdateStatus)
 				order.Patch("/notes", orderHandler.UpdateNotes)
 				order.Patch("/archive", orderHandler.Archive)

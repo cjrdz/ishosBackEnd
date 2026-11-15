@@ -461,9 +461,15 @@ func lockOrderForStatusChange(ctx context.Context, db bun.IDB, id uuid.UUID, exp
 // Restore is net-based and idempotent, so restoring before deducting is always
 // safe, including when an in-progress order's items are replaced.
 func applyStockAdjustment(ctx context.Context, tx bun.Tx, orderID uuid.UUID, deductions []StockDeductionInput, restore bool) error {
+	return applyStockAdjustmentWith(ctx, tx, orderID, deductions, restore, nil, "", "")
+}
+
+// applyStockAdjustmentWith is applyStockAdjustment with a partial restore:
+// see InventoryBunRepository.restoreStock for restock and wasteReason.
+func applyStockAdjustmentWith(ctx context.Context, tx bun.Tx, orderID uuid.UUID, deductions []StockDeductionInput, restore bool, restock map[uuid.UUID]int, wasteReason, actorID string) error {
 	invRepo := NewInventoryBunRepository(tx)
 	if restore {
-		if _, err := invRepo.RestoreStockForOrder(ctx, orderID, ""); err != nil {
+		if _, err := invRepo.restoreStock(ctx, tx, orderID, actorID, restock, wasteReason); err != nil {
 			return err
 		}
 	}

@@ -51,6 +51,10 @@ func (s *inventoryRepoStub) ListLinked(ctx context.Context, _ scope.Location) ([
 	return nil, nil
 }
 
+func (s *inventoryRepoStub) OrderStock(context.Context, uuid.UUID) ([]repository.OrderStockLine, error) {
+	return nil, nil
+}
+
 func (s *inventoryRepoStub) UpdateLowStockThreshold(_ context.Context, id uuid.UUID, threshold int) (dto.InventoryItem, error) {
 	return dto.InventoryItem{ID: id, LowStockThreshold: threshold}, nil
 }

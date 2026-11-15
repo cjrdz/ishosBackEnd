@@ -43,7 +43,7 @@ type OrderRepository interface {
 	// returns apperror.ErrConflict if the order changed concurrently.
 	// Reject also returns any stock the order still holds.
 	Approve(ctx context.Context, id uuid.UUID, reviewerID *string, expectedStatus string) (dto.Order, error)
-	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string) (dto.Order, error)
+	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string, restock map[uuid.UUID]int) (dto.Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error)
 	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
 	SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
@@ -153,6 +153,8 @@ type TrackingTokenStore interface {
 
 // InventoryRepository defines the inventory data access contract.
 type InventoryRepository interface {
+	// OrderStock lists what an order took from inventory and still holds.
+	OrderStock(ctx context.Context, orderID uuid.UUID) ([]repository.OrderStockLine, error)
 	// UpdateLowStockThreshold changes only the minimum, never current_stock.
 	UpdateLowStockThreshold(ctx context.Context, id uuid.UUID, threshold int) (dto.InventoryItem, error)
 	List(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)

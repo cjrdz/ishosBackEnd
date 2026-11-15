@@ -94,7 +94,7 @@ func (s *orderRepoStub) Approve(ctx context.Context, id uuid.UUID, reviewerID *s
 	return dto.Order{}, nil
 }
 
-func (s *orderRepoStub) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string) (dto.Order, error) {
+func (s *orderRepoStub) Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string, _ map[uuid.UUID]int) (dto.Order, error) {
 	if s.rejectFn != nil {
 		return s.rejectFn(ctx, id, reason, reviewerID)
 	}
@@ -270,7 +270,7 @@ func TestOrderCommandService_Reject_InvalidState(t *testing.T) {
 	store := &orderStoreStub{}
 	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
 
-	_, err := svc.Reject(context.Background(), uuid.New(), "out of stock", "staff-1")
+	_, err := svc.Reject(context.Background(), uuid.New(), "out of stock", "staff-1", nil)
 	if !errors.Is(err, ErrInvalidOrderState) {
 		t.Fatalf("expected ErrInvalidOrderState, got %v", err)
 	}

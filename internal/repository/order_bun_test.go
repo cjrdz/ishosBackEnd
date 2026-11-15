@@ -129,7 +129,7 @@ func TestOrderBunRepository_ApproveAndReject(t *testing.T) {
 	assert.Equal(t, string(models.OrderPaymentStatusConfirmado), approved.PaymentStatus)
 	assert.Equal(t, "admin", *approved.ReviewedByUserID)
 
-	rejected, err := repo.Reject(ctx, approved.ID, "out of stock", &reviewer, "")
+	rejected, err := repo.Reject(ctx, approved.ID, "out of stock", &reviewer, "", nil)
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusCancelada), rejected.Status)
 	assert.Equal(t, "out of stock", *rejected.RejectionReason)

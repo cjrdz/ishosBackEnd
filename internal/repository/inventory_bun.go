@@ -350,13 +350,52 @@ func (r *InventoryBunRepository) RestoreStockForOrder(ctx context.Context, order
 	var restored []dto.StockMovement
 	err := r.withTx(ctx, func(ctx context.Context, tx bun.Tx) error {
 		var innerErr error
-		restored, innerErr = r.restoreStock(ctx, tx, orderID, createdByID)
+		restored, innerErr = r.restoreStock(ctx, tx, orderID, createdByID, nil, "")
 		return innerErr
 	})
 	return restored, err
 }
 
-func (r *InventoryBunRepository) restoreStock(ctx context.Context, tx bun.Tx, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error) {
+// OrderStockLine is what an order still holds of one inventory item.
+type OrderStockLine struct {
+	InventoryItemID uuid.UUID `bun:"inventory_item_id" json:"inventory_item_id"`
+	Name            string    `bun:"name" json:"name"`
+	Type            string    `bun:"type" json:"type"`
+	Quantity        int       `bun:"quantity" json:"quantity"`
+}
+
+// orderOutstandingQuery sums an order's net deduction per inventory item:
+// sales are negative, restores positive and waste settles what was lost.
+func orderOutstandingQuery(db bun.IDB, orderID uuid.UUID) *bun.SelectQuery {
+	return db.NewSelect().
+		TableExpr("stock_movements").
+		ColumnExpr("inventory_item_id").
+		ColumnExpr("SUM(quantity) AS net").
+		Where("order_id = ?", orderID).
+		Where("type IN (?)", bun.List([]models.StockMovementType{
+			models.StockMovementTypeSale, models.StockMovementTypeAdjustment, models.StockMovementTypeWaste,
+		})).
+		Group("inventory_item_id").
+		Having("SUM(quantity) < 0")
+}
+
+// OrderStock lists what an order took from inventory and has not given back.
+func (r *InventoryBunRepository) OrderStock(ctx context.Context, orderID uuid.UUID) ([]OrderStockLine, error) {
+	lines := []OrderStockLine{}
+	err := r.db.NewSelect().
+		TableExpr("(?) AS o", orderOutstandingQuery(r.db, orderID)).
+		Join("JOIN inventory_items AS i ON i.id = o.inventory_item_id").
+		ColumnExpr("o.inventory_item_id, i.name, i.type, -o.net AS quantity").
+		OrderExpr("i.name").
+		Scan(ctx, &lines)
+	return lines, err
+}
+
+// restoreStock gives an order's outstanding stock back. restock nil returns
+// everything; otherwise only restock[item] units of each item go back
+// (clamped to what the order holds) and the rest is recorded as waste with
+// wasteReason, so the order is fully settled either way.
+func (r *InventoryBunRepository) restoreStock(ctx context.Context, tx bun.Tx, orderID uuid.UUID, createdByID string, restock map[uuid.UUID]int, wasteReason string) ([]dto.StockMovement, error) {
 	// Restore only the order's net outstanding deduction per inventory item:
 	// sales are negative and earlier restores are positive, so their sum is what
 	// is still owed back. Replaying every historical sale movement instead would
@@ -366,14 +405,7 @@ func (r *InventoryBunRepository) restoreStock(ctx context.Context, tx bun.Tx, or
 		InventoryItemID uuid.UUID `bun:"inventory_item_id"`
 		Net             int       `bun:"net"`
 	}
-	if err := tx.NewSelect().
-		TableExpr("stock_movements").
-		ColumnExpr("inventory_item_id").
-		ColumnExpr("SUM(quantity) AS net").
-		Where("order_id = ?", orderID).
-		Where("type IN (?)", bun.List([]models.StockMovementType{models.StockMovementTypeSale, models.StockMovementTypeAdjustment})).
-		Group("inventory_item_id").
-		Having("SUM(quantity) < 0").
+	if err := orderOutstandingQuery(tx, orderID).
 		OrderExpr("inventory_item_id").
 		Scan(ctx, &outstanding); err != nil {
 		return nil, err
@@ -387,31 +419,37 @@ func (r *InventoryBunRepository) restoreStock(ctx context.Context, tx bun.Tx, or
 			return nil, translateInventoryError(err)
 		}
 
-		invItem.CurrentStock += -o.Net
-		invItem.UpdatedAt = time.Now()
-		if _, err := tx.NewUpdate().Model(&invItem).WherePK().Exec(ctx); err != nil {
-			return nil, err
+		held := -o.Net
+		back := held
+		if restock != nil {
+			back = max(0, min(restock[o.InventoryItemID], held))
 		}
+		lost := held - back
 
-		reason := "Order stock restored"
-		restMovement := models.StockMovement{
-			ID:              uuid.New(),
-			Type:            models.StockMovementTypeAdjustment,
-			Quantity:        -o.Net,
-			InventoryItemID: invItem.ID,
-			LocationID:      invItem.LocationID,
-			OrderID:         &orderID,
-			Reason:          &reason,
-			CreatedAt:       time.Now(),
+		if back > 0 {
+			invItem.CurrentStock += back
+			invItem.UpdatedAt = time.Now()
+			if _, err := tx.NewUpdate().Model(&invItem).WherePK().Exec(ctx); err != nil {
+				return nil, err
+			}
+			reason := "Devuelto al inventario (orden cancelada)"
+			m, err := insertOrderMovement(ctx, tx, models.StockMovementTypeAdjustment, back, invItem, orderID, reason, createdByID)
+			if err != nil {
+				return nil, err
+			}
+			restored = append(restored, m)
 		}
-		if createdByID != "" {
-			restMovement.CreatedByUserID = &createdByID
+		if lost > 0 {
+			reason := "Merma: no se devolvió al inventario (orden cancelada)"
+			if wasteReason != "" {
+				reason += ". " + wasteReason
+			}
+			m, err := insertOrderMovement(ctx, tx, models.StockMovementTypeWaste, lost, invItem, orderID, reason, createdByID)
+			if err != nil {
+				return nil, err
+			}
+			restored = append(restored, m)
 		}
-		if _, err := tx.NewInsert().Model(&restMovement).Exec(ctx); err != nil {
-			return nil, err
-		}
-
-		restored = append(restored, toDTOStockMovementFromModel(restMovement))
 	}
 
 	return restored, nil
@@ -595,4 +633,25 @@ func toDTOStockMovementsFromModels(movements []models.StockMovement) []dto.Stock
 		result = append(result, toDTOStockMovementFromModel(movement))
 	}
 	return result
+}
+
+// insertOrderMovement records a stock movement tied to an order.
+func insertOrderMovement(ctx context.Context, tx bun.Tx, t models.StockMovementType, qty int, item models.InventoryItem, orderID uuid.UUID, reason, createdByID string) (dto.StockMovement, error) {
+	m := models.StockMovement{
+		ID:              uuid.New(),
+		Type:            t,
+		Quantity:        qty,
+		InventoryItemID: item.ID,
+		LocationID:      item.LocationID,
+		OrderID:         &orderID,
+		Reason:          &reason,
+		CreatedAt:       time.Now(),
+	}
+	if createdByID != "" {
+		m.CreatedByUserID = &createdByID
+	}
+	if _, err := tx.NewInsert().Model(&m).Exec(ctx); err != nil {
+		return dto.StockMovement{}, err
+	}
+	return toDTOStockMovementFromModel(m), nil
 }

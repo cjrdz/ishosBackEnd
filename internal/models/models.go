@@ -281,6 +281,10 @@ const (
 	StockMovementTypeEntry      StockMovementType = "entry"
 	StockMovementTypeSale       StockMovementType = "sale"
 	StockMovementTypeAdjustment StockMovementType = "adjustment"
+	// StockMovementTypeWaste settles what a cancelled order took but could
+	// not go back to stock (served ice cream). Its quantity is what was lost;
+	// current_stock is not changed (the sale already took it).
+	StockMovementTypeWaste StockMovementType = "waste"
 )
 
 // StockMovement mirrors the stock_movements table.

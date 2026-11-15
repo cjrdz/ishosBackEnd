@@ -300,6 +300,12 @@ func (s *InventoryService) DeductionsFor(ctx context.Context, locationID uuid.UU
 	return deductions, nil
 }
 
+// OrderStock lists what an order took from inventory and has not given back
+// (what a cancellation can return).
+func (s *InventoryService) OrderStock(ctx context.Context, orderID uuid.UUID) ([]repository.OrderStockLine, error) {
+	return s.repo.OrderStock(ctx, orderID)
+}
+
 // stockUnit names one unit of an inventory item for messages to staff.
 func stockUnit(itemType string) string {
 	if itemType == inventoryTypeBallBased {
