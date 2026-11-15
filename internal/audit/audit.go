@@ -94,6 +94,7 @@ const (
 	ActionInventoryItemLinked         = "inventory.item_linked"
 	ActionInventoryItemUnlinked       = "inventory.item_unlinked"
 	ActionInventoryUnitItemCreated    = "inventory.unit_item_created"
+	ActionInventoryThresholdUpdated   = "inventory.threshold_updated"
 
 	ActionUserCreated  = "user.created"
 	ActionUserUpdated  = "user.updated"

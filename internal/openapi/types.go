@@ -717,12 +717,13 @@ type EmployeeIDInput struct {
 // CreateEmployeeInput is the payload for creating an employee.
 type CreateEmployeeInput struct {
 	Body struct {
-		Email    string `json:"email" example:"admin@example.com" doc:"Employee email"`
-		Password string `json:"password" example:"secret" doc:"Employee password"`
-		Name     string `json:"name" example:"Admin" doc:"Employee name"`
-		Phone    string `json:"phone" example:"+50688881234" doc:"Employee phone"`
-		Role     string `json:"role" example:"employee" doc:"Employee role"`
-		State    string `json:"state" example:"active" doc:"Employee state"`
+		Email      string `json:"email" example:"admin@example.com" doc:"Employee email"`
+		Password   string `json:"password" example:"secret" doc:"Employee password"`
+		Name       string `json:"name" example:"Admin" doc:"Employee name"`
+		Phone      string `json:"phone" example:"+50688881234" doc:"Employee phone"`
+		Role       string `json:"role" example:"employee" doc:"Employee role: admin, manager or employee"`
+		LocationID string `json:"location_id,omitempty" example:"388fe5ef-d3f4-483a-bb50-d8067b34062a" doc:"Location (sucursal) of a manager or employee; empty for admins"`
+		State      string `json:"state" example:"active" doc:"Employee state"`
 	}
 }
 
@@ -730,12 +731,13 @@ type CreateEmployeeInput struct {
 type UpdateEmployeeInput struct {
 	EmployeeIDInput
 	Body struct {
-		Email    *string `json:"email,omitempty" example:"admin@example.com" doc:"Employee email"`
-		Password *string `json:"password,omitempty" example:"secret" doc:"Employee password"`
-		Name     *string `json:"name,omitempty" example:"Admin" doc:"Employee name"`
-		Phone    *string `json:"phone,omitempty" example:"+50688881234" doc:"Employee phone"`
-		Role     *string `json:"role,omitempty" example:"employee" doc:"Employee role"`
-		State    *string `json:"state,omitempty" example:"active" doc:"Employee state"`
+		Email      *string `json:"email,omitempty" example:"admin@example.com" doc:"Employee email"`
+		Password   *string `json:"password,omitempty" example:"secret" doc:"Employee password"`
+		Name       *string `json:"name,omitempty" example:"Admin" doc:"Employee name"`
+		Phone      *string `json:"phone,omitempty" example:"+50688881234" doc:"Employee phone"`
+		Role       *string `json:"role,omitempty" example:"employee" doc:"Employee role: admin, manager or employee"`
+		LocationID *string `json:"location_id,omitempty" example:"388fe5ef-d3f4-483a-bb50-d8067b34062a" doc:"Location (sucursal) of a manager or employee; empty for admins"`
+		State      *string `json:"state,omitempty" example:"active" doc:"Employee state"`
 	}
 }
 

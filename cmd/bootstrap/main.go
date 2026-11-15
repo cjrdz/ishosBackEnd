@@ -47,7 +47,7 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to initialise PocketBase")
 	}
 
-	record, err := pb.CreateEmployee(*email, *password, *name, *phone, "admin", false)
+	record, err := pb.CreateEmployee(*email, *password, *name, *phone, "admin", "", false)
 	if err != nil {
 		_ = pb.Close()
 		log.Fatal().Err(err).Str("email", *email).Msg("Failed to create admin employee")

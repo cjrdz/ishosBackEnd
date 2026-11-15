@@ -20,12 +20,36 @@ var SettingsRegistry = map[string]struct {
 			return json.Unmarshal(raw, &v)
 		},
 	},
+	// StoreTrackingEnabledKey = "store.tracking.enabled"
+	// Value shape: {"enabled": bool}
+	"store.tracking.enabled": {
+		Validate: func(raw json.RawMessage) error {
+			var v struct {
+				Enabled bool `json:"enabled"`
+			}
+			return json.Unmarshal(raw, &v)
+		},
+	},
 	// StoreOffersKey = "store.offers"
 	// Value shape: {"items": [...]}
 	"store.offers": {
 		Validate: func(raw json.RawMessage) error {
 			var v struct {
 				Items []json.RawMessage `json:"items"`
+			}
+			return json.Unmarshal(raw, &v)
+		},
+	},
+	// StoreHoursKey = "store.hours"
+	// Value shape: {"days": {"mon": [{"open": "HH:MM", "close": "HH:MM"}], ...}}
+	// Semantic rules (format, order, overlaps) live in services.ValidateWeeklyHours.
+	"store.hours": {
+		Validate: func(raw json.RawMessage) error {
+			var v struct {
+				Days map[string][]struct {
+					Open  string `json:"open"`
+					Close string `json:"close"`
+				} `json:"days"`
 			}
 			return json.Unmarshal(raw, &v)
 		},

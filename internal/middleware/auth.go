@@ -43,14 +43,14 @@ func (a *Auth) RequireSession(next http.Handler) http.Handler {
 
 		if token == "" {
 			log.Warn().Str("request_id", requestID).Msg("auth: missing or malformed Authorization header")
-			response.Error(w, http.StatusUnauthorized, "unauthorized")
+			response.Error(w, http.StatusUnauthorized, "Inicia sesión para continuar.")
 			return
 		}
 
 		record, err := a.authService.Validate(r.Context(), token)
 		if err != nil {
 			status := apperror.StatusCode(err)
-			response.Error(w, status, err.Error())
+			response.Error(w, status, apperror.PublicMessage(err))
 			log.Warn().Str("request_id", requestID).Err(err).Msg("auth: validation failed")
 			return
 		}

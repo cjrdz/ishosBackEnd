@@ -31,6 +31,15 @@ func (lrl *LoginRateLimit) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := extractClientIP(r)
 
+		// Unknown client IP: a shared "" bucket would let one bad actor lock
+		// every employee out. Skip the per-IP limit; the per-account lockout
+		// (keyed on the email, in the handler) still applies.
+		if ip == "" {
+			log.Warn().Msg("login: client IP unknown; per-IP limit skipped (per-account lockout still applies)")
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Check if this IP has exceeded rate limits
 		err := lrl.authService.CheckLoginAttempt(r.Context(), ip)
 		if err != nil {

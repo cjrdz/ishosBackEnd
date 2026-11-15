@@ -4,6 +4,7 @@ import "github.com/google/uuid"
 
 // CreateInventoryItemInput is the data required to create an inventory item.
 type CreateInventoryItemInput struct {
+	LocationID        uuid.UUID
 	Name              string
 	Type              string
 	ProductID         *uuid.UUID

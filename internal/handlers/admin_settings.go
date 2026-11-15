@@ -3,9 +3,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/services"
@@ -14,12 +16,14 @@ import (
 
 type AdminSettingsHandler struct {
 	settingsSvc *services.AdminSettingService
+	locations   *services.LocationService
 	auditSvc    audit.Service
 }
 
-func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService, auditSvc audit.Service) *AdminSettingsHandler {
+func NewAdminSettingsHandler(settingsSvc *services.AdminSettingService, locations *services.LocationService, auditSvc audit.Service) *AdminSettingsHandler {
 	return &AdminSettingsHandler{
 		settingsSvc: settingsSvc,
+		locations:   locations,
 		auditSvc:    auditSvc,
 	}
 }
@@ -42,14 +46,29 @@ func (h *AdminSettingsHandler) GetStoreSettings(w http.ResponseWriter, r *http.R
 // PATCH /api/v1/settings/store
 // Body: { "orders_enabled": bool, "offers": [...] }
 func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *http.Request) {
-	var body services.StoreSettings
+	// tracking_enabled is optional so older clients that only send
+	// orders_enabled + offers do not switch tracking off by omission.
+	var body struct {
+		services.StoreSettings
+		TrackingEnabled *bool `json:"tracking_enabled"`
+	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
+	input := body.StoreSettings
+	if body.TrackingEnabled != nil {
+		input.TrackingEnabled = *body.TrackingEnabled
+	} else if current, err := h.settingsSvc.GetStoreSettings(r.Context()); err == nil {
+		input.TrackingEnabled = current.TrackingEnabled
+	}
 	adminID := getAdminID(r)
-	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), body, adminID)
+	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), input, adminID)
 	if err != nil {
+		if errors.Is(err, apperror.ErrValidation) {
+			response.Error(w, http.StatusBadRequest, "Revisa las ofertas: cada una necesita un artículo del menú, un precio y una fecha de vencimiento válidos")
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración de tienda")
 		return
 	}
@@ -60,8 +79,9 @@ func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *htt
 	}
 	ip := auth.ClientIP(r)
 	_ = h.auditSvc.Log(r.Context(), audit.ActionSettingsUpdated, actorID, "settings:store", map[string]any{
-		"orders_enabled": body.OrdersEnabled,
-		"offers_count":   len(body.Offers),
+		"orders_enabled":   input.OrdersEnabled,
+		"offers_count":     len(input.Offers),
+		"tracking_enabled": input.TrackingEnabled,
 	}, ip)
 
 	response.JSON(w, http.StatusOK, saved)
@@ -104,6 +124,13 @@ func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.
 	adminID := getAdminID(r)
 	saved, err := h.settingsSvc.UpdateTokenTTLConfig(r.Context(), body, adminID, services.TokenTTLConfig{})
 	if err != nil {
+		if errors.Is(err, apperror.ErrValidation) {
+			response.JSON(w, http.StatusBadRequest, map[string]any{
+				"error":  apperror.PublicMessage(err),
+				"fields": validationFields(err),
+			})
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración del panel")
 		return
 	}
@@ -126,6 +153,9 @@ func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.
 // GetPublicStoreStatus returns public-facing store status.
 // No authentication required. Filters expired offers.
 //
+// orders_enabled is true when at least one location takes online orders;
+// per-location hours and status come from GET /locations.
+//
 // GET /api/v1/settings/store/public
 func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *http.Request) {
 	settings, err := h.settingsSvc.GetStoreSettings(r.Context())
@@ -133,23 +163,32 @@ func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *ht
 		response.Error(w, http.StatusInternalServerError, "No se pudo cargar estado de tienda")
 		return
 	}
-
-	now := time.Now()
-	activeOffers := make([]services.OfferItem, 0, len(settings.Offers))
-	for _, o := range settings.Offers {
-		if o.ExpiresAt != "" {
-			t, parseErr := time.Parse(time.RFC3339, o.ExpiresAt)
-			if parseErr == nil && t.Before(now) {
-				continue
-			}
+	locations, err := h.locations.List(r.Context())
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "No se pudo cargar estado de tienda")
+		return
+	}
+	online := false
+	for _, l := range locations {
+		if l.IsActive && l.OrdersEnabled && l.OnlineOrdersEnabled {
+			online = true
 		}
-		activeOffers = append(activeOffers, o)
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"orders_enabled": settings.OrdersEnabled,
-		"offers":         activeOffers,
+		"orders_enabled":   online,
+		"tracking_enabled": settings.TrackingEnabled,
+		"offers":           services.ActiveOffers(settings.Offers, time.Now()),
 	})
+}
+
+// validationFields extracts per-field messages from a validation error.
+func validationFields(err error) map[string]string {
+	var vErr *apperror.ValidationError
+	if errors.As(err, &vErr) {
+		return vErr.Fields
+	}
+	return nil
 }
 
 // GetArchiveSettings returns the persisted order archive configuration.

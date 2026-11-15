@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
@@ -205,6 +206,28 @@ func TestLoginRateLimitMiddleware(t *testing.T) {
 	}
 }
 
+func TestLoginRateLimitMiddleware_UnknownIPIsNotASharedBucket(t *testing.T) {
+	svc := &stubLoginAuthService{attempts: make(map[string]int)}
+	lrl := appmiddleware.NewLoginRateLimit(svc)
+
+	// No client-IP middleware: the IP resolves to "".
+	r := chi.NewRouter()
+	r.With(lrl.Middleware).Post("/login", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	for i := 0; i < 5; i++ {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/login", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: expected %d, got %d", i, http.StatusOK, rec.Code)
+		}
+	}
+	if svc.attempts[""] != 0 {
+		t.Fatalf("per-IP limiter was consulted with an empty IP %d times", svc.attempts[""])
+	}
+}
+
 func TestInactivityMiddlewareExpiresIdleSession(t *testing.T) {
 	tracker := appmiddleware.NewInactivityTracker()
 	mw := appmiddleware.NewInactivityMiddleware(tracker, nil, services.TokenTTLConfig{
@@ -221,7 +244,11 @@ func TestInactivityMiddlewareExpiresIdleSession(t *testing.T) {
 				SameSite: http.SameSiteLaxMode,
 				Secure:   true,
 			})
-			next.ServeHTTP(w, r)
+			// The session middleware runs first in the real stack and puts
+			// the authenticated record in the context.
+			collection := core.NewBaseCollection("employees")
+			ctx := auth.WithRecord(r.Context(), core.NewRecord(collection))
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
 	r.With(mw.Middleware).Get("/protected", func(w http.ResponseWriter, r *http.Request) {
@@ -246,4 +273,18 @@ func TestInactivityMiddlewareExpiresIdleSession(t *testing.T) {
 			t.Fatalf("expected %d, got %d", http.StatusUnauthorized, rec.Code)
 		}
 	})
+}
+
+func TestInactivityMiddlewareIgnoresUnauthenticatedTokens(t *testing.T) {
+	tracker := appmiddleware.NewInactivityTracker()
+	mw := appmiddleware.NewInactivityMiddleware(tracker, nil, services.TokenTTLConfig{InactivityLogoutSeconds: 60})
+	h := mw.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.Header.Set("Authorization", "Bearer junk-token")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if _, tracked := tracker.LastSeen("junk-token"); tracked {
+		t.Fatal("a token the session middleware did not accept must not be tracked")
+	}
 }

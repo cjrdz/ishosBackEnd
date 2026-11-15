@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/cjrdz/ishosBackEnd/internal/models"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 func createTestProduct(t *testing.T, ctx context.Context, db *bun.DB, name string, price float64) (models.Product, models.Category) {
@@ -44,6 +45,7 @@ func TestOrderBunRepository_CreateAndFind(t *testing.T) {
 	repo := NewOrderBunRepository(db)
 
 	created, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-001",
 		CustomerName:  "Alice",
 		CustomerPhone: "555-0001",
@@ -74,6 +76,7 @@ func TestOrderBunRepository_CreateItem(t *testing.T) {
 	repo := NewOrderBunRepository(db)
 
 	order, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-002",
 		CustomerName:  "Bob",
 		CustomerPhone: "555-0002",
@@ -108,6 +111,7 @@ func TestOrderBunRepository_ApproveAndReject(t *testing.T) {
 	repo := NewOrderBunRepository(db)
 
 	created, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-003",
 		CustomerName:  "Carol",
 		CustomerPhone: "555-0003",
@@ -119,13 +123,13 @@ func TestOrderBunRepository_ApproveAndReject(t *testing.T) {
 	require.NoError(t, err)
 
 	reviewer := "admin"
-	approved, err := repo.Approve(ctx, created.ID, &reviewer)
+	approved, err := repo.Approve(ctx, created.ID, &reviewer, "")
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusRecibida), approved.Status)
 	assert.Equal(t, string(models.OrderPaymentStatusConfirmado), approved.PaymentStatus)
 	assert.Equal(t, "admin", *approved.ReviewedByUserID)
 
-	rejected, err := repo.Reject(ctx, approved.ID, "out of stock", &reviewer)
+	rejected, err := repo.Reject(ctx, approved.ID, "out of stock", &reviewer, "", nil)
 	require.NoError(t, err)
 	assert.Equal(t, string(models.OrderStatusCancelada), rejected.Status)
 	assert.Equal(t, "out of stock", *rejected.RejectionReason)
@@ -137,6 +141,7 @@ func TestOrderBunRepository_ListPaginated(t *testing.T) {
 	repo := NewOrderBunRepository(db)
 
 	_, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-004",
 		CustomerName:  "Dave",
 		CustomerPhone: "555-0004",
@@ -147,7 +152,7 @@ func TestOrderBunRepository_ListPaginated(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	orders, total, err := repo.ListPaginated(ctx, "", false, 1, 10)
+	orders, total, err := repo.ListPaginated(ctx, scope.All(), "", false, 1, 10)
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 	assert.Equal(t, 1, total)
@@ -159,6 +164,7 @@ func TestOrderBunRepository_Delete(t *testing.T) {
 	repo := NewOrderBunRepository(db)
 
 	created, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-005",
 		CustomerName:  "Eve",
 		CustomerPhone: "555-0005",
@@ -180,6 +186,7 @@ func TestOrderBunRepository_FindByDateRange(t *testing.T) {
 	repo := NewOrderBunRepository(db)
 
 	created, err := repo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-006",
 		CustomerName:  "Frank",
 		CustomerPhone: "555-0006",
@@ -190,7 +197,7 @@ func TestOrderBunRepository_FindByDateRange(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	orders, err := repo.FindByDateRange(ctx, created.CreatedAt.Add(-time.Hour), created.CreatedAt.Add(time.Hour), nil)
+	orders, err := repo.FindByDateRange(ctx, scope.All(), created.CreatedAt.Add(-time.Hour), created.CreatedAt.Add(time.Hour), nil)
 	require.NoError(t, err)
 	require.Len(t, orders, 1)
 }

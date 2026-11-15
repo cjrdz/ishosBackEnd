@@ -242,6 +242,7 @@ func toOrderDTOFromModel(o models.Order, items []dto.OrderItem) dto.Order {
 	order := dto.Order{
 		ID:               o.ID,
 		OrderNumber:      o.OrderNumber,
+		LocationID:       o.LocationID,
 		CustomerID:       o.CustomerID,
 		CustomerName:     o.CustomerName,
 		CustomerPhone:    o.CustomerPhone,
