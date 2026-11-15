@@ -23,7 +23,7 @@ import (
 //	2 — one-time repair of products.free_toppings (see repairFreeToppings)
 //	3 — locations (sucursales): location_id on orders/stock, per-location
 //	    Agotados; existing data moves to the first location (see ensureLocations)
-const schemaVersion = 3
+const schemaVersion = 4
 
 // Migration timeouts. lock_timeout makes a DDL statement that is blocked by a
 // live transaction (e.g. the previous instance during a rolling deploy) fail
@@ -92,6 +92,11 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 		}
 		if current < 3 {
 			if err := migrateSingleStoreToLocations(ctx, tx); err != nil {
+				return err
+			}
+		}
+		if current < 4 {
+			if err := lowerDefaultFlavorThresholds(ctx, tx); err != nil {
 				return err
 			}
 		}
@@ -413,5 +418,20 @@ func runBackfills(ctx context.Context, db bun.IDB) error {
 	if err := backfillOrderCustomerID(ctx, db); err != nil {
 		return err
 	}
+	return nil
+}
+
+// lowerDefaultFlavorThresholds moves flavour minimums still at the old
+// automatic 100 balls to the new default of 20. Until schema v4 there was no
+// way to change a minimum, so 100 on a flavour row is always that default.
+func lowerDefaultFlavorThresholds(ctx context.Context, db bun.IDB) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE inventory_items SET low_stock_threshold = 20, updated_at = NOW()
+		 WHERE type = 'ball_based' AND low_stock_threshold = 100`)
+	if err != nil {
+		return fmt.Errorf("lower default flavour thresholds: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	log.Info().Int64("rows", n).Msg("flavour minimums moved from 100 to 20")
 	return nil
 }

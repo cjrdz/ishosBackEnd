@@ -15,8 +15,11 @@ type InventoryItem struct {
 	LowStockThreshold int        `json:"low_stock_threshold"`
 	ProductID         *uuid.UUID `json:"product_id,omitempty"`
 	FlavorID          *uuid.UUID `json:"flavor_id,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	// Reserved is stock held by accepted orders not yet in preparation
+	// (filled by the inventory dashboard).
+	Reserved  int       `json:"reserved"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type StockMovement struct {

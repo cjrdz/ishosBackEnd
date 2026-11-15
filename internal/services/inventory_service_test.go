@@ -402,7 +402,7 @@ func TestEnsureAvailable_SumsFlavourBallsAcrossItems(t *testing.T) {
 		{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{flavorID.String(), flavorID.String()}}},
 		{Product: cone, Quantity: 2, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}},
 	}
-	err := svc.EnsureAvailable(context.Background(), uuid.New(), items, nil)
+	err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, items, nil)
 	var stockErr *apperror.InsufficientStockError
 	if !errors.As(err, &stockErr) {
 		t.Fatalf("expected InsufficientStockError, got %v", err)
@@ -414,7 +414,7 @@ func TestEnsureAvailable_SumsFlavourBallsAcrossItems(t *testing.T) {
 		t.Fatal("stock errors must map to 409")
 	}
 
-	if err := svc.EnsureAvailable(context.Background(), uuid.New(), items[:1], nil); err != nil {
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, items[:1], nil); err != nil {
 		t.Fatalf("2 of 3 balls should be available, got %v", err)
 	}
 }
@@ -427,7 +427,7 @@ func TestEnsureAvailable_UntrackedIsAlwaysAvailable(t *testing.T) {
 	}
 	svc := NewInventoryService(repo, nil)
 	items := []dto.OrderItem{{Product: &dto.Product{ID: uuid.New()}, Quantity: 50}}
-	if err := svc.EnsureAvailable(context.Background(), uuid.New(), items, nil); err != nil {
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, items, nil); err != nil {
 		t.Fatalf("untracked products must not be refused, got %v", err)
 	}
 }
@@ -470,11 +470,79 @@ func TestEnsureAvailable_EditOnlyChecksIncreases(t *testing.T) {
 	cone := &dto.Product{ID: uuid.New(), BallBased: true}
 	three := []dto.OrderItem{{Product: cone, Quantity: 3, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
 	four := []dto.OrderItem{{Product: cone, Quantity: 4, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
-	if err := svc.EnsureAvailable(context.Background(), uuid.New(), three, three); err != nil {
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, three, three); err != nil {
 		t.Fatalf("unchanged items must not be refused when stock ran low: %v", err)
 	}
 	var stockErr *apperror.InsufficientStockError
-	if err := svc.EnsureAvailable(context.Background(), uuid.New(), four, three); !errors.As(err, &stockErr) {
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, four, three); !errors.As(err, &stockErr) {
 		t.Fatalf("a larger need must still be checked, got %v", err)
+	}
+}
+
+func TestEnsureAvailable_CountsStockHeldByAcceptedOrders(t *testing.T) {
+	flavorID := uuid.New()
+	itemID := uuid.New()
+	accepted := uuid.New()
+	repo := &inventoryRepoStub{
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: itemID, FlavorID: &id, Type: "ball_based", Name: "Mango"}, nil
+		},
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Type: "ball_based", Name: "Mango", CurrentStock: 1}, nil
+		},
+	}
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	oneMango := []dto.OrderItem{{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
+	var askedStatuses []string
+	svc := NewInventoryService(repo, nil, WithReservingOrders(func(_ context.Context, _ uuid.UUID, statuses []string) ([]dto.Order, error) {
+		askedStatuses = statuses
+		return []dto.Order{{ID: accepted, Items: oneMango}}, nil
+	}))
+
+	// The last Mango is held by the accepted order: a new one is refused…
+	err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, oneMango, nil)
+	var stockErr *apperror.InsufficientStockError
+	if !errors.As(err, &stockErr) || stockErr.Reserved != 1 || stockErr.Available != 0 {
+		t.Fatalf("expected a refusal counting 1 reserved ball, got %v", err)
+	}
+	if len(askedStatuses) != 1 || askedStatuses[0] != "recibida" {
+		t.Fatalf("reservations must come from accepted orders, asked %v", askedStatuses)
+	}
+	// …but the accepted order itself can still be prepared.
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), accepted, oneMango, nil); err != nil {
+		t.Fatalf("an order must not be blocked by its own reservation: %v", err)
+	}
+}
+
+func TestUnavailable_IncludesFullyReservedItems(t *testing.T) {
+	mango, fresa := uuid.New(), uuid.New()
+	mangoItem, fresaItem := uuid.New(), uuid.New()
+	repo := &inventoryRepoStub{
+		listLinkedFn: func(context.Context) ([]dto.InventoryItem, error) {
+			return []dto.InventoryItem{
+				{ID: mangoItem, FlavorID: &mango, CurrentStock: 2},
+				{ID: fresaItem, FlavorID: &fresa, CurrentStock: 5},
+			}, nil
+		},
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			if id == mango {
+				return dto.InventoryItem{ID: mangoItem, FlavorID: &id}, nil
+			}
+			return dto.InventoryItem{ID: fresaItem, FlavorID: &id}, nil
+		},
+	}
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	svc := NewInventoryService(repo, nil, WithReservingOrders(func(context.Context, uuid.UUID, []string) ([]dto.Order, error) {
+		return []dto.Order{{ID: uuid.New(), Items: []dto.OrderItem{
+			{Product: cone, Quantity: 2, Customizations: map[string]any{"flavor_ids": []any{mango.String()}}},
+			{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{fresa.String()}}},
+		}}}, nil
+	}))
+	flavors, _, err := svc.Unavailable(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flavors) != 1 || flavors[0] != mango {
+		t.Fatalf("only Mango is fully reserved, got %v", flavors)
 	}
 }

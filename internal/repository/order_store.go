@@ -56,7 +56,9 @@ type StoreOrderInput struct {
 
 // StoreUpdateOrderInput is the raw data required to update an order transactionally.
 type StoreUpdateOrderInput struct {
-	CustomerID     *uuid.UUID
+	CustomerID *uuid.UUID
+	// ClearCustomer unlinks the customer record (the phone was removed).
+	ClearCustomer  bool
 	CustomerName   string
 	CustomerPhone  string
 	CustomerEmail  *string
@@ -310,6 +312,8 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 	existingOrder.UpdatedAt = now
 	if input.CustomerID != nil {
 		existingOrder.CustomerID = input.CustomerID
+	} else if input.ClearCustomer {
+		existingOrder.CustomerID = nil
 	}
 
 	if input.PaymentMethod != "efectivo" {

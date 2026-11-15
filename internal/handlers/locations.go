@@ -20,11 +20,34 @@ import (
 type LocationHandler struct {
 	locations *services.LocationService
 	auditSvc  audit.Service
+	inventory *services.InventoryService
 }
 
 // NewLocationHandler creates a location handler.
 func NewLocationHandler(locations *services.LocationService, auditSvc audit.Service) *LocationHandler {
 	return &LocationHandler{locations: locations, auditSvc: auditSvc}
+}
+
+// WithInventory lets availability include tracked items whose stock is all
+// promised to accepted orders.
+func (h *LocationHandler) WithInventory(inv *services.InventoryService) *LocationHandler {
+	h.inventory = inv
+	return h
+}
+
+// mergeIDs appends the ids from extra that are not in base yet.
+func mergeIDs(base, extra []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]bool, len(base))
+	for _, id := range base {
+		seen[id] = true
+	}
+	for _, id := range extra {
+		if !seen[id] {
+			seen[id] = true
+			base = append(base, id)
+		}
+	}
+	return base
 }
 
 // publicLocation is what customers see: contact details and live status,
@@ -181,6 +204,15 @@ func (h *LocationHandler) GetAvailability(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
+	}
+	if h.inventory != nil {
+		flavors, products, err := h.inventory.Unavailable(r.Context(), id)
+		if err != nil {
+			response.WriteOrError(w, nil, err)
+			return
+		}
+		items.OutOfStockFlavors = mergeIDs(items.OutOfStockFlavors, flavors)
+		items.OutOfStockProducts = mergeIDs(items.OutOfStockProducts, products)
 	}
 	response.JSON(w, http.StatusOK, items)
 }

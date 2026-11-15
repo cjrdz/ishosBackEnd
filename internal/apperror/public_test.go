@@ -33,11 +33,11 @@ func TestInsufficientStockError(t *testing.T) {
 	if !errors.Is(err, ErrConflict) {
 		t.Fatal("must map to 409")
 	}
-	if got := PublicMessage(err); !strings.HasPrefix(got, "No queda Mango en esta sucursal (la orden necesita 1 bola)") {
+	if got := PublicMessage(err); !strings.HasPrefix(got, "No queda Mango disponible en esta sucursal; la orden necesita 1 bola.") {
 		t.Errorf("unexpected message %q", got)
 	}
 	err = &InsufficientStockError{Name: "Paleta", Unit: "unidad", Needed: 3, Available: 2}
-	if got := err.Error(); !strings.Contains(got, "necesita 3 unidades y quedan 2 unidades") {
+	if got := err.Error(); !strings.Contains(got, "necesita 3 unidades y hay 2 unidades disponibles") {
 		t.Errorf("unexpected message %q", got)
 	}
 }

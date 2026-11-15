@@ -62,6 +62,75 @@ type InventoryService struct {
 	containerTypeRepo ContainerTypeRepository
 	flavorRepo        FlavorRepository
 	locationIDs       func(ctx context.Context) ([]uuid.UUID, error)
+	reservingOrders   ReservingOrdersFunc
+}
+
+// ReservingStatuses are the order statuses that hold stock without having
+// deducted it yet: accepted orders waiting to be prepared. Stock is deducted
+// (and the reservation ends) when an order moves to en_proceso; a cancelled
+// or rejected order frees it.
+var ReservingStatuses = []string{"recibida"}
+
+// ReservingOrdersFunc lists a location's orders in the given statuses with
+// their items and products.
+type ReservingOrdersFunc func(ctx context.Context, locationID uuid.UUID, statuses []string) ([]dto.Order, error)
+
+// WithReservingOrders lets availability checks subtract stock already
+// promised to accepted orders.
+func WithReservingOrders(fn ReservingOrdersFunc) InventoryServiceOption {
+	return func(s *InventoryService) { s.reservingOrders = fn }
+}
+
+// Reserved returns, per inventory item, the stock promised to accepted
+// orders at locationID that have not deducted it yet, leaving out
+// excludeOrderID (the order being checked).
+func (s *InventoryService) Reserved(ctx context.Context, locationID, excludeOrderID uuid.UUID) (map[uuid.UUID]int, error) {
+	reserved := map[uuid.UUID]int{}
+	if s.reservingOrders == nil {
+		return reserved, nil
+	}
+	orders, err := s.reservingOrders(ctx, locationID, ReservingStatuses)
+	if err != nil {
+		return nil, err
+	}
+	for _, o := range orders {
+		if o.ID == excludeOrderID {
+			continue
+		}
+		deductions, err := s.DeductionsFor(ctx, locationID, o.Items)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range deductions {
+			reserved[d.InventoryItemID] += d.Quantity
+		}
+	}
+	return reserved, nil
+}
+
+// Unavailable lists the tracked flavours and products at locationID with
+// nothing left once accepted orders are served (stock minus reservations
+// at or below 0).
+func (s *InventoryService) Unavailable(ctx context.Context, locationID uuid.UUID) (flavors, products []uuid.UUID, err error) {
+	reserved, err := s.Reserved(ctx, locationID, uuid.Nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	items, err := s.repo.ListLinked(ctx, scope.Only(locationID))
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, item := range items {
+		if item.CurrentStock-reserved[item.ID] > 0 {
+			continue
+		}
+		if item.FlavorID != nil {
+			flavors = append(flavors, *item.FlavorID)
+		} else if item.ProductID != nil {
+			products = append(products, *item.ProductID)
+		}
+	}
+	return flavors, products, nil
 }
 
 // InventoryServiceOption configures an InventoryService.
@@ -245,10 +314,14 @@ func stockUnit(itemType string) string {
 // always available. Stock is still deducted (and checked again under a row
 // lock) when the order moves to en_proceso.
 //
+// Stock promised to other accepted orders (Reserved) is not available.
+// orderID is the order being checked (uuid.Nil for a new one): its own
+// reservation is not counted against it.
+//
 // previous holds the order's current items when it is being edited: only
 // items whose need grows are checked, so fixing the name or table of an
 // accepted order is never blocked by stock that ran low in the meantime.
-func (s *InventoryService) EnsureAvailable(ctx context.Context, locationID uuid.UUID, items, previous []dto.OrderItem) error {
+func (s *InventoryService) EnsureAvailable(ctx context.Context, locationID, orderID uuid.UUID, items, previous []dto.OrderItem) error {
 	deductions, err := s.DeductionsFor(ctx, locationID, items)
 	if err != nil {
 		return err
@@ -271,20 +344,28 @@ func (s *InventoryService) EnsureAvailable(ctx context.Context, locationID uuid.
 		}
 		needed[d.InventoryItemID] += d.Quantity
 	}
+	var reserved map[uuid.UUID]int
 	for _, id := range order {
 		if needed[id] <= had[id] {
 			continue
+		}
+		if reserved == nil {
+			if reserved, err = s.Reserved(ctx, locationID, orderID); err != nil {
+				return err
+			}
 		}
 		item, err := s.repo.FindByID(ctx, id)
 		if err != nil {
 			return err
 		}
-		if item.CurrentStock < needed[id] {
+		available := item.CurrentStock - reserved[id]
+		if available < needed[id] {
 			return &apperror.InsufficientStockError{
 				Name:      item.Name,
 				Unit:      stockUnit(item.Type),
 				Needed:    needed[id],
-				Available: max(item.CurrentStock, 0),
+				Available: max(available, 0),
+				Reserved:  reserved[id],
 			}
 		}
 	}
@@ -649,6 +730,20 @@ func (s *InventoryService) GetInventoryDashboard(ctx context.Context, loc scope.
 	items, err := s.repo.ListLinked(ctx, loc)
 	if err != nil {
 		return nil, err
+	}
+
+	// Show what accepted orders hold, per location.
+	reservedByLocation := map[uuid.UUID]map[uuid.UUID]int{}
+	for i := range items {
+		lid := items[i].LocationID
+		if _, done := reservedByLocation[lid]; !done {
+			r, err := s.Reserved(ctx, lid, uuid.Nil)
+			if err != nil {
+				return nil, err
+			}
+			reservedByLocation[lid] = r
+		}
+		items[i].Reserved = reservedByLocation[lid][items[i].ID]
 	}
 
 	dashboard := &InventoryDashboard{

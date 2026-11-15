@@ -99,7 +99,8 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		}
 	}
 	inventoryService := services.NewInventoryService(inventoryRepo, containerTypeRepo,
-		services.WithFlavorRepo(flavorRepo), services.WithLocationIDs(locationSvc.ActiveIDs))
+		services.WithFlavorRepo(flavorRepo), services.WithLocationIDs(locationSvc.ActiveIDs),
+		services.WithReservingOrders(orderRepo.FindByLocationStatusesWithItemsAndProducts))
 	authService := auth.NewService(
 		pb,
 		cfg.LoginAttemptsPerMinute,
@@ -170,7 +171,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 	// ── Handlers ─────────────────────────────────────────────────────────
 	authHandler := handlers.NewAuthHandler(pb, authService, cfg, settingsSvc, locationSvc)
 	employeeHandler := handlers.NewEmployeeHandler(pb, auditSvc, locationSvc)
-	locationHandler := handlers.NewLocationHandler(locationSvc, auditSvc)
+	locationHandler := handlers.NewLocationHandler(locationSvc, auditSvc).WithInventory(inventoryService)
 	categoryHandler := handlers.NewCategoryHandler(categorySvc, auditSvc)
 	productHandler := handlers.NewProductHandler(productSvc, cfg, inventoryService, auditSvc)
 	// Pre-warm the product list cache so the first admin login request is fast.

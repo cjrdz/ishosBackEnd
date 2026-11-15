@@ -102,7 +102,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		return dto.Order{}, scope.ErrLocationRequired
 	}
 
-	if err := s.ensureStock(ctx, input.LocationID, input.Items, nil); err != nil {
+	if err := s.ensureStock(ctx, input.LocationID, uuid.Nil, input.Items, nil); err != nil {
 		return dto.Order{}, err
 	}
 
@@ -221,6 +221,18 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 		return dto.Order{}, ErrInvalidOrderState
 	}
 
+	// Accepting an order reserves its stock: it must fit in what is not
+	// already promised to other accepted orders. A forced approval skips it.
+	if !allowOverride && s.inventory != nil {
+		withItems, err := s.orderRepo.FindByIDWithItemsAndProducts(ctx, id)
+		if err != nil {
+			return dto.Order{}, err
+		}
+		if err := s.inventory.EnsureAvailable(ctx, withItems.LocationID, id, withItems.Items, nil); err != nil {
+			return dto.Order{}, err
+		}
+	}
+
 	approveCtx := auditContext(ctx, audit.ActionOrderApproved, map[string]any{
 		"order_number": order.OrderNumber,
 	})
@@ -315,6 +327,10 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 		if err != nil {
 			return dto.Order{}, err
 		}
+		// Stock promised to other accepted orders is not available.
+		if err := s.inventory.EnsureAvailable(ctx, orderWithItems.LocationID, id, orderWithItems.Items, nil); err != nil {
+			return dto.Order{}, err
+		}
 		deductions, err := s.inventory.DeductionsFor(ctx, orderWithItems.LocationID, orderWithItems.Items)
 		if err != nil {
 			return dto.Order{}, err
@@ -377,12 +393,21 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		BasePrices:     s.activeOfferPrices(ctx),
 	}
 
+	// Online orders keep a phone: it is how the shop reaches the customer.
+	if strings.TrimSpace(input.CustomerPhone) == "" && existing.CreatedByUserID == nil {
+		return dto.Order{}, &apperror.ValidationError{Fields: map[string]string{
+			"customer_phone": "Las órdenes en línea necesitan el teléfono del cliente",
+		}}
+	}
+
 	if input.CustomerPhone != existing.CustomerPhone {
 		customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
 		if err != nil {
 			return dto.Order{}, err
 		}
 		storeInput.CustomerID = customerID
+		// No phone, no customer: drop the link to the previous one.
+		storeInput.ClearCustomer = customerID == nil
 	}
 
 	updateCtx := auditContext(ctx, audit.ActionOrderUpdated, map[string]any{
@@ -398,7 +423,7 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		if current, err := s.orderRepo.FindByIDWithItemsAndProducts(ctx, id); err == nil {
 			previous = current.Items
 		}
-		if err := s.ensureStock(ctx, existing.LocationID, input.Items, previous); err != nil {
+		if err := s.ensureStock(ctx, existing.LocationID, id, input.Items, previous); err != nil {
 			return dto.Order{}, err
 		}
 	}
@@ -429,7 +454,7 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 
 // ensureStock checks the order's tracked flavours and products against the
 // location's current stock. It is skipped when no inventory service is wired.
-func (s *OrderCommandService) ensureStock(ctx context.Context, locationID uuid.UUID, items []OrderItemInput, previous []dto.OrderItem) error {
+func (s *OrderCommandService) ensureStock(ctx context.Context, locationID, orderID uuid.UUID, items []OrderItemInput, previous []dto.OrderItem) error {
 	if s.inventory == nil || len(items) == 0 {
 		return nil
 	}
@@ -441,7 +466,7 @@ func (s *OrderCommandService) ensureStock(ctx context.Context, locationID uuid.U
 		}
 		return err
 	}
-	return s.inventory.EnsureAvailable(ctx, locationID, resolved, previous)
+	return s.inventory.EnsureAvailable(ctx, locationID, orderID, resolved, previous)
 }
 
 // orderHasDeductedStock reports whether an order in the given status has already

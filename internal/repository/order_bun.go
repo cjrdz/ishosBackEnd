@@ -211,6 +211,19 @@ func (r *OrderBunRepository) FindByIDWithItemsAndProducts(ctx context.Context, i
 	return result[0], nil
 }
 
+// FindByLocationStatusesWithItemsAndProducts returns a location's orders in
+// the given statuses with their items and products (stock reservations).
+func (r *OrderBunRepository) FindByLocationStatusesWithItemsAndProducts(ctx context.Context, locationID uuid.UUID, statuses []string) ([]dto.Order, error) {
+	var orders []models.Order
+	if err := r.db.NewSelect().Model(&orders).
+		Where("location_id = ?", locationID).
+		Where("status IN (?)", bun.List(statuses)).
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+	return r.attachItemsAndProductsToOrders(ctx, orders), nil
+}
+
 // FindByID returns an order by ID.
 func (r *OrderBunRepository) FindByID(ctx context.Context, id uuid.UUID) (dto.Order, error) {
 	var order models.Order

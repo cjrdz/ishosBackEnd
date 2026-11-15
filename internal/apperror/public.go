@@ -17,6 +17,8 @@ type InsufficientStockError struct {
 	Unit      string // "bola" or "unidad"
 	Needed    int
 	Available int
+	// Reserved is how much of the stock accepted orders already hold.
+	Reserved int
 }
 
 func (e *InsufficientStockError) Error() string {
@@ -33,12 +35,21 @@ func (e *InsufficientStockError) Error() string {
 		}
 		return fmt.Sprintf("%d %ss", n, unit)
 	}
-	if e.Available <= 0 {
-		return fmt.Sprintf("No queda %s en esta sucursal (la orden necesita %s). Registra una entrada en Inventario o cambia la selección.",
-			e.Name, plural(e.Needed))
+	held := ""
+	if e.Reserved > 0 {
+		// "bola" and "unidad" are both feminine.
+		held = fmt.Sprintf(" (%s ya apartadas por órdenes aceptadas)", plural(e.Reserved))
 	}
-	return fmt.Sprintf("No alcanza %s: la orden necesita %s y quedan %s. Registra una entrada en Inventario o ajusta la orden.",
-		e.Name, plural(e.Needed), plural(e.Available))
+	if e.Available <= 0 {
+		return fmt.Sprintf("No queda %s disponible en esta sucursal%s; la orden necesita %s. Registra una entrada en Inventario o cambia la selección.",
+			e.Name, held, plural(e.Needed))
+	}
+	word := "disponibles"
+	if e.Available == 1 {
+		word = "disponible"
+	}
+	return fmt.Sprintf("No alcanza %s: la orden necesita %s y hay %s %s%s. Registra una entrada en Inventario o ajusta la orden.",
+		e.Name, plural(e.Needed), plural(e.Available), word, held)
 }
 
 func (e *InsufficientStockError) Unwrap() error {

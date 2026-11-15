@@ -992,7 +992,8 @@ func TestOrderCommandService_Update_PendingOrder_RefusesMissingStock(t *testing.
 	orderID := uuid.New()
 	repo := &orderRepoStub{
 		findByID: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
-			return dto.Order{ID: id, Status: "recibida", LocationID: testLocation}, nil
+			staff := "staff-1"
+			return dto.Order{ID: id, Status: "recibida", LocationID: testLocation, CreatedByUserID: &staff}, nil
 		},
 	}
 	updated := false
@@ -1029,5 +1030,84 @@ func TestOrderCommandService_Update_PendingOrder_RefusesMissingStock(t *testing.
 	}
 	if updated {
 		t.Fatal("the order must not be saved when stock is missing")
+	}
+}
+
+func TestOrderCommandService_Update_PhoneRules(t *testing.T) {
+	staff := "staff-1"
+	var saved repository.StoreUpdateOrderInput
+	store := &orderStoreStub{
+		updateFn: func(_ context.Context, id uuid.UUID, in repository.StoreUpdateOrderInput) (dto.Order, error) {
+			saved = in
+			return dto.Order{ID: id}, nil
+		},
+	}
+	input := UpdateOrderInput{CustomerName: "Ana", PaymentMethod: "efectivo", OrderType: "para_llevar"}
+
+	// Counter order: clearing the phone unlinks the customer.
+	counter := &orderRepoStub{findByID: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+		return dto.Order{ID: id, Status: "recibida", CustomerPhone: "70000000", CreatedByUserID: &staff}, nil
+	}}
+	svc := NewOrderCommandService(counter, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
+	if _, err := svc.Update(context.Background(), uuid.New(), input); err != nil {
+		t.Fatalf("counter order without phone: %v", err)
+	}
+	if !saved.ClearCustomer || saved.CustomerID != nil {
+		t.Fatalf("expected the customer link to be cleared, got %+v", saved)
+	}
+
+	// Online order: the phone cannot be removed.
+	online := &orderRepoStub{findByID: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+		return dto.Order{ID: id, Status: "recibida", CustomerPhone: "70000000"}, nil
+	}}
+	svc = NewOrderCommandService(online, store, &customerRepoStub{}, &productRepoStub{}, nil, nil, nil)
+	if _, err := svc.Update(context.Background(), uuid.New(), input); !errors.Is(err, apperror.ErrValidation) {
+		t.Fatalf("expected validation error for online order without phone, got %v", err)
+	}
+}
+
+func TestOrderCommandService_UpdateStatus_EnProceso_RespectsOtherReservations(t *testing.T) {
+	orderID, other := uuid.New(), uuid.New()
+	flavorID := uuid.New()
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	oneMango := []dto.OrderItem{{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
+	repo := &orderRepoStub{
+		findByID: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+			return dto.Order{ID: id, Status: "recibida"}, nil
+		},
+		findByIDWithItems: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+			return dto.Order{ID: id, Items: oneMango}, nil
+		},
+		findByIDWithItemsAndProducts: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+			return dto.Order{ID: id, Items: oneMango}, nil
+		},
+	}
+	deducted := false
+	store := &orderStoreStub{
+		updateStatusWithAdjustmentFn: func(_ context.Context, id uuid.UUID, status string, _ []repository.StockDeductionInput, _ bool) (dto.Order, error) {
+			deducted = true
+			return dto.Order{ID: id, Status: status}, nil
+		},
+	}
+	itemID := uuid.New()
+	inventory := NewInventoryService(&inventoryRepoStub{
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: itemID, FlavorID: &id, Type: "ball_based", Name: "Mango"}, nil
+		},
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Type: "ball_based", Name: "Mango", CurrentStock: 1}, nil
+		},
+	}, nil, WithReservingOrders(func(context.Context, uuid.UUID, []string) ([]dto.Order, error) {
+		return []dto.Order{{ID: other, Items: oneMango}}, nil
+	}))
+
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, &productRepoStub{}, inventory, nil, nil)
+	_, err := svc.UpdateStatus(context.Background(), orderID, "en_proceso")
+	var stockErr *apperror.InsufficientStockError
+	if !errors.As(err, &stockErr) {
+		t.Fatalf("the last Mango belongs to another accepted order, got %v", err)
+	}
+	if deducted {
+		t.Fatal("stock must not be deducted when it is reserved for another order")
 	}
 }
