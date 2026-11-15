@@ -378,3 +378,47 @@ func TestOrderStore_CreateOrder_AcceptedCounterOrder(t *testing.T) {
 	assert.Equal(t, string(models.OrderStatusPendienteRevision), created.Status)
 	assert.Nil(t, created.ReviewedByUserID)
 }
+
+// TestOrderStore_UpdateOrder_ClearCustomerUnlinks proves that removing the
+// phone on an edit drops the link to the previous customer record.
+func TestOrderStore_UpdateOrder_ClearCustomerUnlinks(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	orderRepo := NewOrderBunRepository(db)
+	store := NewOrderStore(db, NewProductBunRepository(db), noopEnrichment{})
+
+	customer, err := NewCustomerBunRepository(db).Create(ctx, CreateCustomerInput{
+		Name: "Ana", UserType: "user", Phone: "555-0101", Status: "active",
+	})
+	require.NoError(t, err)
+
+	order, err := orderRepo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
+		OrderNumber:   "ORD-CC-001",
+		CustomerID:    &customer.ID,
+		CustomerName:  "Ana",
+		CustomerPhone: "555-0101",
+		TotalAmount:   1.0,
+		Status:        string(models.OrderStatusRecibida),
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, order.CustomerID)
+
+	notes := "Sin teléfono"
+	_, err = store.UpdateOrder(ctx, order.ID, StoreUpdateOrderInput{
+		CustomerName:  "Ana",
+		CustomerPhone: "",
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+		Notes:         &notes,
+		ClearCustomer: true,
+	})
+	require.NoError(t, err)
+
+	updated, err := orderRepo.FindByID(ctx, order.ID)
+	require.NoError(t, err)
+	assert.Nil(t, updated.CustomerID, "clearing the phone must unlink the customer")
+	assert.Equal(t, "", updated.CustomerPhone)
+}

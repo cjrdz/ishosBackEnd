@@ -536,9 +536,23 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reviewerID := ""
+	reviewerID, role := "", ""
 	if record, ok := auth.GetRecord(r.Context()); ok {
 		reviewerID = auth.RecordID(record)
+		role = auth.RoleFromRecord(record)
+	}
+
+	// Rejecting a pending online order is routine. Cancelling one that was
+	// accepted (maybe already paid, or in preparation) gives its stock back
+	// and voids a sale, so only admins and managers may do it.
+	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+	if err != nil {
+		writeAppError(w, err, "No se pudo cargar la orden")
+		return
+	}
+	if existing.Status != "pendiente_revision" && role != auth.RoleAdmin && role != auth.RoleManager {
+		response.Error(w, http.StatusForbidden, "Solo un administrador o encargado puede cancelar una orden aceptada")
+		return
 	}
 
 	ctx := audit.ContextFromRequest(r, reviewerID)
