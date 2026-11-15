@@ -153,6 +153,8 @@ type TrackingTokenStore interface {
 
 // InventoryRepository defines the inventory data access contract.
 type InventoryRepository interface {
+	// UpdateLowStockThreshold changes only the minimum, never current_stock.
+	UpdateLowStockThreshold(ctx context.Context, id uuid.UUID, threshold int) (dto.InventoryItem, error)
 	List(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)
 	ListByType(ctx context.Context, loc scope.Location, itemType string) ([]dto.InventoryItem, error)
 	ListLinked(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)

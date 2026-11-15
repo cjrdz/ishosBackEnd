@@ -44,7 +44,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 		parsedFlavorID, parseErr := uuid.Parse(selectedFlavorID)
 		if parseErr != nil {
 			log.Error().Err(parseErr).Str("selected_flavor_id", selectedFlavorID).Msg("EnrichCustomizations: failed to parse flavor ID")
-			return nil, 0, fmt.Errorf("%w: %s", ErrFlavorNotAllowed, selectedFlavorID)
+			return nil, 0, fmt.Errorf("%w: un sabor elegido no está disponible para %s", ErrFlavorNotAllowed, product.Name)
 		}
 
 		selectedFlavor, ok := activeFlavors[parsedFlavorID]
@@ -53,7 +53,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 				Str("parsed_flavor_id", parsedFlavorID.String()).
 				Str("product_name", product.Name).
 				Msg("EnrichCustomizations: selected flavor not in active flavor index")
-			return nil, 0, fmt.Errorf("%w: %s", ErrFlavorNotAllowed, selectedFlavorID)
+			return nil, 0, fmt.Errorf("%w: un sabor elegido no está disponible para %s", ErrFlavorNotAllowed, product.Name)
 		}
 
 		if enriched == nil {
@@ -69,7 +69,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 			parsedFlavorID, parseErr := uuid.Parse(fid)
 			if parseErr != nil {
 				log.Error().Err(parseErr).Str("flavor_id", fid).Msg("EnrichCustomizations: failed to parse flavor ID")
-				return nil, 0, fmt.Errorf("%w: %s", ErrFlavorNotAllowed, fid)
+				return nil, 0, fmt.Errorf("%w: un sabor elegido no está disponible para %s", ErrFlavorNotAllowed, product.Name)
 			}
 			selectedFlavor, ok := activeFlavors[parsedFlavorID]
 			if !ok {
@@ -77,7 +77,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 					Str("parsed_flavor_id", parsedFlavorID.String()).
 					Str("product_name", product.Name).
 					Msg("EnrichCustomizations: selected flavor not in active flavor index")
-				return nil, 0, fmt.Errorf("%w: %s", ErrFlavorNotAllowed, fid)
+				return nil, 0, fmt.Errorf("%w: un sabor elegido no está disponible para %s", ErrFlavorNotAllowed, product.Name)
 			}
 			flavorNames = append(flavorNames, selectedFlavor.Name)
 		}
@@ -98,12 +98,12 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 		resolveAddon := func(addonID string) (dto.Addon, error) {
 			parsedAddonID, parseErr := uuid.Parse(addonID)
 			if parseErr != nil {
-				return dto.Addon{}, fmt.Errorf("%w: %s", ErrAddonNotAllowed, addonID)
+				return dto.Addon{}, fmt.Errorf("%w: un complemento elegido no está disponible para %s", ErrAddonNotAllowed, product.Name)
 			}
 
 			selectedAddon, ok := activeAddons[parsedAddonID]
 			if !ok {
-				return dto.Addon{}, fmt.Errorf("%w: %s", ErrAddonNotAllowed, addonID)
+				return dto.Addon{}, fmt.Errorf("%w: un complemento elegido no está disponible para %s", ErrAddonNotAllowed, product.Name)
 			}
 			return selectedAddon, nil
 		}
@@ -258,7 +258,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 			}
 			enriched["topping_selection"] = "none"
 		default:
-			return nil, 0, fmt.Errorf("%w: topping selection is required", ErrToppingRequired)
+			return nil, 0, fmt.Errorf("%w: elige un topping", ErrToppingRequired)
 		}
 	}
 
@@ -273,7 +273,7 @@ func (s *OrderEnrichmentService) EnrichCustomizations(product dto.Product, raw m
 			}
 			enriched["jalea_selection"] = "none"
 		default:
-			return nil, 0, fmt.Errorf("%w: jalea selection is required", ErrJaleaRequired)
+			return nil, 0, fmt.Errorf("%w: elige una jalea", ErrJaleaRequired)
 		}
 	}
 

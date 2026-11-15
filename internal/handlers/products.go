@@ -116,10 +116,10 @@ func (h *ProductHandler) toProductResponse(p dto.Product) productResponse {
 	stockStatus := "not_tracked"
 	if len(p.InventoryItems) > 0 {
 		item := p.InventoryItems[0]
-		switch {
-		case item.CurrentStock <= 0:
+		switch services.StockLevel(item.CurrentStock, item.LowStockThreshold) {
+		case "out":
 			stockStatus = "out_of_stock"
-		case item.CurrentStock <= item.LowStockThreshold:
+		case "low":
 			stockStatus = "low_stock"
 		default:
 			stockStatus = "in_stock"

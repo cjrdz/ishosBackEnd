@@ -61,13 +61,13 @@ func (h *InventoryHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
 	item, err := h.inventory.GetByID(r.Context(), loc, id)
 	if err != nil {
-		writeAppError(w, err, "Failed to fetch inventory item")
+		writeAppError(w, err, "No se pudo cargar el artículo")
 		return
 	}
 
@@ -87,7 +87,7 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
@@ -97,7 +97,7 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 		BallsPerContainer  int       `json:"balls_per_container"` // optional for custom containers
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 
 	movement, err := h.inventory.RecordEntry(ctx, locationID, id, body.ContainerTypeID, body.QuantityContainers, body.BallsPerContainer, createdByID)
 	if err != nil {
-		writeAppError(w, err, "Failed to record entry")
+		writeAppError(w, err, "No se pudo registrar la entrada")
 		return
 	}
 
@@ -119,6 +119,43 @@ func (h *InventoryHandler) RecordEntry(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusCreated, movement)
 }
 
+// UpdateThreshold sets the minimum below which an item shows as "Stock bajo".
+//
+// PATCH /api/v1/inventory/{id}
+// Body: { "low_stock_threshold": int }
+func (h *InventoryHandler) UpdateThreshold(w http.ResponseWriter, r *http.Request) {
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
+		return
+	}
+	var body struct {
+		LowStockThreshold *int `json:"low_stock_threshold"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.LowStockThreshold == nil {
+		response.Error(w, http.StatusBadRequest, "Indica el mínimo de stock")
+		return
+	}
+
+	actorID := getAdminID(r)
+	ctx := audit.ContextFromRequest(r, actorID)
+	item, err := h.inventory.UpdateLowStockThreshold(ctx, loc, id, *body.LowStockThreshold)
+	if err != nil {
+		writeAppError(w, err, "No se pudo guardar el mínimo")
+		return
+	}
+
+	_ = h.auditSvc.Log(ctx, audit.ActionInventoryThresholdUpdated, actorID, fmt.Sprintf("inventory_item:%s", id.String()), map[string]any{
+		"low_stock_threshold": item.LowStockThreshold,
+	}, auth.ClientIP(r))
+
+	response.JSON(w, http.StatusOK, item)
+}
+
 // RecordAdjustment records a manual adjustment.
 func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Request) {
 	loc, ok := requestScope(w, r)
@@ -127,7 +164,7 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
@@ -136,12 +173,12 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 		Reason   string `json:"reason"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
 	if body.Reason == "" {
-		response.Error(w, http.StatusBadRequest, "Reason is required for adjustments")
+		response.Error(w, http.StatusBadRequest, "Escribe el motivo del ajuste")
 		return
 	}
 
@@ -150,7 +187,7 @@ func (h *InventoryHandler) RecordAdjustment(w http.ResponseWriter, r *http.Reque
 
 	movement, err := h.inventory.RecordAdjustment(ctx, loc, id, body.Quantity, body.Reason, createdByID)
 	if err != nil {
-		writeAppError(w, err, "Failed to record adjustment")
+		writeAppError(w, err, "No se pudo registrar el ajuste")
 		return
 	}
 
@@ -186,7 +223,7 @@ func (h *InventoryHandler) GetMovementHistory(w http.ResponseWriter, r *http.Req
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
@@ -237,13 +274,13 @@ func (h *InventoryHandler) GetStockForFlavor(w http.ResponseWriter, r *http.Requ
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid flavor ID")
+		response.Error(w, http.StatusBadRequest, "ID de sabor inválido")
 		return
 	}
 
 	stock, err := h.inventory.GetStockForFlavor(r.Context(), locationID, id)
 	if err != nil {
-		writeAppError(w, err, "Failed to get stock status")
+		writeAppError(w, err, "No se pudo consultar el stock")
 		return
 	}
 
@@ -286,7 +323,7 @@ func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Reques
 	}
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
@@ -294,7 +331,7 @@ func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Reques
 		Quantity int `json:"quantity"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -303,7 +340,7 @@ func (h *InventoryHandler) RecordUnitEntry(w http.ResponseWriter, r *http.Reques
 
 	movement, err := h.inventory.RecordUnitEntry(ctx, loc, id, body.Quantity, createdByID)
 	if err != nil {
-		writeAppError(w, err, "Failed to record unit entry")
+		writeAppError(w, err, "No se pudo registrar la entrada")
 		return
 	}
 
@@ -328,12 +365,12 @@ func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *htt
 		LowStockThreshold int       `json:"low_stock_threshold"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
 	if body.Name == "" || body.ProductID == uuid.Nil {
-		response.Error(w, http.StatusBadRequest, "Name and product_id are required")
+		response.Error(w, http.StatusBadRequest, "Elige un producto")
 		return
 	}
 
@@ -342,7 +379,7 @@ func (h *InventoryHandler) CreateUnitInventoryItem(w http.ResponseWriter, r *htt
 
 	created, err := h.inventory.CreateUnitInventoryItem(ctx, body.Name, body.ProductID, body.LowStockThreshold)
 	if err != nil {
-		writeAppError(w, err, "Failed to create inventory item")
+		writeAppError(w, err, "No se pudo empezar a llevar inventario")
 		return
 	}
 	if len(created) == 0 {
@@ -389,13 +426,13 @@ func (h *InventoryHandler) LinkInventoryItemToProduct(w http.ResponseWriter, r *
 	}
 	inventoryItemID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
 	productID, err := uuid.Parse(chi.URLParam(r, "productId"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid product ID")
+		response.Error(w, http.StatusBadRequest, "ID de producto inválido")
 		return
 	}
 
@@ -404,7 +441,7 @@ func (h *InventoryHandler) LinkInventoryItemToProduct(w http.ResponseWriter, r *
 
 	item, err := h.inventory.LinkInventoryItemToProduct(ctx, loc, inventoryItemID, productID)
 	if err != nil {
-		writeAppError(w, err, "Failed to link inventory item")
+		writeAppError(w, err, "No se pudo vincular el artículo")
 		return
 	}
 
@@ -424,7 +461,7 @@ func (h *InventoryHandler) UnlinkInventoryItemFromProduct(w http.ResponseWriter,
 	}
 	inventoryItemID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid inventory item ID")
+		response.Error(w, http.StatusBadRequest, "ID de artículo de inventario inválido")
 		return
 	}
 
@@ -433,7 +470,7 @@ func (h *InventoryHandler) UnlinkInventoryItemFromProduct(w http.ResponseWriter,
 
 	item, err := h.inventory.UnlinkInventoryItemFromProduct(ctx, loc, inventoryItemID)
 	if err != nil {
-		writeAppError(w, err, "Failed to unlink inventory item")
+		writeAppError(w, err, "No se pudo desvincular el artículo")
 		return
 	}
 

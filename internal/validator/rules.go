@@ -259,8 +259,13 @@ func ValidateProductUpdate(name *string, price *float64, stockStatus *string) Va
 	return errs
 }
 
-func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNumber *int, requireTableForEnLocal bool, amountReceived *float64) ValidationErrors {
+// ValidateOrderDetails checks the customer and payment fields of an order.
+// staff is true for orders taken at the counter: the phone is then optional
+// (walk-in customers rarely leave one) and a table is required for en_local.
+// Online orders always need a phone so staff can reach the customer.
+func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNumber *int, staff bool, amountReceived *float64) ValidationErrors {
 	var errs ValidationErrors
+	requireTableForEnLocal := staff
 
 	if strings.TrimSpace(name) == "" {
 		errs.Add("customer_name", "required")
@@ -269,7 +274,9 @@ func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNum
 	}
 
 	if strings.TrimSpace(phone) == "" {
-		errs.Add("customer_phone", "required")
+		if !staff {
+			errs.Add("customer_phone", "required")
+		}
 	} else if !isValidPhone(phone) {
 		errs.Add("customer_phone", "invalid format")
 	}
@@ -301,8 +308,8 @@ func ValidateOrderDetails(name, phone, paymentMethod, orderType string, tableNum
 	return errs
 }
 
-func ValidateOrderCreate(name, phone, paymentMethod, orderType string, tableNumber *int, itemCount int, requireTableForEnLocal bool, amountReceived *float64) ValidationErrors {
-	errs := ValidateOrderDetails(name, phone, paymentMethod, orderType, tableNumber, requireTableForEnLocal, amountReceived)
+func ValidateOrderCreate(name, phone, paymentMethod, orderType string, tableNumber *int, itemCount int, staff bool, amountReceived *float64) ValidationErrors {
+	errs := ValidateOrderDetails(name, phone, paymentMethod, orderType, tableNumber, staff, amountReceived)
 
 	if itemCount == 0 {
 		errs.Add("items", "at least one item required")

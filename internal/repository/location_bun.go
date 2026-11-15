@@ -94,9 +94,32 @@ func (r *LocationBunRepository) Update(ctx context.Context, id uuid.UUID, input 
 	return result, err
 }
 
-// SoldOut lists the products and flavours marked sold out at a location.
+// SoldOut lists the products and flavours marked sold out at a location,
+// plus the tracked ones whose stock there is 0.
 func (r *LocationBunRepository) SoldOut(ctx context.Context, locationID uuid.UUID) (dto.SoldOutItems, error) {
-	return loadSoldOut(ctx, r.db, locationID)
+	out, err := loadSoldOut(ctx, r.db, locationID)
+	if err != nil {
+		return out, err
+	}
+	var empty []models.InventoryItem
+	if err := r.db.NewSelect().Model(&empty).
+		Column("flavor_id", "product_id").
+		Where("location_id = ?", locationID).
+		Where("current_stock <= 0").
+		Where("(flavor_id IS NOT NULL OR product_id IS NOT NULL)").
+		Scan(ctx); err != nil {
+		return out, err
+	}
+	out.OutOfStockProducts = []uuid.UUID{}
+	out.OutOfStockFlavors = []uuid.UUID{}
+	for _, item := range empty {
+		if item.FlavorID != nil {
+			out.OutOfStockFlavors = append(out.OutOfStockFlavors, *item.FlavorID)
+		} else if item.ProductID != nil {
+			out.OutOfStockProducts = append(out.OutOfStockProducts, *item.ProductID)
+		}
+	}
+	return out, nil
 }
 
 // SetSoldOut marks (or clears) an item as sold out at a location.

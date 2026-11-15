@@ -405,5 +405,5 @@ func responseRateLimited(w http.ResponseWriter, res RateLimitResult) {
 	w.Header().Set("Content-Type", "application/json")
 	res.WriteHeaders(w)
 	w.WriteHeader(http.StatusTooManyRequests)
-	_, _ = w.Write([]byte(`{"error":"too many requests, try later"}`))
+	_, _ = w.Write([]byte(`{"error":"Demasiadas solicitudes. Espera un momento e intenta de nuevo."}`))
 }

@@ -55,7 +55,7 @@ func writeAppError(w http.ResponseWriter, err error, fallbackMsg string) {
 		response.Error(w, status, fallbackMsg)
 		return
 	}
-	response.Error(w, status, err.Error())
+	response.Error(w, status, apperror.PublicMessage(err))
 }
 
 // nilIfEmpty returns a pointer to s, or nil if s is empty.

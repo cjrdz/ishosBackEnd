@@ -882,7 +882,12 @@ func TestOrderCommandService_Update_PendienteStatusWithItems_UsesPlainUpdate(t *
 			return dto.Product{ID: id, Name: "Test"}, nil
 		},
 	}
-	inventory := NewInventoryService(&inventoryRepoStub{}, nil)
+	// The product is tracked with enough stock for the edit.
+	inventory := NewInventoryService(&inventoryRepoStub{
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Name: "Test", Type: "unit_based", CurrentStock: 5}, nil
+		},
+	}, nil)
 
 	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil)
 	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
@@ -980,5 +985,49 @@ func TestOrderService_IsOrderEditable_CounterOrderWhileAccepted(t *testing.T) {
 	}
 	if svc.IsOrderEditable(dto.Order{Status: "entregada", CreatedByUserID: &staff}) {
 		t.Fatal("delivered orders stay locked")
+	}
+}
+
+func TestOrderCommandService_Update_PendingOrder_RefusesMissingStock(t *testing.T) {
+	orderID := uuid.New()
+	repo := &orderRepoStub{
+		findByID: func(_ context.Context, id uuid.UUID) (dto.Order, error) {
+			return dto.Order{ID: id, Status: "recibida", LocationID: testLocation}, nil
+		},
+	}
+	updated := false
+	store := &orderStoreStub{
+		updateFn: func(_ context.Context, id uuid.UUID, _ repository.StoreUpdateOrderInput) (dto.Order, error) {
+			updated = true
+			return dto.Order{ID: id}, nil
+		},
+	}
+	productRepo := &productRepoStub{
+		findByID: func(_ context.Context, id uuid.UUID) (dto.Product, error) {
+			return dto.Product{ID: id, Name: "Paleta"}, nil
+		},
+	}
+	inventory := NewInventoryService(&inventoryRepoStub{
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Name: "Paleta", Type: "unit_based", CurrentStock: 1}, nil
+		},
+	}, nil)
+
+	svc := NewOrderCommandService(repo, store, &customerRepoStub{}, productRepo, inventory, nil, nil)
+	_, err := svc.Update(context.Background(), orderID, UpdateOrderInput{
+		CustomerName:  "Ana",
+		PaymentMethod: "efectivo",
+		OrderType:     "para_llevar",
+		Items:         []OrderItemInput{{ProductID: uuid.New(), Quantity: 3}},
+	})
+	var stockErr *apperror.InsufficientStockError
+	if !errors.As(err, &stockErr) {
+		t.Fatalf("expected InsufficientStockError, got %v", err)
+	}
+	if stockErr.Needed != 3 || stockErr.Available != 1 || stockErr.Unit != "unidad" {
+		t.Fatalf("unexpected stock error: %+v", stockErr)
+	}
+	if updated {
+		t.Fatal("the order must not be saved when stock is missing")
 	}
 }

@@ -79,7 +79,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -103,18 +103,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ttlConfig := h.resolveTokenTTLConfig(r)
-	token, record, err := h.pb.Login(body.Email, body.Password, time.Duration(ttlConfig.AuthTokenTTLHours)*time.Hour)
+	// The token never outlives the session cookie: a copied token stops
+	// working when the browser session would have ended.
+	token, record, err := h.pb.Login(body.Email, body.Password, ttlConfig.SessionMaxAge())
 	if err != nil {
 		_ = h.authService.RecordLoginLockoutFailure(r.Context(), identifier)
 		log.Warn().Str("ip", ip).Str("identifier", identifier).Msg("Login failed: invalid credentials")
-		response.Error(w, http.StatusUnauthorized, "Invalid email or password")
+		response.Error(w, http.StatusUnauthorized, "Correo o contraseña incorrectos")
 		return
 	}
 
 	// Check if the account has been disabled.
 	if auth.IsDisabled(record) {
 		log.Warn().Str("ip", ip).Str("identifier", identifier).Msg("Login failed: account disabled")
-		response.Error(w, http.StatusForbidden, "Account has been deactivated")
+		response.Error(w, http.StatusForbidden, "Tu cuenta está desactivada. Habla con un administrador.")
 		return
 	}
 
@@ -140,6 +142,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusOK, map[string]any{
 		"employee": h.sessionJSON(r, record),
+		// The BFF sets its own cookie: it must not outlive this.
+		"session_max_age_seconds": int(ttlConfig.SessionMaxAge().Seconds()),
 	})
 }
 
@@ -163,7 +167,7 @@ func (h *AuthHandler) resolveTokenTTLConfig(r *http.Request) services.TokenTTLCo
 func (h *AuthHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	record, ok := auth.GetRecord(r.Context())
 	if !ok || record == nil {
-		response.Error(w, http.StatusUnauthorized, "No active session")
+		response.Error(w, http.StatusUnauthorized, "Inicia sesión para continuar.")
 		return
 	}
 
@@ -182,6 +186,9 @@ func (h *AuthHandler) sessionJSON(r *http.Request, record *core.Record) map[stri
 		"active":        !auth.IsDisabled(record),
 		"location_id":   nil,
 		"location_name": nil,
+		// Every staff panel applies the admin's inactivity setting (the
+		// panel-config endpoint itself is admin-only).
+		"inactivity_logout_seconds": h.resolveTokenTTLConfig(r).InactivityLogoutSeconds,
 	}
 	if raw := auth.LocationIDFromRecord(record); raw != "" && h.locations != nil {
 		if id, err := uuid.Parse(raw); err == nil {
@@ -240,7 +247,7 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -252,7 +259,7 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if employeeID != "" && email != "" {
-		response.Error(w, http.StatusBadRequest, "Provide either employee_id or email, not both")
+		response.Error(w, http.StatusBadRequest, "Indica el empleado o el correo, no ambos")
 		return
 	}
 
@@ -260,7 +267,7 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 	if employeeID != "" {
 		record, err := h.pb.FindEmployeeByID(employeeID)
 		if err != nil || record == nil {
-			response.Error(w, http.StatusNotFound, "Employee not found")
+			response.Error(w, http.StatusNotFound, "Empleado no encontrado")
 			return
 		}
 		recordEmail = normalizeLockoutIdentifier(record.Email())
@@ -268,7 +275,7 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 	} else {
 		record, err := h.pb.FindEmployeeByEmail(email)
 		if err != nil || record == nil {
-			response.Error(w, http.StatusNotFound, "Employee not found")
+			response.Error(w, http.StatusNotFound, "Empleado no encontrado")
 			return
 		}
 		recordEmail = normalizeLockoutIdentifier(record.Email())
@@ -277,7 +284,7 @@ func (h *AuthHandler) ResetLoginLockout(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if email == "" {
-		response.Error(w, http.StatusBadRequest, "Invalid employee email")
+		response.Error(w, http.StatusBadRequest, "Correo de empleado inválido")
 		return
 	}
 

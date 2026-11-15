@@ -205,6 +205,24 @@ func (r *InventoryBunRepository) UnlinkFromProduct(ctx context.Context, inventor
 	return r.FindByID(ctx, inventoryItemID)
 }
 
+// UpdateLowStockThreshold sets only low_stock_threshold. A full-row update
+// would write back a stale current_stock read before a concurrent sale or
+// entry.
+func (r *InventoryBunRepository) UpdateLowStockThreshold(ctx context.Context, id uuid.UUID, threshold int) (dto.InventoryItem, error) {
+	res, err := r.db.NewUpdate().Model((*models.InventoryItem)(nil)).
+		Set("low_stock_threshold = ?", threshold).
+		Set("updated_at = ?", time.Now()).
+		Where("id = ?", id).
+		Exec(ctx)
+	if err != nil {
+		return dto.InventoryItem{}, translateInventoryError(err)
+	}
+	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
+		return dto.InventoryItem{}, &apperror.NotFoundError{Resource: "inventory_item"}
+	}
+	return r.FindByID(ctx, id)
+}
+
 // LinkToFlavor links an inventory item to a flavor.
 func (r *InventoryBunRepository) LinkToFlavor(ctx context.Context, inventoryItemID, flavorID uuid.UUID) (dto.InventoryItem, error) {
 	item := models.InventoryItem{ID: inventoryItemID, FlavorID: &flavorID, UpdatedAt: time.Now()}
@@ -285,12 +303,17 @@ func (r *InventoryBunRepository) deductStock(ctx context.Context, tx bun.Tx, ord
 		}
 		// Defence in depth: an order only ever consumes its own location's stock.
 		if invItem.LocationID != orderLocation {
-			return nil, fmt.Errorf("%w: inventory item %s belongs to another location", apperror.ErrConflict, invItem.ID)
+			return nil, fmt.Errorf("%w: el artículo de inventario %s es de otra sucursal", apperror.ErrConflict, invItem.ID)
 		}
 
 		if invItem.CurrentStock < d.Quantity {
-			return nil, fmt.Errorf("%w: %s needs %d but only %d available",
-				apperror.ErrConflict, invItem.Name, d.Quantity, invItem.CurrentStock)
+			unit := "unidad"
+			if invItem.Type == "ball_based" {
+				unit = "bola"
+			}
+			return nil, &apperror.InsufficientStockError{
+				Name: invItem.Name, Unit: unit, Needed: d.Quantity, Available: max(invItem.CurrentStock, 0),
+			}
 		}
 
 		invItem.CurrentStock -= d.Quantity

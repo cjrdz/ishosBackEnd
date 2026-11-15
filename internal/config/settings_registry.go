@@ -20,6 +20,16 @@ var SettingsRegistry = map[string]struct {
 			return json.Unmarshal(raw, &v)
 		},
 	},
+	// StoreTrackingEnabledKey = "store.tracking.enabled"
+	// Value shape: {"enabled": bool}
+	"store.tracking.enabled": {
+		Validate: func(raw json.RawMessage) error {
+			var v struct {
+				Enabled bool `json:"enabled"`
+			}
+			return json.Unmarshal(raw, &v)
+		},
+	},
 	// StoreOffersKey = "store.offers"
 	// Value shape: {"items": [...]}
 	"store.offers": {

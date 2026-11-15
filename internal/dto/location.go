@@ -36,4 +36,9 @@ type SoldOutItems struct {
 	LocationID uuid.UUID   `json:"location_id"`
 	Products   []uuid.UUID `json:"products"`
 	Flavors    []uuid.UUID `json:"flavors"`
+	// OutOfStockProducts / OutOfStockFlavors are tracked in inventory with
+	// no stock left at the location. They are unavailable like the manual
+	// "Agotado" lists but clear themselves when stock is entered.
+	OutOfStockProducts []uuid.UUID `json:"out_of_stock_products"`
+	OutOfStockFlavors  []uuid.UUID `json:"out_of_stock_flavors"`
 }

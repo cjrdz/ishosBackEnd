@@ -299,7 +299,9 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		// Auth
 		api.Post("/auth/login", loginRateLimiter.Middleware(http.HandlerFunc(authHandler.Login)).ServeHTTP)
 		api.Post("/auth/logout", authHandler.Logout)
-		api.With(authMiddleware.OptionalSession).Get("/auth/session", authHandler.GetSession)
+		// Optional-session routes also enforce the inactivity timeout for staff
+		// tokens (the middleware ignores anonymous requests).
+		api.With(authMiddleware.OptionalSession, inactivityMiddleware.Middleware).Get("/auth/session", authHandler.GetSession)
 
 		// Products (public list, admin manage)
 		api.Get("/products", productHandler.List)
@@ -318,7 +320,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 		api.Get("/addons/{id}", addonHandler.Get)
 
 		// Orders (public create; optionally capture authenticated staff identity)
-		api.With(authMiddleware.OptionalSession, resolveLocationIfSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
+		api.With(authMiddleware.OptionalSession, inactivityMiddleware.Middleware, resolveLocationIfSession).Post("/orders", orderRateLimiter.Middleware(http.HandlerFunc(orderHandler.Create)).ServeHTTP)
 		api.Get("/orders/track", orderHandler.TrackPublic)
 
 		// Locations (public: list with hours/status and Agotados per location)
@@ -446,6 +448,7 @@ func New(pb *auth.PBAuth, cfg *config.Config) (*Server, error) {
 				inv.Get("/stats", inventoryHandler.GetStats)
 				inv.Get("/low-stock", inventoryHandler.GetLowStock)
 				inv.Get("/{id}", inventoryHandler.Get)
+				inv.Patch("/{id}", inventoryHandler.UpdateThreshold)
 				inv.Get("/{id}/movements", inventoryHandler.GetMovementHistory)
 				inv.Post("/{id}/entries", inventoryHandler.RecordEntry)
 				inv.Post("/{id}/unit-entries", inventoryHandler.RecordUnitEntry)

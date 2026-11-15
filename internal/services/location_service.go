@@ -267,7 +267,7 @@ func (s *LocationService) SoldOut(ctx context.Context, locationID uuid.UUID) (dt
 func (s *LocationService) SetSoldOut(ctx context.Context, locationID uuid.UUID, itemType string, itemID uuid.UUID, soldOut bool, by string) error {
 	t := models.AvailabilityItemType(itemType)
 	if t != models.AvailabilityItemProduct && t != models.AvailabilityItemFlavor {
-		return &apperror.ValidationError{Fields: map[string]string{"item_type": "use product or flavor"}}
+		return &apperror.ValidationError{Fields: map[string]string{"item_type": "Indica si es un producto o un sabor"}}
 	}
 	if itemID == uuid.Nil {
 		return &apperror.ValidationError{Fields: map[string]string{"item_id": "required"}}

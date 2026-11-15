@@ -46,13 +46,24 @@ func (h *AdminSettingsHandler) GetStoreSettings(w http.ResponseWriter, r *http.R
 // PATCH /api/v1/settings/store
 // Body: { "orders_enabled": bool, "offers": [...] }
 func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *http.Request) {
-	var body services.StoreSettings
+	// tracking_enabled is optional so older clients that only send
+	// orders_enabled + offers do not switch tracking off by omission.
+	var body struct {
+		services.StoreSettings
+		TrackingEnabled *bool `json:"tracking_enabled"`
+	}
 	if err := decodeJSON(r, &body); err != nil {
 		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
+	input := body.StoreSettings
+	if body.TrackingEnabled != nil {
+		input.TrackingEnabled = *body.TrackingEnabled
+	} else if current, err := h.settingsSvc.GetStoreSettings(r.Context()); err == nil {
+		input.TrackingEnabled = current.TrackingEnabled
+	}
 	adminID := getAdminID(r)
-	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), body, adminID)
+	saved, err := h.settingsSvc.UpdateStoreSettings(r.Context(), input, adminID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrValidation) {
 			response.Error(w, http.StatusBadRequest, "Revisa las ofertas: cada una necesita un artículo del menú, un precio y una fecha de vencimiento válidos")
@@ -68,8 +79,9 @@ func (h *AdminSettingsHandler) UpdateStoreSettings(w http.ResponseWriter, r *htt
 	}
 	ip := auth.ClientIP(r)
 	_ = h.auditSvc.Log(r.Context(), audit.ActionSettingsUpdated, actorID, "settings:store", map[string]any{
-		"orders_enabled": body.OrdersEnabled,
-		"offers_count":   len(body.Offers),
+		"orders_enabled":   input.OrdersEnabled,
+		"offers_count":     len(input.Offers),
+		"tracking_enabled": input.TrackingEnabled,
 	}, ip)
 
 	response.JSON(w, http.StatusOK, saved)
@@ -112,6 +124,13 @@ func (h *AdminSettingsHandler) UpdatePanelConfig(w http.ResponseWriter, r *http.
 	adminID := getAdminID(r)
 	saved, err := h.settingsSvc.UpdateTokenTTLConfig(r.Context(), body, adminID, services.TokenTTLConfig{})
 	if err != nil {
+		if errors.Is(err, apperror.ErrValidation) {
+			response.JSON(w, http.StatusBadRequest, map[string]any{
+				"error":  apperror.PublicMessage(err),
+				"fields": validationFields(err),
+			})
+			return
+		}
 		response.Error(w, http.StatusInternalServerError, "No se pudo guardar configuración del panel")
 		return
 	}
@@ -157,8 +176,9 @@ func (h *AdminSettingsHandler) GetPublicStoreStatus(w http.ResponseWriter, r *ht
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{
-		"orders_enabled": online,
-		"offers":         services.ActiveOffers(settings.Offers, time.Now()),
+		"orders_enabled":   online,
+		"tracking_enabled": settings.TrackingEnabled,
+		"offers":           services.ActiveOffers(settings.Offers, time.Now()),
 	})
 }
 

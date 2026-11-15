@@ -181,6 +181,9 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 // UpdateTokenTTLConfig persists the panel/session configuration and invalidates
 // the local cache so subsequent reads use the new values immediately.
 func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, changedBy string, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+	if err := ValidateTokenTTLConfig(input); err != nil {
+		return TokenTTLConfig{}, err
+	}
 	sanitized := sanitizeTokenTTLConfig(input, defaults)
 	if s.repo == nil {
 		return sanitized, nil
@@ -197,6 +200,54 @@ func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input To
 	}
 	s.cache.Delete(tokenTTLConfigCacheKey)
 	return sanitized, nil
+}
+
+// Bounds for the "Seguridad y sesiones" settings. Values outside them are
+// refused on save (ValidateTokenTTLConfig) and clamped when read, so a bad
+// stored value can neither lock everyone out nor keep sessions open for months.
+const (
+	MinSessionTTLHours        = 1
+	MaxSessionTTLHours        = 24 * 30 // cookie and login token: 30 days
+	MinTrackingTokenTTLHours  = 1
+	MaxTrackingTokenTTLHours  = 24 * 90
+	MinInactivityLogoutSecond = 60
+	MaxInactivityLogoutSecond = 24 * 60 * 60
+)
+
+// ValidateTokenTTLConfig rejects values outside the allowed bounds with
+// Spanish messages for the settings form.
+func ValidateTokenTTLConfig(c TokenTTLConfig) error {
+	fields := map[string]string{}
+	if c.AuthCookieTTLHours < MinSessionTTLHours || c.AuthCookieTTLHours > MaxSessionTTLHours {
+		fields["auth_cookie_ttl_hours"] = fmt.Sprintf("La cookie de sesión debe durar entre %d y %d horas", MinSessionTTLHours, MaxSessionTTLHours)
+	}
+	if c.AuthTokenTTLHours < MinSessionTTLHours || c.AuthTokenTTLHours > MaxSessionTTLHours {
+		fields["auth_token_ttl_hours"] = fmt.Sprintf("El token de login debe durar entre %d y %d horas", MinSessionTTLHours, MaxSessionTTLHours)
+	}
+	if c.TrackingTokenTTLHours < MinTrackingTokenTTLHours || c.TrackingTokenTTLHours > MaxTrackingTokenTTLHours {
+		fields["tracking_token_ttl_hours"] = fmt.Sprintf("El token de seguimiento debe durar entre %d y %d horas", MinTrackingTokenTTLHours, MaxTrackingTokenTTLHours)
+	}
+	if c.InactivityLogoutSeconds < MinInactivityLogoutSecond || c.InactivityLogoutSeconds > MaxInactivityLogoutSecond {
+		fields["inactivity_logout_seconds"] = fmt.Sprintf("El cierre por inactividad debe estar entre %d y %d segundos", MinInactivityLogoutSecond, MaxInactivityLogoutSecond)
+	}
+	if len(fields) > 0 {
+		return &apperror.ValidationError{Fields: fields, Cause: fmt.Errorf("invalid panel config")}
+	}
+	return nil
+}
+
+// SessionMaxAge is how long a browser session lasts after login: the
+// shorter of the cookie and the login token lifetimes.
+func (c TokenTTLConfig) SessionMaxAge() time.Duration {
+	hours := c.AuthCookieTTLHours
+	if c.AuthTokenTTLHours > 0 && c.AuthTokenTTLHours < hours {
+		hours = c.AuthTokenTTLHours
+	}
+	return time.Duration(hours) * time.Hour
+}
+
+func clampInt(v, lo, hi int) int {
+	return max(lo, min(v, hi))
 }
 
 func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
@@ -233,6 +284,11 @@ func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) Token
 		resolved.InactivityLogoutSeconds = 900
 	}
 
+	resolved.AuthCookieTTLHours = clampInt(resolved.AuthCookieTTLHours, MinSessionTTLHours, MaxSessionTTLHours)
+	resolved.AuthTokenTTLHours = clampInt(resolved.AuthTokenTTLHours, MinSessionTTLHours, MaxSessionTTLHours)
+	resolved.TrackingTokenTTLHours = clampInt(resolved.TrackingTokenTTLHours, MinTrackingTokenTTLHours, MaxTrackingTokenTTLHours)
+	resolved.InactivityLogoutSeconds = clampInt(resolved.InactivityLogoutSeconds, MinInactivityLogoutSecond, MaxInactivityLogoutSecond)
+
 	return resolved
 }
 
@@ -262,6 +318,11 @@ func parsePositiveInt(value any) int {
 const StoreOrdersEnabledKey = "store.orders.enabled"
 const StoreOffersKey = "store.offers"
 
+// StoreTrackingEnabledKey turns the public "Seguir mi orden" page on or off.
+// It is off until the admin enables it, so it stays hidden while staff test
+// ordering before the public launch.
+const StoreTrackingEnabledKey = "store.tracking.enabled"
+
 type OfferItem struct {
 	ProductID     string   `json:"product_id"`
 	Label         string   `json:"label"`
@@ -275,6 +336,8 @@ type OfferItem struct {
 type StoreSettings struct {
 	OrdersEnabled bool        `json:"orders_enabled"`
 	Offers        []OfferItem `json:"offers"`
+	// TrackingEnabled shows the public order-tracking page and link.
+	TrackingEnabled bool `json:"tracking_enabled"`
 }
 
 // ActiveOffers returns the offers that have not expired at now. An offer
@@ -323,6 +386,13 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 	result := StoreSettings{OrdersEnabled: true, Offers: []OfferItem{}}
 	if s.repo == nil {
 		return result, nil
+	}
+
+	// Public order tracking (off unless enabled)
+	if trackRec, trackErr := s.repo.GetByKey(ctx, StoreTrackingEnabledKey); trackErr == nil {
+		if b, ok := trackRec.Value["enabled"].(bool); ok {
+			result.TrackingEnabled = b
+		}
 	}
 
 	// Orders enabled
@@ -419,6 +489,11 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 		return StoreSettings{}, fmt.Errorf("failed to save orders enabled: %w", err)
 	}
 	s.cache.Delete(ordersEnabledCacheKey)
+
+	trackingValue := map[string]any{"enabled": input.TrackingEnabled}
+	if err := s.upsertSetting(ctx, StoreTrackingEnabledKey, trackingValue, changedBy); err != nil {
+		return StoreSettings{}, fmt.Errorf("failed to save tracking enabled: %w", err)
+	}
 
 	// Persist offers
 	items := make([]map[string]any, 0, len(input.Offers))

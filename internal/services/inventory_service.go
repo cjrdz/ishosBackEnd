@@ -16,13 +16,42 @@ import (
 )
 
 var (
-	ErrInsufficientStock = fmt.Errorf("%w: insufficient stock", apperror.ErrConflict)
-	ErrInventoryNotFound = fmt.Errorf("%w: inventory item not found", apperror.ErrNotFound)
+	ErrInsufficientStock = fmt.Errorf("%w: el ajuste dejaría el inventario en negativo", apperror.ErrConflict)
+	ErrInventoryNotFound = fmt.Errorf("%w: artículo de inventario no encontrado", apperror.ErrNotFound)
 )
 
 // defaultFlavorLowStockThreshold is used when a flavor inventory item is
-// auto-created on the first stock entry.
-const defaultFlavorLowStockThreshold = 100
+// auto-created on the first stock entry: below 20 balls the flavour shows as
+// "Stock bajo". Staff can change it per item (UpdateLowStockThreshold).
+const defaultFlavorLowStockThreshold = 20
+
+// MaxLowStockThreshold bounds the per-item minimum.
+const MaxLowStockThreshold = 100000
+
+// StockLevel classifies an item: "out" at 0 or less, "low" below its
+// minimum, otherwise "ok". An item exactly at its minimum is still "ok".
+func StockLevel(currentStock, lowStockThreshold int) string {
+	switch {
+	case currentStock <= 0:
+		return "out"
+	case currentStock < lowStockThreshold:
+		return "low"
+	default:
+		return "ok"
+	}
+}
+
+// UpdateLowStockThreshold sets the minimum below which an item shows as
+// "Stock bajo" at its location.
+func (s *InventoryService) UpdateLowStockThreshold(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID, threshold int) (dto.InventoryItem, error) {
+	if threshold < 0 || threshold > MaxLowStockThreshold {
+		return dto.InventoryItem{}, fmt.Errorf("%w: el mínimo debe estar entre 0 y %d", apperror.ErrValidation, MaxLowStockThreshold)
+	}
+	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
+		return dto.InventoryItem{}, err
+	}
+	return s.repo.UpdateLowStockThreshold(ctx, inventoryItemID, threshold)
+}
 
 // inventoryTypeBallBased matches the database value for ball-based inventory.
 const inventoryTypeBallBased = "ball_based"
@@ -123,7 +152,7 @@ func (s *InventoryService) GetLowStockItems(ctx context.Context, loc scope.Locat
 
 	lowStock := make([]dto.InventoryItem, 0)
 	for _, item := range items {
-		if item.CurrentStock <= item.LowStockThreshold {
+		if StockLevel(item.CurrentStock, item.LowStockThreshold) != "ok" {
 			lowStock = append(lowStock, item)
 		}
 	}
@@ -200,6 +229,66 @@ func (s *InventoryService) DeductionsFor(ctx context.Context, locationID uuid.UU
 	}
 
 	return deductions, nil
+}
+
+// stockUnit names one unit of an inventory item for messages to staff.
+func stockUnit(itemType string) string {
+	if itemType == inventoryTypeBallBased {
+		return "bola"
+	}
+	return "unidad"
+}
+
+// EnsureAvailable refuses an order whose tracked flavours or products need
+// more than locationID has in stock right now, so staff find out while
+// taking the order instead of when they press Preparar. Untracked items are
+// always available. Stock is still deducted (and checked again under a row
+// lock) when the order moves to en_proceso.
+//
+// previous holds the order's current items when it is being edited: only
+// items whose need grows are checked, so fixing the name or table of an
+// accepted order is never blocked by stock that ran low in the meantime.
+func (s *InventoryService) EnsureAvailable(ctx context.Context, locationID uuid.UUID, items, previous []dto.OrderItem) error {
+	deductions, err := s.DeductionsFor(ctx, locationID, items)
+	if err != nil {
+		return err
+	}
+	had := map[uuid.UUID]int{}
+	if len(previous) > 0 {
+		before, err := s.DeductionsFor(ctx, locationID, previous)
+		if err != nil {
+			return err
+		}
+		for _, d := range before {
+			had[d.InventoryItemID] += d.Quantity
+		}
+	}
+	needed := make(map[uuid.UUID]int, len(deductions))
+	order := make([]uuid.UUID, 0, len(deductions))
+	for _, d := range deductions {
+		if _, seen := needed[d.InventoryItemID]; !seen {
+			order = append(order, d.InventoryItemID)
+		}
+		needed[d.InventoryItemID] += d.Quantity
+	}
+	for _, id := range order {
+		if needed[id] <= had[id] {
+			continue
+		}
+		item, err := s.repo.FindByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if item.CurrentStock < needed[id] {
+			return &apperror.InsufficientStockError{
+				Name:      item.Name,
+				Unit:      stockUnit(item.Type),
+				Needed:    needed[id],
+				Available: max(item.CurrentStock, 0),
+			}
+		}
+	}
+	return nil
 }
 
 // DeductForOrder deducts stock for an order's items.
@@ -294,7 +383,7 @@ func (s *InventoryService) RecordEntry(ctx context.Context, locationID, flavorID
 		flavor, flavorErr := s.flavorRepo.FindByID(ctx, flavorID)
 		if flavorErr != nil {
 			if errors.Is(flavorErr, apperror.ErrNotFound) {
-				return dto.StockMovement{}, fmt.Errorf("%w: flavor not found", apperror.ErrValidation)
+				return dto.StockMovement{}, fmt.Errorf("%w: sabor no encontrado", apperror.ErrValidation)
 			}
 			return dto.StockMovement{}, flavorErr
 		}
@@ -316,7 +405,7 @@ func (s *InventoryService) RecordEntry(ctx context.Context, locationID, flavorID
 	ct, err := s.containerTypeRepo.GetByID(ctx, containerTypeID)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
-			return dto.StockMovement{}, fmt.Errorf("%w: container type not found", apperror.ErrValidation)
+			return dto.StockMovement{}, fmt.Errorf("%w: tipo de envase no encontrado", apperror.ErrValidation)
 		}
 		return dto.StockMovement{}, err
 	}
@@ -327,7 +416,7 @@ func (s *InventoryService) RecordEntry(ctx context.Context, locationID, flavorID
 	}
 
 	if effectiveBallsPerContainer <= 0 {
-		return dto.StockMovement{}, fmt.Errorf("%w: balls per container must be positive", apperror.ErrValidation)
+		return dto.StockMovement{}, fmt.Errorf("%w: las bolas por envase deben ser más de 0", apperror.ErrValidation)
 	}
 
 	totalBalls := quantityContainers * effectiveBallsPerContainer
@@ -344,7 +433,7 @@ func (s *InventoryService) RecordEntry(ctx context.Context, locationID, flavorID
 // RecordUnitEntry records a stock entry for a unit-based product.
 func (s *InventoryService) RecordUnitEntry(ctx context.Context, loc scope.Location, inventoryItemID uuid.UUID, quantity int, createdByID string) (dto.StockMovement, error) {
 	if quantity <= 0 {
-		return dto.StockMovement{}, fmt.Errorf("%w: quantity must be positive", apperror.ErrValidation)
+		return dto.StockMovement{}, fmt.Errorf("%w: la cantidad debe ser mayor que 0", apperror.ErrValidation)
 	}
 	if _, err := s.itemInScope(ctx, loc, inventoryItemID); err != nil {
 		return dto.StockMovement{}, err
@@ -428,7 +517,7 @@ func (s *InventoryService) GetStockForFlavor(ctx context.Context, locationID, fl
 			Threshold:    invItem.LowStockThreshold,
 		}, nil
 	}
-	if invItem.CurrentStock <= invItem.LowStockThreshold {
+	if StockLevel(invItem.CurrentStock, invItem.LowStockThreshold) == "low" {
 		return &StockStatus{
 			Status:       "low_stock",
 			CurrentStock: invItem.CurrentStock,
@@ -522,10 +611,10 @@ func (s *InventoryService) GetInventoryStats(ctx context.Context, loc scope.Loca
 			stats.UnitBasedItems++
 		}
 
-		switch {
-		case item.CurrentStock <= 0:
+		switch StockLevel(item.CurrentStock, item.LowStockThreshold) {
+		case "out":
 			stats.OutOfStockItems++
-		case item.CurrentStock <= item.LowStockThreshold:
+		case "low":
 			stats.LowStockItems++
 		default:
 			stats.HealthyItems++
@@ -584,10 +673,10 @@ func (s *InventoryService) GetInventoryDashboard(ctx context.Context, loc scope.
 			}
 		}
 
-		switch {
-		case item.CurrentStock <= 0:
+		switch StockLevel(item.CurrentStock, item.LowStockThreshold) {
+		case "out":
 			dashboard.Stats.OutOfStockItems++
-		case item.CurrentStock <= item.LowStockThreshold:
+		case "low":
 			dashboard.Stats.LowStockItems++
 		default:
 			dashboard.Stats.HealthyItems++

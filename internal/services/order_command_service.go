@@ -88,7 +88,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		if err == nil {
 			// A key reused at another location must not reveal that order.
 			if existing.LocationID != input.LocationID {
-				return dto.Order{}, fmt.Errorf("%w: idempotency key already used", apperror.ErrConflict)
+				return dto.Order{}, fmt.Errorf("%w: esta orden ya se envió desde otra sucursal", apperror.ErrConflict)
 			}
 			return existing, nil
 		}
@@ -98,13 +98,17 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		// ErrNotFound is expected: no prior order for this key, proceed.
 	}
 
-	customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
-	if err != nil {
+	if input.LocationID == uuid.Nil {
+		return dto.Order{}, scope.ErrLocationRequired
+	}
+
+	if err := s.ensureStock(ctx, input.LocationID, input.Items, nil); err != nil {
 		return dto.Order{}, err
 	}
 
-	if input.LocationID == uuid.Nil {
-		return dto.Order{}, scope.ErrLocationRequired
+	customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
+	if err != nil {
+		return dto.Order{}, err
 	}
 
 	storeInput := repository.StoreOrderInput{
@@ -188,7 +192,7 @@ func (s *OrderCommandService) createOrderWithRetry(ctx context.Context, storeInp
 	// The conflict message is returned to the client, so keep the database
 	// error out of it and log it instead.
 	log.Error().Err(lastErr).Int("attempts", maxAttempts).Msg("order number generation exhausted retries")
-	return dto.Order{}, fmt.Errorf("%w: unable to generate a unique order number after %d attempts",
+	return dto.Order{}, fmt.Errorf("%w: no se pudo generar un número de orden (%d intentos); intenta de nuevo",
 		apperror.ErrConflict, maxAttempts)
 }
 
@@ -387,6 +391,18 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		"items_count":    len(storeInput.Items),
 	})
 
+	// Orders that have not deducted stock yet are checked against what the
+	// location has now; deducted ones are checked inside the transaction.
+	if len(input.Items) > 0 && !orderHasDeductedStock(existing.Status) {
+		var previous []dto.OrderItem
+		if current, err := s.orderRepo.FindByIDWithItemsAndProducts(ctx, id); err == nil {
+			previous = current.Items
+		}
+		if err := s.ensureStock(ctx, existing.LocationID, input.Items, previous); err != nil {
+			return dto.Order{}, err
+		}
+	}
+
 	var updated dto.Order
 	if len(input.Items) > 0 && orderHasDeductedStock(existing.Status) {
 		newItems, err := s.resolveOrderItems(ctx, input.Items)
@@ -409,6 +425,23 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 	}
 
 	return updated, nil
+}
+
+// ensureStock checks the order's tracked flavours and products against the
+// location's current stock. It is skipped when no inventory service is wired.
+func (s *OrderCommandService) ensureStock(ctx context.Context, locationID uuid.UUID, items []OrderItemInput, previous []dto.OrderItem) error {
+	if s.inventory == nil || len(items) == 0 {
+		return nil
+	}
+	resolved, err := s.resolveOrderItems(ctx, items)
+	if err != nil {
+		// Unknown products are reported by order validation with a clearer message.
+		if errors.Is(err, apperror.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	return s.inventory.EnsureAvailable(ctx, locationID, resolved, previous)
 }
 
 // orderHasDeductedStock reports whether an order in the given status has already
@@ -504,6 +537,11 @@ func (s *OrderCommandService) Delete(ctx context.Context, id uuid.UUID) error {
 func (s *OrderCommandService) resolveCustomerByPhone(ctx context.Context, phone, name string, email *string) (*uuid.UUID, error) {
 	phone = strings.TrimSpace(phone)
 	name = strings.TrimSpace(name)
+	// Counter orders may come without a phone: there is no customer record
+	// to link them to.
+	if phone == "" {
+		return nil, nil
+	}
 
 	customer, err := s.customerRepo.FindByPhone(ctx, phone)
 	if err == nil {

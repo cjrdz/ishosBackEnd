@@ -108,7 +108,7 @@ func NewOrderStore(db bun.IDB, productRepo productResolver, enrichment Enrichmen
 // amount is insufficient to cover the order total.
 func validateAmountReceived(amountReceived *float64, total float64) error {
 	if amountReceived != nil && *amountReceived < total {
-		return &apperror.ValidationError{Fields: map[string]string{"amount_received": "must be greater than or equal to the order total"}}
+		return &apperror.ValidationError{Fields: map[string]string{"amount_received": "El monto recibido no cubre el total de la orden"}}
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func (s *OrderStore) CreateOrder(ctx context.Context, input StoreOrderInput) (dt
 
 	err := runInTx(ctx, s.db, nil, func(ctx context.Context, tx bun.Tx) error {
 		if input.LocationID == uuid.Nil {
-			return &apperror.ValidationError{Fields: map[string]string{"location_id": "required"}}
+			return &apperror.ValidationError{Fields: map[string]string{"location_id": "Elige una sucursal"}}
 		}
 		total, snapshots, err := s.resolveItems(ctx, tx, input.LocationID, input.Items, input.BasePrices)
 		if err != nil {
@@ -295,7 +295,7 @@ func (s *OrderStore) updateOrderOnDB(ctx context.Context, db bun.IDB, id uuid.UU
 		return models.Order{}, nil, translateOrderError(err)
 	}
 	if input.ExpectedStatus != "" && string(existingOrder.Status) != input.ExpectedStatus {
-		return models.Order{}, nil, fmt.Errorf("%w: order status changed from %s to %s; refresh and try again",
+		return models.Order{}, nil, fmt.Errorf("%w: la orden cambió de %s a %s mientras la editabas; actualiza e intenta de nuevo",
 			apperror.ErrConflict, input.ExpectedStatus, existingOrder.Status)
 	}
 
@@ -446,7 +446,7 @@ func lockOrderForStatusChange(ctx context.Context, db bun.IDB, id uuid.UUID, exp
 		return models.Order{}, translateOrderError(err)
 	}
 	if expectedStatus != "" && string(order.Status) != expectedStatus {
-		return models.Order{}, fmt.Errorf("%w: order status changed from %s to %s; refresh and try again",
+		return models.Order{}, fmt.Errorf("%w: la orden cambió de %s a %s mientras la editabas; actualiza e intenta de nuevo",
 			apperror.ErrConflict, expectedStatus, order.Status)
 	}
 	return order, nil
@@ -503,7 +503,7 @@ func (s *OrderStore) resolveItems(ctx context.Context, db bun.IDB, locationID uu
 	for _, item := range items {
 		p, err := s.productRepo.FindByIDWithCategoryAndOptions(ctx, item.ProductID)
 		if err != nil {
-			return 0, nil, fmt.Errorf("%w: %s", apperror.ErrNotFound, item.ProductID)
+			return 0, nil, fmt.Errorf("%w: un producto de la orden ya no existe; quítalo e intenta de nuevo", apperror.ErrNotFound)
 		}
 		if !p.IsAvailable || soldOutProducts[p.ID] {
 			return 0, nil, &apperror.SoldOutError{Name: p.Name}
