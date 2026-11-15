@@ -27,7 +27,7 @@ services:
   # Local Postgres for development only.
   # In production, Neon PostgreSQL is used directly via DATABASE_URL.
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: ishosFactory
       POSTGRES_USER: postgres
@@ -40,7 +40,7 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
 
 volumes:
   pgdata:

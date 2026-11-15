@@ -114,6 +114,7 @@ func TestCustomerBunRepository_ListOrdersByCustomerID(t *testing.T) {
 	require.NoError(t, err)
 
 	order := models.Order{
+		LocationID:    testLocationID(t, db),
 		ID:            uuid.New(),
 		OrderNumber:   "ORD-001",
 		CustomerID:    &customer.ID,

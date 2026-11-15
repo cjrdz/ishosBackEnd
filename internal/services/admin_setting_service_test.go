@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
@@ -35,7 +37,7 @@ func TestAdminSettingServiceGetTokenTTLConfig_ReturnsDefaultsOnNotFound(t *testi
 		AuthCookieTTLHours:      1,
 		AuthTokenTTLHours:       2,
 		TrackingTokenTTLHours:   3,
-		InactivityLogoutSeconds: 4,
+		InactivityLogoutSeconds: 400,
 	}
 	cfg, err := svc.GetTokenTTLConfig(context.Background(), defaults)
 	if err != nil {
@@ -50,8 +52,8 @@ func TestAdminSettingServiceGetTokenTTLConfig_ReturnsDefaultsOnNotFound(t *testi
 	if cfg.TrackingTokenTTLHours != 3 {
 		t.Fatalf("expected TrackingTokenTTLHours=3, got %d", cfg.TrackingTokenTTLHours)
 	}
-	if cfg.InactivityLogoutSeconds != 4 {
-		t.Fatalf("expected InactivityLogoutSeconds=4, got %d", cfg.InactivityLogoutSeconds)
+	if cfg.InactivityLogoutSeconds != 400 {
+		t.Fatalf("expected InactivityLogoutSeconds=400, got %d", cfg.InactivityLogoutSeconds)
 	}
 }
 
@@ -63,7 +65,7 @@ func TestAdminSettingServiceGetTokenTTLConfig_ResolvesFromRepo(t *testing.T) {
 					"auth_cookie_ttl_hours":     10,
 					"auth_token_ttl_hours":      20,
 					"tracking_token_ttl_hours":  30,
-					"inactivity_logout_seconds": 40,
+					"inactivity_logout_seconds": 600,
 				},
 			}, nil
 		},
@@ -83,8 +85,8 @@ func TestAdminSettingServiceGetTokenTTLConfig_ResolvesFromRepo(t *testing.T) {
 	if cfg.TrackingTokenTTLHours != 30 {
 		t.Fatalf("expected TrackingTokenTTLHours=30, got %d", cfg.TrackingTokenTTLHours)
 	}
-	if cfg.InactivityLogoutSeconds != 40 {
-		t.Fatalf("expected InactivityLogoutSeconds=40, got %d", cfg.InactivityLogoutSeconds)
+	if cfg.InactivityLogoutSeconds != 600 {
+		t.Fatalf("expected InactivityLogoutSeconds=600, got %d", cfg.InactivityLogoutSeconds)
 	}
 }
 
@@ -148,7 +150,8 @@ func TestAdminSettingServiceUpdateStoreSettings_Persists(t *testing.T) {
 	_, err := svc.UpdateStoreSettings(context.Background(), StoreSettings{
 		OrdersEnabled: false,
 		Offers: []OfferItem{
-			{ProductID: "prod-1", Label: "Test Offer"},
+			// Shaped like the admin UI's payload: product UUID + RFC 3339 expiry.
+			{ProductID: "6a1f0e9e-2c1b-4c8a-9f3e-1d2c3b4a5f60", Label: "Test Offer", ExpiresAt: "2026-12-31T23:59:00Z"},
 		},
 	}, "admin-1")
 	if err != nil {
@@ -184,5 +187,29 @@ func TestAdminSettingServiceNilRepo(t *testing.T) {
 	}
 	if !settings.OrdersEnabled {
 		t.Fatal("expected true with nil repo")
+	}
+}
+
+func TestTokenTTLConfig_BoundsAndSessionMaxAge(t *testing.T) {
+	good := TokenTTLConfig{AuthCookieTTLHours: 12, AuthTokenTTLHours: 24, TrackingTokenTTLHours: 72, InactivityLogoutSeconds: 900}
+	if err := ValidateTokenTTLConfig(good); err != nil {
+		t.Fatalf("valid config refused: %v", err)
+	}
+	if got := good.SessionMaxAge(); got != 12*time.Hour {
+		t.Fatalf("session max age should be the shorter TTL, got %v", got)
+	}
+	for _, bad := range []TokenTTLConfig{
+		{AuthCookieTTLHours: 12, AuthTokenTTLHours: 24, TrackingTokenTTLHours: 72, InactivityLogoutSeconds: 5},
+		{AuthCookieTTLHours: 0, AuthTokenTTLHours: 24, TrackingTokenTTLHours: 72, InactivityLogoutSeconds: 900},
+		{AuthCookieTTLHours: 12, AuthTokenTTLHours: 24 * 365, TrackingTokenTTLHours: 72, InactivityLogoutSeconds: 900},
+	} {
+		if err := ValidateTokenTTLConfig(bad); !errors.Is(err, apperror.ErrValidation) {
+			t.Errorf("expected validation error for %+v, got %v", bad, err)
+		}
+	}
+	// A stored 1-second timeout is clamped instead of locking everyone out.
+	clamped := sanitizeTokenTTLConfig(TokenTTLConfig{InactivityLogoutSeconds: 1, AuthTokenTTLHours: 100000}, TokenTTLConfig{})
+	if clamped.InactivityLogoutSeconds != MinInactivityLogoutSecond || clamped.AuthTokenTTLHours != MaxSessionTTLHours {
+		t.Fatalf("unexpected clamp result %+v", clamped)
 	}
 }

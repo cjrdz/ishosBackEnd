@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+	_ "time/tzdata" // IANA zones for STORE_TIMEZONE; the Alpine image ships none.
 
 	"github.com/caarlos0/env/v10"
 	"github.com/joho/godotenv"
@@ -95,6 +97,11 @@ type Config struct {
 	LoginLockoutWindowMinutes   int `env:"LOGIN_LOCKOUT_WINDOW_MINUTES" envDefault:"15"`
 	LoginLockoutDurationMinutes int `env:"LOGIN_LOCKOUT_DURATION_MINUTES" envDefault:"15"`
 
+	// Shared secret the frontend BFF sends in X-BFF-Secret so its X-Client-IP
+	// header (the end user's IP) is trusted for rate limiting. Must match the
+	// BFF_SHARED_SECRET configured on the Cloudflare Worker.
+	BFFSharedSecret string `env:"BFF_SHARED_SECRET"`
+
 	// CORS — Comma separated allowed origins
 	AllowedOrigins string `env:"ALLOWED_ORIGINS" envDefault:"http://localhost:4321"`
 
@@ -120,7 +127,19 @@ type Config struct {
 	BootstrapAdminEmail    string `env:"BOOTSTRAP_ADMIN_EMAIL"`
 	BootstrapAdminPassword string `env:"BOOTSTRAP_ADMIN_PASSWORD"`
 	BootstrapAdminName     string `env:"BOOTSTRAP_ADMIN_NAME" envDefault:"Admin"`
+
+	// Store time zone (IANA name). Analytics day/week/month buckets and date
+	// filters are computed in this zone, not UTC.
+	StoreTimeZone string `env:"STORE_TIMEZONE" envDefault:"America/El_Salvador"`
+
+	// Set automatically by Railway; used to catch a production deploy that is
+	// missing ENV=production.
+	RailwayEnvironmentName string `env:"RAILWAY_ENVIRONMENT_NAME"`
 }
+
+// minBFFSharedSecretLength is the minimum accepted BFF_SHARED_SECRET length in
+// production (e.g. `openssl rand -hex 32` yields 64).
+const minBFFSharedSecretLength = 32
 
 // Load reads environment variables (and optional .env file) into Config.
 // It validates the configuration and exits if required vars are missing or invalid.
@@ -146,6 +165,7 @@ func Load() *Config {
 		cfg.R2Endpoint = "https://" + cfg.R2AccountID + ".r2.cloudflarestorage.com"
 	}
 
+	cfg.normalizeR2Endpoint()
 	cfg.applyDevelopmentTrackingTokenSecretFallback()
 
 	// Validate configuration
@@ -154,6 +174,20 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+// normalizeR2Endpoint strips a trailing "/<bucket>" from R2_ENDPOINT. The
+// Cloudflare dashboard shows the S3 API URL with the bucket appended, but the
+// S3 client adds the bucket itself; keeping it makes every request target
+// "<bucket>/<bucket>/..." and fail with NoSuchKey.
+func (c *Config) normalizeR2Endpoint() {
+	endpoint := strings.TrimRight(strings.TrimSpace(c.R2Endpoint), "/")
+	bucketSuffix := "/" + strings.TrimSpace(c.R2BucketName)
+	if c.R2BucketName != "" && strings.HasSuffix(endpoint, bucketSuffix) {
+		endpoint = strings.TrimSuffix(endpoint, bucketSuffix)
+		log.Printf("R2_ENDPOINT included the bucket name; using %s (set it without /%s)", endpoint, c.R2BucketName)
+	}
+	c.R2Endpoint = endpoint
 }
 
 func (c *Config) applyDevelopmentTrackingTokenSecretFallback() {
@@ -203,6 +237,13 @@ func (c *Config) Validate() error {
 	// Environment
 	if c.Env != "development" && c.Env != "production" {
 		return fmt.Errorf("ENV must be 'development' or 'production', got %q", c.Env)
+	}
+
+	// ENV defaults to development, which silently relaxes production guards
+	// (Redis, tracking secret, debug logging). Refuse to boot in Railway's
+	// production environment without it.
+	if c.RailwayEnvironmentName == "production" && c.Env != "production" {
+		return fmt.Errorf("running in Railway environment %q but ENV=%q; set ENV=production", c.RailwayEnvironmentName, c.Env)
 	}
 
 	// In production, PocketBase admin UI should not be enabled unless explicitly allowed
@@ -269,6 +310,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("LOGIN_ATTEMPTS_PER_MINUTE must be positive, got %d", c.LoginAttemptsPerMinute)
 	}
 
+	if _, err := time.LoadLocation(c.StoreTimeZone); err != nil {
+		return fmt.Errorf("STORE_TIMEZONE %q is not a valid IANA time zone: %w", c.StoreTimeZone, err)
+	}
+
 	// Archive configuration
 	if c.OrderArchiveAgeDays <= 0 {
 		return fmt.Errorf("ORDER_ARCHIVE_AGE_DAYS must be positive, got %d", c.OrderArchiveAgeDays)
@@ -333,13 +378,31 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("BOOTSTRAP_ADMIN_EMAIL/PASSWORD must not be set in production; use the bootstrap command instead")
 	}
 
-	// Redis is required in production for distributed rate limiting and
-	// login lockout state.
+	// Without the BFF secret every customer shares the BFF's IP for rate
+	// limiting, so one busy hour can block the whole store.
+	if c.Env == "production" && len(strings.TrimSpace(c.BFFSharedSecret)) < minBFFSharedSecretLength {
+		return fmt.Errorf("BFF_SHARED_SECRET must be set in production (at least %d characters) so per-customer rate limits work behind the frontend BFF", minBFFSharedSecretLength)
+	}
+
+	// Redis is optional: rate limits, login lockouts and the analytics cache
+	// fall back to memory. That is enough for one instance (counters reset on
+	// redeploy); set REDIS_URL (Redis or Valkey) before running more than one
+	// replica so they share that state.
 	if c.Env == "production" && strings.TrimSpace(c.RedisURL) == "" {
-		return fmt.Errorf("REDIS_URL is required in production")
+		log.Println("REDIS_URL not set: rate limits and login lockouts are kept in memory (fine for a single instance)")
 	}
 
 	return nil
+}
+
+// StoreLocation returns the store's time zone. Validate guarantees it loads;
+// UTC is only a defensive fallback.
+func (c *Config) StoreLocation() *time.Location {
+	loc, err := time.LoadLocation(c.StoreTimeZone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // PublicObjectURL constructs the full public URL for an R2 object.

@@ -4,9 +4,14 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
+
+	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/config"
 )
@@ -23,6 +28,7 @@ type TokenTTLConfig struct {
 type AdminSettingService struct {
 	repo  AdminSettingRepository
 	cache *cache.TTLCache
+	loc   *time.Location // store time zone for opening hours
 }
 
 const (
@@ -30,6 +36,7 @@ const (
 	tokenTTLConfigCacheKey       = "settings:token_ttl_config"
 	archiveConfigCacheKey        = "settings:archive_config"
 	publicOrderRateLimitCacheKey = "settings:public_order_rate_limit"
+	storeHoursCacheKey           = "settings:store_hours"
 	settingsCacheTTL             = 10 * time.Second
 )
 
@@ -58,7 +65,78 @@ func NewAdminSettingService(repo AdminSettingRepository) *AdminSettingService {
 	return &AdminSettingService{
 		repo:  repo,
 		cache: cache.New(settingsCacheTTL),
+		loc:   time.UTC,
 	}
+}
+
+// WithLocation sets the store time zone used for opening hours.
+func (s *AdminSettingService) WithLocation(loc *time.Location) *AdminSettingService {
+	if loc != nil {
+		s.loc = loc
+	}
+	return s
+}
+
+// GetStoreHours returns the saved weekly schedule (empty when none is saved).
+func (s *AdminSettingService) GetStoreHours(ctx context.Context) (WeeklyHours, error) {
+	if s.repo == nil {
+		return WeeklyHours{}, nil
+	}
+	if v, ok := s.cache.Get(storeHoursCacheKey); ok {
+		return v.(WeeklyHours), nil
+	}
+	hours := WeeklyHours{}
+	rec, err := s.repo.GetByKey(ctx, StoreHoursKey)
+	if err != nil {
+		if !errors.Is(err, apperror.ErrNotFound) {
+			return nil, err
+		}
+	} else if rawDays, ok := rec.Value["days"]; ok {
+		raw, _ := json.Marshal(rawDays)
+		if err := json.Unmarshal(raw, &hours); err != nil {
+			return nil, fmt.Errorf("decode store hours: %w", err)
+		}
+	}
+	s.cache.Set(storeHoursCacheKey, hours)
+	return hours, nil
+}
+
+// UpdateStoreHours validates and saves the weekly schedule. An empty
+// schedule turns hours off (the store is then always open).
+func (s *AdminSettingService) UpdateStoreHours(ctx context.Context, hours WeeklyHours, changedBy string) (WeeklyHours, error) {
+	if err := ValidateWeeklyHours(hours); err != nil {
+		return nil, err
+	}
+	normalized := NormalizeWeeklyHours(hours)
+	raw, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, err
+	}
+	var days map[string]any
+	if err := json.Unmarshal(raw, &days); err != nil {
+		return nil, err
+	}
+	if err := s.upsertSetting(ctx, StoreHoursKey, map[string]any{"days": days}, changedBy); err != nil {
+		return nil, fmt.Errorf("failed to save store hours: %w", err)
+	}
+	s.cache.Delete(storeHoursCacheKey)
+	return normalized, nil
+}
+
+// StoreOpenStatus reports whether the store is open at now per its schedule.
+// A read failure fails open: the manual orders switch still applies.
+func (s *AdminSettingService) StoreOpenStatus(ctx context.Context, now time.Time) StoreOpenStatus {
+	hours, err := s.GetStoreHours(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("could not load store hours; treating store as open")
+		hours = nil
+	}
+	return ComputeOpenStatus(hours, now, s.loc)
+}
+
+// ClosedMessage explains when the store opens next, in Spanish.
+func (s *AdminSettingService) ClosedMessage(status StoreOpenStatus, now time.Time) string {
+	return ClosedMessage(status, now, s.loc)
 }
 
 func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults TokenTTLConfig) (TokenTTLConfig, error) {
@@ -103,6 +181,9 @@ func (s *AdminSettingService) GetTokenTTLConfig(ctx context.Context, defaults To
 // UpdateTokenTTLConfig persists the panel/session configuration and invalidates
 // the local cache so subsequent reads use the new values immediately.
 func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input TokenTTLConfig, changedBy string, defaults TokenTTLConfig) (TokenTTLConfig, error) {
+	if err := ValidateTokenTTLConfig(input); err != nil {
+		return TokenTTLConfig{}, err
+	}
 	sanitized := sanitizeTokenTTLConfig(input, defaults)
 	if s.repo == nil {
 		return sanitized, nil
@@ -119,6 +200,54 @@ func (s *AdminSettingService) UpdateTokenTTLConfig(ctx context.Context, input To
 	}
 	s.cache.Delete(tokenTTLConfigCacheKey)
 	return sanitized, nil
+}
+
+// Bounds for the "Seguridad y sesiones" settings. Values outside them are
+// refused on save (ValidateTokenTTLConfig) and clamped when read, so a bad
+// stored value can neither lock everyone out nor keep sessions open for months.
+const (
+	MinSessionTTLHours        = 1
+	MaxSessionTTLHours        = 24 * 30 // cookie and login token: 30 days
+	MinTrackingTokenTTLHours  = 1
+	MaxTrackingTokenTTLHours  = 24 * 90
+	MinInactivityLogoutSecond = 60
+	MaxInactivityLogoutSecond = 24 * 60 * 60
+)
+
+// ValidateTokenTTLConfig rejects values outside the allowed bounds with
+// Spanish messages for the settings form.
+func ValidateTokenTTLConfig(c TokenTTLConfig) error {
+	fields := map[string]string{}
+	if c.AuthCookieTTLHours < MinSessionTTLHours || c.AuthCookieTTLHours > MaxSessionTTLHours {
+		fields["auth_cookie_ttl_hours"] = fmt.Sprintf("La cookie de sesión debe durar entre %d y %d horas", MinSessionTTLHours, MaxSessionTTLHours)
+	}
+	if c.AuthTokenTTLHours < MinSessionTTLHours || c.AuthTokenTTLHours > MaxSessionTTLHours {
+		fields["auth_token_ttl_hours"] = fmt.Sprintf("El token de login debe durar entre %d y %d horas", MinSessionTTLHours, MaxSessionTTLHours)
+	}
+	if c.TrackingTokenTTLHours < MinTrackingTokenTTLHours || c.TrackingTokenTTLHours > MaxTrackingTokenTTLHours {
+		fields["tracking_token_ttl_hours"] = fmt.Sprintf("El token de seguimiento debe durar entre %d y %d horas", MinTrackingTokenTTLHours, MaxTrackingTokenTTLHours)
+	}
+	if c.InactivityLogoutSeconds < MinInactivityLogoutSecond || c.InactivityLogoutSeconds > MaxInactivityLogoutSecond {
+		fields["inactivity_logout_seconds"] = fmt.Sprintf("El cierre por inactividad debe estar entre %d y %d segundos", MinInactivityLogoutSecond, MaxInactivityLogoutSecond)
+	}
+	if len(fields) > 0 {
+		return &apperror.ValidationError{Fields: fields, Cause: fmt.Errorf("invalid panel config")}
+	}
+	return nil
+}
+
+// SessionMaxAge is how long a browser session lasts after login: the
+// shorter of the cookie and the login token lifetimes.
+func (c TokenTTLConfig) SessionMaxAge() time.Duration {
+	hours := c.AuthCookieTTLHours
+	if c.AuthTokenTTLHours > 0 && c.AuthTokenTTLHours < hours {
+		hours = c.AuthTokenTTLHours
+	}
+	return time.Duration(hours) * time.Hour
+}
+
+func clampInt(v, lo, hi int) int {
+	return max(lo, min(v, hi))
 }
 
 func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) TokenTTLConfig {
@@ -155,6 +284,11 @@ func sanitizeTokenTTLConfig(input TokenTTLConfig, defaults TokenTTLConfig) Token
 		resolved.InactivityLogoutSeconds = 900
 	}
 
+	resolved.AuthCookieTTLHours = clampInt(resolved.AuthCookieTTLHours, MinSessionTTLHours, MaxSessionTTLHours)
+	resolved.AuthTokenTTLHours = clampInt(resolved.AuthTokenTTLHours, MinSessionTTLHours, MaxSessionTTLHours)
+	resolved.TrackingTokenTTLHours = clampInt(resolved.TrackingTokenTTLHours, MinTrackingTokenTTLHours, MaxTrackingTokenTTLHours)
+	resolved.InactivityLogoutSeconds = clampInt(resolved.InactivityLogoutSeconds, MinInactivityLogoutSecond, MaxInactivityLogoutSecond)
+
 	return resolved
 }
 
@@ -184,6 +318,11 @@ func parsePositiveInt(value any) int {
 const StoreOrdersEnabledKey = "store.orders.enabled"
 const StoreOffersKey = "store.offers"
 
+// StoreTrackingEnabledKey turns the public "Seguir mi orden" page on or off.
+// It is off until the admin enables it, so it stays hidden while staff test
+// ordering before the public launch.
+const StoreTrackingEnabledKey = "store.tracking.enabled"
+
 type OfferItem struct {
 	ProductID     string   `json:"product_id"`
 	Label         string   `json:"label"`
@@ -197,12 +336,63 @@ type OfferItem struct {
 type StoreSettings struct {
 	OrdersEnabled bool        `json:"orders_enabled"`
 	Offers        []OfferItem `json:"offers"`
+	// TrackingEnabled shows the public order-tracking page and link.
+	TrackingEnabled bool `json:"tracking_enabled"`
+}
+
+// ActiveOffers returns the offers that have not expired at now. An offer
+// without a parseable expiry is treated as active.
+func ActiveOffers(offers []OfferItem, now time.Time) []OfferItem {
+	active := make([]OfferItem, 0, len(offers))
+	for _, o := range offers {
+		if o.ExpiresAt != "" {
+			if t, err := time.Parse(time.RFC3339, o.ExpiresAt); err == nil && t.Before(now) {
+				continue
+			}
+		}
+		active = append(active, o)
+	}
+	return active
+}
+
+// ActiveOfferPrices maps product ID → special price for every active offer
+// with a positive discount price (the lowest one if several overlap). Order
+// pricing uses it as the product's base price so the server charges what the
+// storefront shows.
+func (s *AdminSettingService) ActiveOfferPrices(ctx context.Context) (map[uuid.UUID]float64, error) {
+	settings, err := s.GetStoreSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prices := make(map[uuid.UUID]float64)
+	for _, o := range ActiveOffers(settings.Offers, time.Now()) {
+		id, parseErr := uuid.Parse(o.ProductID)
+		if parseErr != nil || o.DiscountPrice <= 0 {
+			continue
+		}
+		// The storefront treats an offer without a valid expiry as inactive,
+		// so never charge an offer price the customer was not shown.
+		if _, expErr := time.Parse(time.RFC3339, o.ExpiresAt); expErr != nil {
+			continue
+		}
+		if current, ok := prices[id]; !ok || o.DiscountPrice < current {
+			prices[id] = o.DiscountPrice
+		}
+	}
+	return prices, nil
 }
 
 func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
 	result := StoreSettings{OrdersEnabled: true, Offers: []OfferItem{}}
 	if s.repo == nil {
 		return result, nil
+	}
+
+	// Public order tracking (off unless enabled)
+	if trackRec, trackErr := s.repo.GetByKey(ctx, StoreTrackingEnabledKey); trackErr == nil {
+		if b, ok := trackRec.Value["enabled"].(bool); ok {
+			result.TrackingEnabled = b
+		}
 	}
 
 	// Orders enabled
@@ -264,7 +454,32 @@ func (s *AdminSettingService) GetStoreSettings(ctx context.Context) (StoreSettin
 	return result, nil
 }
 
+// validateOffers rejects offers the order pricing would silently ignore:
+// ActiveOfferPrices needs a product UUID, a non-negative price and an RFC 3339
+// expiry (the admin UI sends toISOString()).
+func validateOffers(offers []OfferItem) error {
+	fields := map[string]string{}
+	for i, o := range offers {
+		if _, err := uuid.Parse(o.ProductID); err != nil {
+			fields[fmt.Sprintf("offers[%d].product_id", i)] = "must be a product UUID"
+		}
+		if o.DiscountPrice < 0 {
+			fields[fmt.Sprintf("offers[%d].discount_price", i)] = "must not be negative"
+		}
+		if _, err := time.Parse(time.RFC3339, o.ExpiresAt); err != nil {
+			fields[fmt.Sprintf("offers[%d].expires_at", i)] = "must be an RFC 3339 date-time"
+		}
+	}
+	if len(fields) > 0 {
+		return &apperror.ValidationError{Fields: fields, Cause: fmt.Errorf("invalid offers")}
+	}
+	return nil
+}
+
 func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input StoreSettings, changedBy string) (StoreSettings, error) {
+	if err := validateOffers(input.Offers); err != nil {
+		return StoreSettings{}, err
+	}
 	if s.repo == nil {
 		return input, nil
 	}
@@ -274,6 +489,11 @@ func (s *AdminSettingService) UpdateStoreSettings(ctx context.Context, input Sto
 		return StoreSettings{}, fmt.Errorf("failed to save orders enabled: %w", err)
 	}
 	s.cache.Delete(ordersEnabledCacheKey)
+
+	trackingValue := map[string]any{"enabled": input.TrackingEnabled}
+	if err := s.upsertSetting(ctx, StoreTrackingEnabledKey, trackingValue, changedBy); err != nil {
+		return StoreSettings{}, fmt.Errorf("failed to save tracking enabled: %w", err)
+	}
 
 	// Persist offers
 	items := make([]map[string]any, 0, len(input.Offers))

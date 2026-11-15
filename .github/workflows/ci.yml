@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.5"
+  GO_VERSION: "1.27.4"
 
 jobs:
   build-and-test:
@@ -19,7 +19,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_DB: ishosFactory
           POSTGRES_USER: postgres
@@ -84,10 +84,12 @@ jobs:
             echo "Coverage ${total}% is below long-term target ${target}%"
           fi
 
-      - name: Repository integration tests
+      # Always use the ephemeral postgres service container above, never a real
+      # database: these tests create (and drop) a schema per test.
+      - name: Repository and migration integration tests
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: go test -race -count=1 ./internal/repository/...
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/ishosFactory?sslmode=disable
+        run: go test -race -count=1 ./internal/repository/... ./internal/database/...
 
   lint:
     name: Lint

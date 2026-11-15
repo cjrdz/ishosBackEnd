@@ -8,12 +8,13 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // Service interfaces let handlers depend on behavior contracts instead of concrete structs.
 type OrderServiceInterface interface {
 	IssueTrackingAccess(ctx context.Context, orderNumber string) (*TrackingAccess, error)
-	ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
+	ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error)
 	GetByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	GetByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	GetByOrderNumber(ctx context.Context, orderNumber string) (dto.Order, error)
@@ -21,13 +22,15 @@ type OrderServiceInterface interface {
 	ListRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
 	Create(ctx context.Context, input CreateOrderInput) (dto.Order, error)
 	Approve(ctx context.Context, id uuid.UUID, reviewerID string, allowOverride bool) (dto.Order, error)
-	Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string) (dto.Order, error)
+	// Reject cancels an order. restock (optional) says how much of each
+	// inventory item goes back to stock; nil returns everything.
+	Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string, restock map[uuid.UUID]int) (dto.Order, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
 	Update(ctx context.Context, id uuid.UUID, input UpdateOrderInput) (dto.Order, error)
 	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
 	SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
 	Delete(ctx context.Context, id uuid.UUID) error
-	IsOrderEditable(status string) bool
+	IsOrderEditable(order dto.Order) bool
 }
 
 type ProductServiceInterface interface {

@@ -17,6 +17,7 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
 	"github.com/cjrdz/ishosBackEnd/internal/auth"
 	"github.com/cjrdz/ishosBackEnd/internal/cache"
+	orderDomain "github.com/cjrdz/ishosBackEnd/internal/domain/order"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/handlers/requests"
 	"github.com/cjrdz/ishosBackEnd/internal/middleware"
@@ -31,6 +32,7 @@ type OrderHandler struct {
 	tracker        *services.TrackingTokenService
 	mapper         *services.OrderResponseMapper
 	settingsSvc    *services.AdminSettingService
+	locations      *services.LocationService
 	archiver       *services.OrderArchiver
 	publicStoreURL string
 	listCache      *cache.TTLCache
@@ -43,6 +45,7 @@ func NewOrderHandler(
 	tracker *services.TrackingTokenService,
 	mapper *services.OrderResponseMapper,
 	settingsSvc *services.AdminSettingService,
+	locations *services.LocationService,
 	archiver *services.OrderArchiver,
 	publicStoreURL string,
 	rl *middleware.OrderRateLimiter,
@@ -54,6 +57,7 @@ func NewOrderHandler(
 		tracker:        tracker,
 		mapper:         mapper,
 		settingsSvc:    settingsSvc,
+		locations:      locations,
 		archiver:       archiver,
 		publicStoreURL: publicStoreURL,
 		// The frontend polls the orders list every 25 s; a 25 s TTL means most
@@ -110,10 +114,39 @@ func isNotModified(r *http.Request, lastModified time.Time) bool {
 	return !lastModified.After(clientTime)
 }
 
+// RequireOrderInScope guards every /orders/{id} route: an order of another
+// location answers 404, exactly like an order that does not exist.
+func (h *OrderHandler) RequireOrderInScope(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		loc, ok := requestScope(w, r)
+		if !ok {
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "id"))
+		if err != nil {
+			response.Error(w, http.StatusBadRequest, "ID de orden inválido")
+			return
+		}
+		order, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+		if err == nil {
+			err = loc.Check("order", order.LocationID)
+		}
+		if err != nil {
+			if errors.Is(err, apperror.ErrNotFound) {
+				response.Error(w, http.StatusNotFound, "Orden no encontrada")
+				return
+			}
+			writeAppError(w, err, "No se pudo cargar la orden")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var body requests.CreateOrderRequest
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -124,7 +157,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		parsed, err := uuid.Parse(raw)
 		if err != nil {
 			response.WriteOrError(w, nil, &apperror.ValidationError{
-				Fields: map[string]string{"idempotency_key": "must be a valid UUID"},
+				Fields: map[string]string{"idempotency_key": "no es válida"},
 			})
 			return
 		}
@@ -153,16 +186,40 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		body.TableNumber = nil
 	}
 
-	if !isStaff {
-		if !h.settingsSvc.AreOrdersEnabled(r.Context()) {
-			response.WriteOrError(w, nil, &apperror.ServiceUnavailableError{Message: "Los pedidos están temporalmente desactivados"})
+	// Which location the order goes to. Staff always order for the location
+	// they work at (admins: the one they selected); customers choose one.
+	var locationID uuid.UUID
+	if isStaff {
+		loc, ok := requestScope(w, r)
+		if !ok {
 			return
 		}
+		id, err := loc.Require()
+		if err != nil {
+			response.WriteOrError(w, nil, err)
+			return
+		}
+		locationID = id
+	} else {
+		if body.LocationID == nil || *body.LocationID == uuid.Nil {
+			response.WriteOrError(w, nil, &apperror.ValidationError{Fields: map[string]string{"location_id": "Elige una sucursal"}})
+			return
+		}
+		locationID = *body.LocationID
+	}
+	// Customers also need online ordering on and the location open; counter
+	// staff only need the location's orders switch.
+	if err := h.locations.CheckCanOrder(r.Context(), locationID, !isStaff, time.Now()); err != nil {
+		response.WriteOrError(w, nil, err)
+		return
+	}
+
+	if !isStaff {
 		res := h.rateLimiter.CheckAndRecordPhone(r.Context(), body.CustomerPhone)
 		res.WriteHeaders(w)
 		if !res.Allowed {
 			log.Warn().Str("phone", body.CustomerPhone).Msg("Phone order rate limit exceeded")
-			response.Error(w, http.StatusTooManyRequests, "too many orders from this phone, try later")
+			response.Error(w, http.StatusTooManyRequests, "Demasiadas órdenes desde este teléfono. Intenta de nuevo más tarde.")
 			return
 		}
 	}
@@ -170,7 +227,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	items := make([]services.OrderItemInput, 0, len(body.Items))
 	for _, item := range body.Items {
 		if item.Quantity <= 0 {
-			response.WriteOrError(w, nil, &apperror.ValidationError{Fields: map[string]string{"items.quantity": "must be greater than 0"}})
+			response.WriteOrError(w, nil, &apperror.ValidationError{Fields: map[string]string{"items.quantity": "La cantidad debe ser mayor que 0"}})
 			return
 		}
 		items = append(items, services.OrderItemInput{
@@ -189,6 +246,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, staffID)
 
 	order, err := h.orderSvc.Create(ctx, services.CreateOrderInput{
+		LocationID:     locationID,
 		IdempotencyKey: idempotencyKey,
 		CustomerName:   body.CustomerName,
 		CustomerPhone:  body.CustomerPhone,
@@ -203,6 +261,13 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CreatedByID:    createdByID,
 	})
 	if err != nil {
+		// Customers get a short message without stock counts or staff
+		// instructions; staff get the detailed one.
+		var stockErr *apperror.InsufficientStockError
+		if !isStaff && errors.As(err, &stockErr) {
+			response.Error(w, http.StatusConflict, stockErr.Name+" se agotó en esta sucursal. Quítalo del carrito o elige otro.")
+			return
+		}
 		response.WriteOrError(w, nil, err)
 		return
 	}
@@ -224,6 +289,11 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		"tracking_expires_at": trackingAccess.ExpiresAt,
 		"message":             "Orden recibida, te notificaremos pronto 🍦",
 	}
+	// Staff fetch the full order by id to print its tickets right away; public
+	// customers track by number + token and never need the internal id.
+	if isStaff {
+		respBody["id"] = order.ID
+	}
 	if order.AmountReceived != nil {
 		respBody["amount_received"] = *order.AmountReceived
 		respBody["change"] = *order.AmountReceived - order.TotalAmount
@@ -232,11 +302,24 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
+	// status: one status or a comma-separated list (e.g. the board's active columns).
 	status := r.URL.Query().Get("status")
+	if status != "" {
+		for _, s := range strings.Split(status, ",") {
+			if _, err := orderDomain.NewOrderStatus(s); err != nil {
+				response.Error(w, http.StatusBadRequest, "Estado de orden inválido: "+s)
+				return
+			}
+		}
+	}
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
 	lite := r.URL.Query().Get("lite") == "true"
 	archived := r.URL.Query().Get("archived") == "true"
 	params := response.ParsePaginationParams(r.URL.Query().Get("page"), r.URL.Query().Get("per_page"))
-	cacheKey := fmt.Sprintf("orders:%s:%t:%t:%d:%d", status, lite, archived, params.Page, params.PerPage)
+	cacheKey := fmt.Sprintf("orders:%s:%s:%t:%t:%d:%d", loc, status, lite, archived, params.Page, params.PerPage)
 
 	if cached, ok := h.listCache.Get(cacheKey); ok {
 		entry := cached.(cachedOrderList)
@@ -250,7 +333,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orders, total, err := h.orderSvc.ListPaginated(r.Context(), status, archived, params.Page, params.PerPage)
+	orders, total, err := h.orderSvc.ListPaginated(r.Context(), loc, status, archived, params.Page, params.PerPage)
 	if err != nil {
 		response.WriteOrError(w, nil, err)
 		return
@@ -289,7 +372,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
@@ -304,7 +387,7 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, apperror.ErrNotFound) {
 			err = services.ErrOrderNotFound
 		}
-		writeAppError(w, err, "Failed to fetch order")
+		writeAppError(w, err, "No se pudo cargar la orden")
 		return
 	}
 
@@ -320,26 +403,35 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 	res := h.rateLimiter.CheckTrackingIP(r.Context(), auth.ClientIP(r))
 	res.WriteHeaders(w)
 	if !res.Allowed {
-		response.Error(w, http.StatusTooManyRequests, "too many tracking attempts, try later")
+		response.Error(w, http.StatusTooManyRequests, "Demasiados intentos de seguimiento. Intenta de nuevo en unos minutos.")
 		return
+	}
+
+	// The admin can switch public tracking off (e.g. while only staff test
+	// ordering). Answer as if the order did not exist.
+	if h.settingsSvc != nil {
+		if settings, err := h.settingsSvc.GetStoreSettings(r.Context()); err == nil && !settings.TrackingEnabled {
+			response.Error(w, http.StatusNotFound, "El seguimiento de órdenes no está disponible por ahora")
+			return
+		}
 	}
 
 	orderNumber := strings.TrimSpace(r.URL.Query().Get("order_number"))
 	trackingToken := strings.TrimSpace(r.URL.Query().Get("tracking_token"))
 
 	if orderNumber == "" || trackingToken == "" {
-		response.Error(w, http.StatusBadRequest, "order_number and tracking_token are required")
+		response.Error(w, http.StatusBadRequest, "Faltan el número de orden o el código de seguimiento")
 		return
 	}
 
 	if !validator.IsTrackOrderNumberValid(orderNumber) {
-		response.Error(w, http.StatusBadRequest, "invalid order_number format")
+		response.Error(w, http.StatusBadRequest, "El número de orden no es válido")
 		return
 	}
 
 	order, err := h.orderSvc.GetByOrderNumber(r.Context(), orderNumber)
 	if err != nil {
-		writeAppError(w, err, "Failed to fetch order")
+		writeAppError(w, err, "No se pudo cargar la orden")
 		return
 	}
 
@@ -351,11 +443,11 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 				Str("token_prefix", services.MaskTrackingToken(trackingToken)).
 				Err(err).
 				Msg("public tracking verification failed")
-			response.Error(w, http.StatusNotFound, "Order not found")
+			response.Error(w, http.StatusNotFound, "Orden no encontrada")
 			return
 		}
 		log.Error().Str("ip", auth.ClientIP(r)).Str("order_number", orderNumber).Err(err).Msg("public tracking verification backend error")
-		response.Error(w, http.StatusInternalServerError, "Failed to verify tracking token")
+		response.Error(w, http.StatusInternalServerError, "No se pudo verificar el seguimiento")
 		return
 	}
 
@@ -373,8 +465,18 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 		publicItems = append(publicItems, publicItem)
 	}
 
+	// Where to pick the order up.
+	var pickup map[string]any
+	if l, err := h.locations.Get(r.Context(), order.LocationID); err == nil {
+		pickup = map[string]any{
+			"id": l.ID, "name": l.Name, "address": l.Address,
+			"maps_url": l.MapsURL, "whatsapp": l.WhatsApp, "phone": l.Phone,
+		}
+	}
+
 	response.JSON(w, http.StatusOK, map[string]any{
 		"order_number":      order.OrderNumber,
+		"location":          pickup,
 		"customer_name":     order.CustomerName,
 		"status":            order.Status,
 		"updated_at":        order.UpdatedAt,
@@ -389,7 +491,7 @@ func (h *OrderHandler) TrackPublic(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
@@ -405,7 +507,7 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, reviewerID)
 	updated, err := h.orderSvc.Approve(ctx, id, reviewerID, allowOverride)
 	if err != nil {
-		writeAppError(w, err, "Failed to approve order")
+		writeAppError(w, err, "No se pudo aprobar la orden")
 		return
 	}
 
@@ -417,16 +519,39 @@ func (h *OrderHandler) Approve(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
 	var body struct {
 		Reason string `json:"reason"`
+		// Restock, when sent, says how much of each inventory item the order
+		// took goes back to stock; the rest is recorded as waste (merma).
+		// Omitted: everything goes back.
+		Restock *[]struct {
+			InventoryItemID uuid.UUID `json:"inventory_item_id"`
+			Quantity        int       `json:"quantity"`
+		} `json:"restock"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
+	}
+
+	var restock map[uuid.UUID]int
+	if body.Restock != nil {
+		if len(*body.Restock) > 200 {
+			response.Error(w, http.StatusBadRequest, "Demasiados artículos para devolver")
+			return
+		}
+		restock = make(map[uuid.UUID]int, len(*body.Restock))
+		for _, line := range *body.Restock {
+			if line.Quantity < 0 || line.InventoryItemID == uuid.Nil {
+				response.Error(w, http.StatusBadRequest, "Cantidad a devolver inválida")
+				return
+			}
+			restock[line.InventoryItemID] += line.Quantity
+		}
 	}
 
 	if errs := validator.ValidateRejectReason(body.Reason); errs.HasErrors() {
@@ -434,15 +559,29 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reviewerID := ""
+	reviewerID, role := "", ""
 	if record, ok := auth.GetRecord(r.Context()); ok {
 		reviewerID = auth.RecordID(record)
+		role = auth.RoleFromRecord(record)
+	}
+
+	// Rejecting a pending online order is routine. Cancelling one that was
+	// accepted (maybe already paid, or in preparation) gives its stock back
+	// and voids a sale, so only admins and managers may do it.
+	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
+	if err != nil {
+		writeAppError(w, err, "No se pudo cargar la orden")
+		return
+	}
+	if existing.Status != "pendiente_revision" && role != auth.RoleAdmin && role != auth.RoleManager {
+		response.Error(w, http.StatusForbidden, "Solo un administrador o encargado puede cancelar una orden aceptada")
+		return
 	}
 
 	ctx := audit.ContextFromRequest(r, reviewerID)
-	updated, err := h.orderSvc.Reject(ctx, id, body.Reason, reviewerID)
+	updated, err := h.orderSvc.Reject(ctx, id, body.Reason, reviewerID, restock)
 	if err != nil {
-		writeAppError(w, err, "Failed to reject order")
+		writeAppError(w, err, "No se pudo rechazar la orden")
 		return
 	}
 
@@ -454,7 +593,7 @@ func (h *OrderHandler) Reject(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
@@ -462,7 +601,7 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -474,10 +613,10 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
+			response.Error(w, http.StatusNotFound, "Orden no encontrada")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		response.Error(w, http.StatusInternalServerError, "No se pudo cargar la orden")
 		return
 	}
 
@@ -494,7 +633,7 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, actorID)
 	updated, err := h.orderSvc.UpdateStatus(ctx, id, body.Status)
 	if err != nil {
-		writeAppError(w, err, "Failed to update status")
+		writeAppError(w, err, "No se pudo actualizar el estado")
 		return
 	}
 
@@ -506,32 +645,32 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
 	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
+			response.Error(w, http.StatusNotFound, "Orden no encontrada")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		response.Error(w, http.StatusInternalServerError, "No se pudo cargar la orden")
 		return
 	}
-	if !h.orderSvc.IsOrderEditable(existing.Status) {
+	if !h.orderSvc.IsOrderEditable(existing) {
 		response.Error(w, http.StatusConflict, "No se puede editar una orden que ya fue aceptada, rechazada, entregada o cancelada")
 		return
 	}
 
 	var body requests.UpdateOrderRequest
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
-	if body.CustomerName == "" || body.CustomerPhone == "" || body.PaymentMethod == "" || body.OrderType == "" {
-		response.Error(w, http.StatusBadRequest, "customer_name, customer_phone, payment_method, order_type are required")
+	if body.CustomerName == "" || body.PaymentMethod == "" || body.OrderType == "" {
+		response.Error(w, http.StatusBadRequest, "Faltan el nombre, el método de pago o el tipo de orden")
 		return
 	}
 
@@ -549,14 +688,14 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	notes := strings.TrimSpace(body.Notes)
 	if notes == "" {
-		response.Error(w, http.StatusBadRequest, "notes is required when editing orders")
+		response.Error(w, http.StatusBadRequest, "Escribe una nota con el motivo del cambio")
 		return
 	}
 
 	items := make([]services.OrderItemInput, 0, len(body.Items))
 	for _, item := range body.Items {
 		if item.Quantity <= 0 {
-			response.Error(w, http.StatusBadRequest, "items.quantity must be greater than 0")
+			response.Error(w, http.StatusBadRequest, "La cantidad de cada producto debe ser mayor que 0")
 			return
 		}
 		items = append(items, services.OrderItemInput{
@@ -584,7 +723,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Items:          items,
 	})
 	if err != nil {
-		writeAppError(w, err, "Failed to update order")
+		writeAppError(w, err, "No se pudo actualizar la orden")
 		return
 	}
 
@@ -596,7 +735,7 @@ func (h *OrderHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
@@ -604,7 +743,7 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 		Notes *string `json:"notes"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -623,7 +762,7 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, actorID)
 	updated, err := h.orderSvc.UpdateNotes(ctx, id, normalized)
 	if err != nil {
-		writeAppError(w, err, "Failed to update notes")
+		writeAppError(w, err, "No se pudo guardar la nota")
 		return
 	}
 
@@ -635,20 +774,20 @@ func (h *OrderHandler) UpdateNotes(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
 	existing, err := h.orderSvc.GetByIDWithItems(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, apperror.ErrNotFound) {
-			response.Error(w, http.StatusNotFound, "Order not found")
+			response.Error(w, http.StatusNotFound, "Orden no encontrada")
 			return
 		}
-		response.Error(w, http.StatusInternalServerError, "Failed to fetch order")
+		response.Error(w, http.StatusInternalServerError, "No se pudo cargar la orden")
 		return
 	}
-	if !h.orderSvc.IsOrderEditable(existing.Status) {
+	if !h.orderSvc.IsOrderEditable(existing) {
 		response.Error(w, http.StatusConflict, "No se puede eliminar una orden que ya fue aceptada, rechazada, entregada o cancelada")
 		return
 	}
@@ -660,13 +799,13 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	ctx := audit.ContextFromRequest(r, actorID)
 	if err := h.orderSvc.Delete(ctx, id); err != nil {
-		writeAppError(w, err, "Failed to delete order")
+		writeAppError(w, err, "No se pudo eliminar la orden")
 		return
 	}
 
 	h.invalidateListCache()
 	h.invalidateOrderCache(id)
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Order deleted"})
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Orden eliminada"})
 }
 
 // Archive toggles the archive flag of an order.
@@ -676,7 +815,7 @@ func (h *OrderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid order ID")
+		response.Error(w, http.StatusBadRequest, "ID de orden inválido")
 		return
 	}
 
@@ -684,7 +823,7 @@ func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		Archived bool `json:"archived"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
-		response.Error(w, http.StatusBadRequest, "Invalid request body")
+		response.Error(w, http.StatusBadRequest, "Cuerpo de solicitud inválido")
 		return
 	}
 
@@ -696,7 +835,7 @@ func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	ctx := audit.ContextFromRequest(r, actorID)
 	updated, err := h.orderSvc.SetArchived(ctx, id, body.Archived)
 	if err != nil {
-		writeAppError(w, err, "Failed to update archive status")
+		writeAppError(w, err, "No se pudo archivar la orden")
 		return
 	}
 
@@ -710,14 +849,14 @@ func (h *OrderHandler) Archive(w http.ResponseWriter, r *http.Request) {
 // POST /api/v1/admin/orders/archive/run
 func (h *OrderHandler) RunArchive(w http.ResponseWriter, r *http.Request) {
 	if h.archiver == nil {
-		response.Error(w, http.StatusServiceUnavailable, "Archiver not configured")
+		response.Error(w, http.StatusServiceUnavailable, "El archivado automático no está configurado")
 		return
 	}
 
 	archived, err := h.archiver.RunOnce(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Manual archive run failed")
-		response.Error(w, http.StatusInternalServerError, "Failed to run archive")
+		response.Error(w, http.StatusInternalServerError, "No se pudo archivar")
 		return
 	}
 

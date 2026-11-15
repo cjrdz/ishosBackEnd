@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/rs/zerolog/log"
 
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/audit"
@@ -19,10 +20,17 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/events"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
+
+// OfferPriceSource provides the special base prices of active store offers.
+type OfferPriceSource interface {
+	ActiveOfferPrices(ctx context.Context) (map[uuid.UUID]float64, error)
+}
 
 // OrderCommandService handles all state mutations for orders.
 type OrderCommandService struct {
+	offers       OfferPriceSource
 	orderRepo    OrderRepository
 	orderStore   OrderStore
 	customerRepo CustomerRepository
@@ -53,6 +61,21 @@ func NewOrderCommandService(
 	}
 }
 
+// activeOfferPrices returns product → offer price for active offers. A
+// settings read failure is logged and falls back to regular prices rather
+// than blocking the order.
+func (s *OrderCommandService) activeOfferPrices(ctx context.Context) map[uuid.UUID]float64 {
+	if s.offers == nil {
+		return nil
+	}
+	prices, err := s.offers.ActiveOfferPrices(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("could not load active offers; pricing at regular prices")
+		return nil
+	}
+	return prices
+}
+
 // Create creates a new order with items in a transaction.
 // Enriches customizations, validates products, links the order to a customer
 // record, and publishes the creation event.
@@ -63,6 +86,10 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 	if input.IdempotencyKey != nil {
 		existing, err := s.orderStore.FindOrderByIdempotencyKey(ctx, *input.IdempotencyKey)
 		if err == nil {
+			// A key reused at another location must not reveal that order.
+			if existing.LocationID != input.LocationID {
+				return dto.Order{}, fmt.Errorf("%w: esta orden ya se envió desde otra sucursal", apperror.ErrConflict)
+			}
 			return existing, nil
 		}
 		if !errors.Is(err, apperror.ErrNotFound) {
@@ -71,12 +98,21 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		// ErrNotFound is expected: no prior order for this key, proceed.
 	}
 
+	if input.LocationID == uuid.Nil {
+		return dto.Order{}, scope.ErrLocationRequired
+	}
+
+	if err := s.ensureStock(ctx, input.LocationID, uuid.Nil, input.Items, nil); err != nil {
+		return dto.Order{}, err
+	}
+
 	customerID, err := s.resolveCustomerByPhone(ctx, input.CustomerPhone, input.CustomerName, input.CustomerEmail)
 	if err != nil {
 		return dto.Order{}, err
 	}
 
 	storeInput := repository.StoreOrderInput{
+		LocationID:     input.LocationID,
 		IdempotencyKey: input.IdempotencyKey,
 		CustomerID:     customerID,
 		CustomerName:   input.CustomerName,
@@ -90,6 +126,10 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		Notes:          input.Notes,
 		CreatedByID:    input.CreatedByID,
 		Items:          toStoreOrderItemInputs(input.Items),
+		BasePrices:     s.activeOfferPrices(ctx),
+		// Orders taken at the counter are accepted on creation; online
+		// orders wait for staff review.
+		Accepted: input.CreatedByID != nil && *input.CreatedByID != "",
 	}
 
 	createCtx := auditContext(ctx, audit.ActionOrderCreated, map[string]any{
@@ -104,7 +144,7 @@ func (s *OrderCommandService) Create(ctx context.Context, input CreateOrderInput
 		// surfacing a conflict to the customer who did nothing wrong.
 		if input.IdempotencyKey != nil && apperror.IsUniqueViolation(err) {
 			existing, findErr := s.orderStore.FindOrderByIdempotencyKey(ctx, *input.IdempotencyKey)
-			if findErr == nil {
+			if findErr == nil && existing.LocationID == input.LocationID {
 				return existing, nil
 			}
 		}
@@ -149,8 +189,11 @@ func (s *OrderCommandService) createOrderWithRetry(ctx context.Context, storeInp
 		}
 	}
 
-	return dto.Order{}, fmt.Errorf("%w: unable to generate a unique order number after %d attempts: %v",
-		apperror.ErrConflict, maxAttempts, lastErr)
+	// The conflict message is returned to the client, so keep the database
+	// error out of it and log it instead.
+	log.Error().Err(lastErr).Int("attempts", maxAttempts).Msg("order number generation exhausted retries")
+	return dto.Order{}, fmt.Errorf("%w: no se pudo generar un número de orden (%d intentos); intenta de nuevo",
+		apperror.ErrConflict, maxAttempts)
 }
 
 // isIdempotencyKeyConflict reports whether err is a Postgres unique-violation
@@ -178,10 +221,22 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 		return dto.Order{}, ErrInvalidOrderState
 	}
 
+	// Accepting an order reserves its stock: it must fit in what is not
+	// already promised to other accepted orders. A forced approval skips it.
+	if !allowOverride && s.inventory != nil {
+		withItems, err := s.orderRepo.FindByIDWithItemsAndProducts(ctx, id)
+		if err != nil {
+			return dto.Order{}, err
+		}
+		if err := s.inventory.EnsureAvailable(ctx, withItems.LocationID, id, withItems.Items, nil); err != nil {
+			return dto.Order{}, err
+		}
+	}
+
 	approveCtx := auditContext(ctx, audit.ActionOrderApproved, map[string]any{
 		"order_number": order.OrderNumber,
 	})
-	updated, err := s.orderRepo.Approve(approveCtx, id, &reviewerID)
+	updated, err := s.orderRepo.Approve(approveCtx, id, &reviewerID, order.Status)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -199,7 +254,7 @@ func (s *OrderCommandService) Approve(ctx context.Context, id uuid.UUID, reviewe
 }
 
 // Reject transitions an order to rejected status.
-func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string) (dto.Order, error) {
+func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, reviewerID string, restock map[uuid.UUID]int) (dto.Order, error) {
 	order, err := s.orderRepo.FindByID(ctx, id)
 	if err != nil {
 		return dto.Order{}, err
@@ -217,7 +272,7 @@ func (s *OrderCommandService) Reject(ctx context.Context, id uuid.UUID, reason, 
 		"order_number": order.OrderNumber,
 		"reason":       reason,
 	})
-	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID)
+	updated, err := s.orderRepo.Reject(rejectCtx, id, reason, &reviewerID, order.Status, restock)
 	if err != nil {
 		return dto.Order{}, err
 	}
@@ -272,21 +327,25 @@ func (s *OrderCommandService) UpdateStatus(ctx context.Context, id uuid.UUID, st
 		if err != nil {
 			return dto.Order{}, err
 		}
-		deductions, err := s.inventory.DeductionsFor(ctx, orderWithItems.Items)
+		// Stock promised to other accepted orders is not available.
+		if err := s.inventory.EnsureAvailable(ctx, orderWithItems.LocationID, id, orderWithItems.Items, nil); err != nil {
+			return dto.Order{}, err
+		}
+		deductions, err := s.inventory.DeductionsFor(ctx, orderWithItems.LocationID, orderWithItems.Items)
 		if err != nil {
 			return dto.Order{}, err
 		}
-		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, deductions, false)
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, oldStatus, deductions, false)
 		if err != nil {
 			return dto.Order{}, err
 		}
 	case status == "cancelada" && oldStatus != "cancelada":
-		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, nil, true)
+		updated, err = s.orderStore.UpdateStatusWithStockAdjustment(statusCtx, id, status, oldStatus, nil, true)
 		if err != nil {
 			return dto.Order{}, err
 		}
 	default:
-		updated, err = s.orderStore.UpdateStatus(statusCtx, id, status)
+		updated, err = s.orderStore.UpdateStatus(statusCtx, id, status, oldStatus)
 		if err != nil {
 			return dto.Order{}, err
 		}
@@ -330,6 +389,15 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		TableNumber:    input.TableNumber,
 		Notes:          input.Notes,
 		Items:          toStoreOrderItemInputs(input.Items),
+		ExpectedStatus: existing.Status,
+		BasePrices:     s.activeOfferPrices(ctx),
+	}
+
+	// Online orders keep a phone: it is how the shop reaches the customer.
+	if strings.TrimSpace(input.CustomerPhone) == "" && existing.CreatedByUserID == nil {
+		return dto.Order{}, &apperror.ValidationError{Fields: map[string]string{
+			"customer_phone": "Las órdenes en línea necesitan el teléfono del cliente",
+		}}
 	}
 
 	if input.CustomerPhone != existing.CustomerPhone {
@@ -338,6 +406,8 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 			return dto.Order{}, err
 		}
 		storeInput.CustomerID = customerID
+		// No phone, no customer: drop the link to the previous one.
+		storeInput.ClearCustomer = customerID == nil
 	}
 
 	updateCtx := auditContext(ctx, audit.ActionOrderUpdated, map[string]any{
@@ -346,13 +416,25 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 		"items_count":    len(storeInput.Items),
 	})
 
+	// Orders that have not deducted stock yet are checked against what the
+	// location has now; deducted ones are checked inside the transaction.
+	if len(input.Items) > 0 && !orderHasDeductedStock(existing.Status) {
+		var previous []dto.OrderItem
+		if current, err := s.orderRepo.FindByIDWithItemsAndProducts(ctx, id); err == nil {
+			previous = current.Items
+		}
+		if err := s.ensureStock(ctx, existing.LocationID, id, input.Items, previous); err != nil {
+			return dto.Order{}, err
+		}
+	}
+
 	var updated dto.Order
 	if len(input.Items) > 0 && orderHasDeductedStock(existing.Status) {
 		newItems, err := s.resolveOrderItems(ctx, input.Items)
 		if err != nil {
 			return dto.Order{}, err
 		}
-		deductions, err := s.inventory.DeductionsFor(ctx, newItems)
+		deductions, err := s.inventory.DeductionsFor(ctx, existing.LocationID, newItems)
 		if err != nil {
 			return dto.Order{}, err
 		}
@@ -368,6 +450,23 @@ func (s *OrderCommandService) Update(ctx context.Context, id uuid.UUID, input Up
 	}
 
 	return updated, nil
+}
+
+// ensureStock checks the order's tracked flavours and products against the
+// location's current stock. It is skipped when no inventory service is wired.
+func (s *OrderCommandService) ensureStock(ctx context.Context, locationID, orderID uuid.UUID, items []OrderItemInput, previous []dto.OrderItem) error {
+	if s.inventory == nil || len(items) == 0 {
+		return nil
+	}
+	resolved, err := s.resolveOrderItems(ctx, items)
+	if err != nil {
+		// Unknown products are reported by order validation with a clearer message.
+		if errors.Is(err, apperror.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	return s.inventory.EnsureAvailable(ctx, locationID, orderID, resolved, previous)
 }
 
 // orderHasDeductedStock reports whether an order in the given status has already
@@ -463,6 +562,11 @@ func (s *OrderCommandService) Delete(ctx context.Context, id uuid.UUID) error {
 func (s *OrderCommandService) resolveCustomerByPhone(ctx context.Context, phone, name string, email *string) (*uuid.UUID, error) {
 	phone = strings.TrimSpace(phone)
 	name = strings.TrimSpace(name)
+	// Counter orders may come without a phone: there is no customer record
+	// to link them to.
+	if phone == "" {
+		return nil, nil
+	}
 
 	customer, err := s.customerRepo.FindByPhone(ctx, phone)
 	if err == nil {
