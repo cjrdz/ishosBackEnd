@@ -31,6 +31,12 @@ type Location struct {
 	UpdatedAt           time.Time                `json:"updated_at"`
 }
 
+// Item types that can be marked "Agotado" at a location.
+const (
+	AvailabilityProduct = "product"
+	AvailabilityFlavor  = "flavor"
+)
+
 // SoldOutItems lists what is marked "Agotado" at one location.
 type SoldOutItems struct {
 	LocationID uuid.UUID   `json:"location_id"`

@@ -123,7 +123,8 @@ func (r *LocationBunRepository) SoldOut(ctx context.Context, locationID uuid.UUI
 }
 
 // SetSoldOut marks (or clears) an item as sold out at a location.
-func (r *LocationBunRepository) SetSoldOut(ctx context.Context, locationID uuid.UUID, itemType models.AvailabilityItemType, itemID uuid.UUID, soldOut bool, by string) error {
+func (r *LocationBunRepository) SetSoldOut(ctx context.Context, locationID uuid.UUID, kind string, itemID uuid.UUID, soldOut bool, by string) error {
+	itemType := models.AvailabilityItemType(kind)
 	if !soldOut {
 		_, err := r.db.NewDelete().Model((*models.LocationAvailability)(nil)).
 			Where("location_id = ? AND item_type = ? AND item_id = ?", locationID, itemType, itemID).Exec(ctx)

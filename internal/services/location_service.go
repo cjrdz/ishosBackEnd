@@ -13,7 +13,6 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	cachepkg "github.com/cjrdz/ishosBackEnd/internal/cache"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
-	"github.com/cjrdz/ishosBackEnd/internal/models"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
 )
 
@@ -24,7 +23,8 @@ type LocationRepository interface {
 	Create(ctx context.Context, input repository.LocationInput) (dto.Location, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.LocationInput) (dto.Location, error)
 	SoldOut(ctx context.Context, locationID uuid.UUID) (dto.SoldOutItems, error)
-	SetSoldOut(ctx context.Context, locationID uuid.UUID, itemType models.AvailabilityItemType, itemID uuid.UUID, soldOut bool, by string) error
+	// itemType is dto.AvailabilityProduct or dto.AvailabilityFlavor.
+	SetSoldOut(ctx context.Context, locationID uuid.UUID, itemType string, itemID uuid.UUID, soldOut bool, by string) error
 }
 
 const (
@@ -265,17 +265,16 @@ func (s *LocationService) SoldOut(ctx context.Context, locationID uuid.UUID) (dt
 
 // SetSoldOut marks a product or flavour as sold out (or back in stock) at a location.
 func (s *LocationService) SetSoldOut(ctx context.Context, locationID uuid.UUID, itemType string, itemID uuid.UUID, soldOut bool, by string) error {
-	t := models.AvailabilityItemType(itemType)
-	if t != models.AvailabilityItemProduct && t != models.AvailabilityItemFlavor {
+	if itemType != dto.AvailabilityProduct && itemType != dto.AvailabilityFlavor {
 		return &apperror.ValidationError{Fields: map[string]string{"item_type": "Indica si es un producto o un sabor"}}
 	}
 	if itemID == uuid.Nil {
-		return &apperror.ValidationError{Fields: map[string]string{"item_id": "required"}}
+		return &apperror.ValidationError{Fields: map[string]string{"item_id": "Indica el producto o sabor"}}
 	}
 	if _, err := s.Get(ctx, locationID); err != nil {
 		return err
 	}
-	return s.repo.SetSoldOut(ctx, locationID, t, itemID, soldOut, by)
+	return s.repo.SetSoldOut(ctx, locationID, itemType, itemID, soldOut, by)
 }
 
 func weeklyFromDTO(hours map[string][]dto.HoursWindow) WeeklyHours {

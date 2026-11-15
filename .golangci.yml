@@ -20,6 +20,8 @@ linters:
       ignore-rules:
         - inventario
         - producto
+        - productos
+        - momento
   exclusions:
     # Test fixtures intentionally use dummy credentials and temp file paths.
     rules:

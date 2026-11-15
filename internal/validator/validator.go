@@ -16,7 +16,7 @@ type ValidationErrors []ValidationError
 
 // fieldLabels names request fields the way staff and customers know them.
 // Error() is shown in the panel and the store, so it reads in Spanish.
-var fieldLabels = map[string]string{
+var fieldLabels = map[string]string{ //nolint:gosec // G101: field labels ("Contraseña"), not credentials
 	"customer_name":   "Nombre",
 	"customer_phone":  "Teléfono",
 	"payment_method":  "Método de pago",
