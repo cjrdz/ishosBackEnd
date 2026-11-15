@@ -97,7 +97,7 @@ docs/                  # Documentation
 ✅ Bun ORM queries (no SQL injection)
 ✅ Transactional audit logging for order and catalog mutations
 ✅ Token revocation (secure logout validates the token first)
-✅ Rate limiting (login + public orders + tracking) with Redis-backed distributed state
+✅ Rate limiting (login + public orders + tracking) (in memory, or shared through Redis/Valkey when `REDIS_URL` is set)
 ✅ HttpOnly cookie auth (no JS-accessible tokens)
 ✅ SameSite=Lax CSRF protection
 ✅ Atomic stock transactions (status + inventory committed together)

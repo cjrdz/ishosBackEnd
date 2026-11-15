@@ -384,10 +384,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("BFF_SHARED_SECRET must be set in production (at least %d characters) so per-customer rate limits work behind the frontend BFF", minBFFSharedSecretLength)
 	}
 
-	// Redis is required in production for distributed rate limiting and
-	// login lockout state.
+	// Redis is optional: rate limits, login lockouts and the analytics cache
+	// fall back to memory. That is enough for one instance (counters reset on
+	// redeploy); set REDIS_URL (Redis or Valkey) before running more than one
+	// replica so they share that state.
 	if c.Env == "production" && strings.TrimSpace(c.RedisURL) == "" {
-		return fmt.Errorf("REDIS_URL is required in production")
+		log.Println("REDIS_URL not set: rate limits and login lockouts are kept in memory (fine for a single instance)")
 	}
 
 	return nil

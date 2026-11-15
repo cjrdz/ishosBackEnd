@@ -57,7 +57,7 @@ Minimum production configuration:
 - `R2_SECRET_ACCESS_KEY`
 - `R2_PUBLIC_BASE_URL`
 - `ALLOWED_ORIGINS`
-- `REDIS_URL` — required in production for distributed rate limiting and login lockout state
+- `REDIS_URL` — optional. Without it, rate limits and login lockouts live in memory (fine for one instance; they reset on redeploy). Set it (Redis or Valkey) before running more than one replica.
 - `TRACKING_TOKEN_SECRET` — required in production (do not derive from `DATABASE_URL`)
 - `BFF_SHARED_SECRET` — required in production (≥32 chars); must equal `BFF_SHARED_SECRET` on the frontend
   (Cloudflare secret / Vercel env) so per-customer rate limits work behind the BFF
