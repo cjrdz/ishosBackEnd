@@ -5,6 +5,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/uptrace/bun"
@@ -12,40 +13,121 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/models"
 )
 
-// EnsureBunSchema creates tables and indexes if they do not exist, then runs
-// idempotent backfills for columns/data that the previous auto-migration historically
-// missed. It is safe to run against an already-migrated database.
+// schemaVersion MUST be bumped whenever a step is added to migrateSchema (or an
+// existing step changes). A database whose recorded version is already
+// >= schemaVersion skips migration entirely, so a new step added without a bump
+// never runs on existing databases.
+// Version history:
 //
-// On a warm database it short-circuits: if the orders table already exists we
-// assume the schema and backfills are up to date. This avoids paying a Neon
-// round-trip for every CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS
-// statement on every server restart.
+//	1 — initial schema
+//	2 — one-time repair of products.free_toppings (see repairFreeToppings)
+//	3 — locations (sucursales): location_id on orders/stock, per-location
+//	    Agotados; existing data moves to the first location (see ensureLocations)
+const schemaVersion = 4
+
+// Migration timeouts. lock_timeout makes a DDL statement that is blocked by a
+// live transaction (e.g. the previous instance during a rolling deploy) fail
+// fast instead of queueing every order write behind it; the boot then fails
+// and is retried, which is safer than hanging.
+const (
+	migrationDeadline         = 3 * time.Minute
+	migrationLockTimeout      = "15s"
+	migrationStatementTimeout = "120s"
+)
+
+// schemaMigrationLockName keys the transaction-scoped advisory lock that
+// serialises concurrent migrators (e.g. two replicas booting at once).
+const schemaMigrationLockName = "ishos:schema-migration"
+
+// EnsureBunSchema creates tables, foreign keys and indexes if they do not
+// exist, then runs idempotent backfills. It is safe to run against an
+// already-migrated database.
+//
+// Every step runs inside a single transaction guarded by an advisory lock, and
+// the schema_version marker is written in that same transaction. A crash or
+// timeout part-way through therefore rolls back cleanly instead of leaving a
+// half-built schema that later boots would mistake for a complete one.
+//
+// On a warm database the version check short-circuits with a single query, so
+// server restarts do not pay a Neon round-trip per DDL statement.
 func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
-	initialized, err := isSchemaInitialized(ctx, db)
+	current, err := readSchemaVersion(ctx, db)
 	if err != nil {
-		return fmt.Errorf("check schema initialization: %w", err)
+		return fmt.Errorf("read schema version: %w", err)
 	}
-	if initialized {
-		log.Debug().Msg("schema already initialized; skipping migration")
-		// Indexes and columns added after the initial schema rollout must still
-		// be created idempotently on warm databases.
-		if err := ensureOrderArchiveIndex(ctx, db); err != nil {
-			return err
-		}
-		if err := ensureIdempotencyKeyExpiresAt(ctx, db); err != nil {
-			return err
-		}
-		if err := ensureAmountReceivedColumn(ctx, db); err != nil {
-			return err
-		}
-		return ensureFreeToppingsColumn(ctx, db)
+	if current >= schemaVersion {
+		log.Debug().Int("version", current).Msg("schema up to date; skipping migration")
+		return nil
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, migrationDeadline)
+	defer cancel()
+
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.ExecContext(ctx, "SELECT set_config('lock_timeout', ?, true), set_config('statement_timeout', ?, true)",
+			migrationLockTimeout, migrationStatementTimeout); err != nil {
+			return fmt.Errorf("set migration timeouts: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(?)", AdvisoryLockKey(schemaMigrationLockName)); err != nil {
+			return fmt.Errorf("acquire schema migration lock: %w", err)
+		}
+
+		// Another migrator may have finished while we waited for the lock.
+		current, err := readSchemaVersion(ctx, tx)
+		if err != nil {
+			return fmt.Errorf("re-read schema version: %w", err)
+		}
+		if current >= schemaVersion {
+			return nil
+		}
+
+		log.Info().Int("from", current).Int("to", schemaVersion).Msg("migrating database schema")
+		if err := migrateSchema(ctx, tx); err != nil {
+			return err
+		}
+		if current < 2 {
+			if err := repairFreeToppings(ctx, tx); err != nil {
+				return err
+			}
+		}
+		if current < 3 {
+			if err := migrateSingleStoreToLocations(ctx, tx); err != nil {
+				return err
+			}
+		}
+		if current < 4 {
+			if err := lowerDefaultFlavorThresholds(ctx, tx); err != nil {
+				return err
+			}
+		}
+		return writeSchemaVersion(ctx, tx, schemaVersion)
+	})
+}
+
+// migrateSchema runs every idempotent schema step. Each step must be safe to
+// re-run against a database that already has it applied, and must not raise an
+// error for already-present objects: an error aborts the enclosing transaction.
+func migrateSchema(ctx context.Context, db bun.IDB) error {
 	if err := createTables(ctx, db); err != nil {
 		return fmt.Errorf("create bun tables: %w", err)
 	}
 	if err := createIndexes(ctx, db); err != nil {
 		return fmt.Errorf("create bun indexes: %w", err)
+	}
+	if err := ensureOrderArchiveIndex(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureIdempotencyKeyExpiresAt(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureAmountReceivedColumn(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureFreeToppingsColumn(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureLocations(ctx, db); err != nil {
+		return err
 	}
 	if err := runBackfills(ctx, db); err != nil {
 		return fmt.Errorf("run backfills: %w", err)
@@ -53,30 +135,52 @@ func EnsureBunSchema(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-// isSchemaInitialized returns true when the orders table already exists in the
-// current schema. Orders is used as a sentinel because it is created near the
-// end of the table list and depends on most other tables.
-func isSchemaInitialized(ctx context.Context, db *bun.DB) (bool, error) {
-	const query = `
+// readSchemaVersion returns the recorded schema version, or 0 when the
+// schema_version table does not exist yet (fresh database).
+func readSchemaVersion(ctx context.Context, db bun.IDB) (int, error) {
+	const existsQuery = `
 SELECT EXISTS (
 	SELECT 1
 	FROM information_schema.tables
 	WHERE table_schema = current_schema()
-	  AND table_name = 'orders'
+	  AND table_name = 'schema_version'
 )`
 	var exists bool
-	if err := db.QueryRowContext(ctx, query).Scan(&exists); err != nil {
-		return false, err
+	if err := db.QueryRowContext(ctx, existsQuery).Scan(&exists); err != nil {
+		return 0, err
 	}
-	return exists, nil
+	if !exists {
+		return 0, nil
+	}
+
+	var version int
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&version); err != nil {
+		return 0, err
+	}
+	return version, nil
 }
 
-func createTables(ctx context.Context, db *bun.DB) error {
+func writeSchemaVersion(ctx context.Context, db bun.IDB, version int) error {
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (
+	version    INTEGER PRIMARY KEY,
+	applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`); err != nil {
+		return fmt.Errorf("create schema_version table: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO schema_version (version) VALUES (?) ON CONFLICT (version) DO NOTHING`, version); err != nil {
+		return fmt.Errorf("record schema version: %w", err)
+	}
+	return nil
+}
+
+func createTables(ctx context.Context, db bun.IDB) error {
 	// Order matters only for tables that reference each other, but Postgres
 	// foreign keys are checked at statement time. Creating tables first, then
 	// adding FKs later, avoids ordering problems. Bun's NewCreateTable does not
 	// emit FKs by default; we add them explicitly below.
 	tables := []interface{}{
+		(*models.Location)(nil),
+		(*models.LocationAvailability)(nil),
 		(*models.Addon)(nil),
 		(*models.AdminSetting)(nil),
 		(*models.AuditLog)(nil),
@@ -104,7 +208,7 @@ func createTables(ctx context.Context, db *bun.DB) error {
 	return createForeignKeys(ctx, db)
 }
 
-func createForeignKeys(ctx context.Context, db *bun.DB) error {
+func createForeignKeys(ctx context.Context, db bun.IDB) error {
 	// Bun's NewCreateTable does not emit foreign keys by default for Postgres.
 	// Add them idempotently so relation queries and cascades behave like the legacy schema.
 	fks := []struct {
@@ -150,18 +254,41 @@ func createForeignKeys(ctx context.Context, db *bun.DB) error {
 	}
 
 	for _, fk := range fks {
-		_, err := db.ExecContext(ctx, fk.sql+` ON UPDATE NO ACTION NOT VALID`)
+		// Check for the constraint up front rather than swallowing "already
+		// exists" errors: inside a transaction any error aborts the whole tx.
+		exists, err := constraintExists(ctx, db, fk.name)
 		if err != nil {
-			// Ignore duplicate constraint errors so the migration is idempotent.
-			if !isDuplicateConstraint(err) {
-				return fmt.Errorf("add FK %s: %w", fk.name, err)
-			}
+			return fmt.Errorf("check FK %s: %w", fk.name, err)
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, fk.sql+` ON UPDATE NO ACTION NOT VALID`); err != nil {
+			return fmt.Errorf("add FK %s: %w", fk.name, err)
 		}
 	}
 	return nil
 }
 
-func createIndexes(ctx context.Context, db *bun.DB) error {
+// constraintExists reports whether a constraint with the given name exists in
+// the current schema.
+func constraintExists(ctx context.Context, db bun.IDB, name string) (bool, error) {
+	const query = `
+SELECT EXISTS (
+	SELECT 1
+	FROM pg_constraint c
+	JOIN pg_namespace n ON n.oid = c.connamespace
+	WHERE n.nspname = current_schema()
+	  AND c.conname = ?
+)`
+	var exists bool
+	if err := db.QueryRowContext(ctx, query, name).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func createIndexes(ctx context.Context, db bun.IDB) error {
 	indexes := []struct {
 		name  string
 		table string
@@ -210,7 +337,7 @@ func createIndexes(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-func ensureOrderArchiveIndex(ctx context.Context, db *bun.DB) error {
+func ensureOrderArchiveIndex(ctx context.Context, db bun.IDB) error {
 	_, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_orders_is_archived_created_at ON orders (is_archived, created_at DESC)`)
 	if err != nil {
 		return fmt.Errorf("create order archive index: %w", err)
@@ -218,7 +345,7 @@ func ensureOrderArchiveIndex(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-func ensureAmountReceivedColumn(ctx context.Context, db *bun.DB) error {
+func ensureAmountReceivedColumn(ctx context.Context, db bun.IDB) error {
 	_, err := db.ExecContext(ctx, `ALTER TABLE orders ADD COLUMN IF NOT EXISTS amount_received DOUBLE PRECISION`)
 	if err != nil {
 		return fmt.Errorf("add orders.amount_received column: %w", err)
@@ -226,7 +353,7 @@ func ensureAmountReceivedColumn(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-func ensureFreeToppingsColumn(ctx context.Context, db *bun.DB) error {
+func ensureFreeToppingsColumn(ctx context.Context, db bun.IDB) error {
 	_, err := db.ExecContext(ctx, `ALTER TABLE products ADD COLUMN IF NOT EXISTS free_toppings INTEGER NOT NULL DEFAULT 1`)
 	if err != nil {
 		return fmt.Errorf("add products.free_toppings column: %w", err)
@@ -238,7 +365,22 @@ func ensureFreeToppingsColumn(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-func ensureIdempotencyKeyExpiresAt(ctx context.Context, db *bun.DB) error {
+// repairFreeToppings runs once (schema v2). A repository bug reset
+// free_toppings to 0 on every product edit, so products started charging for
+// the first topping. Before v2 no product could keep a deliberate 0 (any edit
+// overwrote it), so every 0 is the bug's doing and is restored to the default.
+func repairFreeToppings(ctx context.Context, db bun.IDB) error {
+	res, err := db.ExecContext(ctx, `UPDATE products SET free_toppings = 1 WHERE free_toppings = 0`)
+	if err != nil {
+		return fmt.Errorf("repair products.free_toppings: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Info().Int64("products", n).Msg("restored one free topping on products reset by the update bug")
+	}
+	return nil
+}
+
+func ensureIdempotencyKeyExpiresAt(ctx context.Context, db bun.IDB) error {
 	_, err := db.ExecContext(ctx, `ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`)
 	if err != nil {
 		return fmt.Errorf("add idempotency_keys.expires_at column: %w", err)
@@ -258,7 +400,7 @@ func ensureIdempotencyKeyExpiresAt(ctx context.Context, db *bun.DB) error {
 	return nil
 }
 
-func runBackfills(ctx context.Context, db *bun.DB) error {
+func runBackfills(ctx context.Context, db bun.IDB) error {
 	// These backfills were previously run by EnsureSchema after schema creation.
 	// They remain idempotent so Bun auto-migration can safely rerun them.
 	if err := verifyAddonGroupColumn(ctx, db); err != nil {
@@ -276,5 +418,20 @@ func runBackfills(ctx context.Context, db *bun.DB) error {
 	if err := backfillOrderCustomerID(ctx, db); err != nil {
 		return err
 	}
+	return nil
+}
+
+// lowerDefaultFlavorThresholds moves flavour minimums still at the old
+// automatic 100 balls to the new default of 20. Until schema v4 there was no
+// way to change a minimum, so 100 on a flavour row is always that default.
+func lowerDefaultFlavorThresholds(ctx context.Context, db bun.IDB) error {
+	res, err := db.ExecContext(ctx,
+		`UPDATE inventory_items SET low_stock_threshold = 20, updated_at = NOW()
+		 WHERE type = 'ball_based' AND low_stock_threshold = 100`)
+	if err != nil {
+		return fmt.Errorf("lower default flavour thresholds: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	log.Info().Int64("rows", n).Msg("flavour minimums moved from 100 to 20")
 	return nil
 }

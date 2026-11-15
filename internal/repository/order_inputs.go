@@ -5,6 +5,7 @@ import "github.com/google/uuid"
 // CreateOrderInput is the data required to create an order.
 type CreateOrderInput struct {
 	OrderNumber     string
+	LocationID      uuid.UUID
 	CustomerID      *uuid.UUID
 	CustomerName    string
 	CustomerPhone   string

@@ -55,8 +55,9 @@ func (s OrderStatus) Transitions() ([]OrderStatus, error) {
 		return []OrderStatus{StatusReady, StatusCancelled}, nil
 
 	case StatusReady:
-		// From ready: can deliver
-		return []OrderStatus{StatusDelivered}, nil
+		// From ready: deliver, or cancel (admins/managers, with a reason;
+		// they choose what goes back to stock)
+		return []OrderStatus{StatusDelivered, StatusCancelled}, nil
 
 	case StatusDelivered:
 		// Final state: no transitions

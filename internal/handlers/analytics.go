@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,13 +24,17 @@ import (
 
 type AnalyticsHandler struct {
 	orderRepo   services.OrderRepository
+	loc         *time.Location // store time zone for date ranges
 	cache       *cachepkg.TTLCache
 	redis       *redis.Client
 	redisPrefix string
 }
 
 func NewAnalyticsHandler(orderRepo services.OrderRepository, cfg *config.Config) *AnalyticsHandler {
-	h := &AnalyticsHandler{orderRepo: orderRepo, cache: cachepkg.New(5 * time.Minute)}
+	h := &AnalyticsHandler{orderRepo: orderRepo, cache: cachepkg.New(5 * time.Minute), loc: time.UTC}
+	if cfg != nil {
+		h.loc = cfg.StoreLocation()
+	}
 
 	if cfg == nil || strings.TrimSpace(cfg.RedisURL) == "" {
 		return h
@@ -60,7 +65,11 @@ func NewAnalyticsHandler(orderRepo services.OrderRepository, cfg *config.Config)
 
 func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	// cache key includes the full query string so period variants are cached independently.
-	cacheKey := "analytics:overview:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:overview:" + loc.String() + ":" + r.URL.RawQuery
 	var cached dto.AnalyticsOverview
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
@@ -78,7 +87,7 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.orderRepo.AnalyticsOverview(r.Context(), start, time.Now())
+	result, err := h.orderRepo.AnalyticsOverview(r.Context(), loc, start, time.Now())
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
 		return
@@ -90,7 +99,11 @@ func (h *AnalyticsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request) {
-	cacheKey := "analytics:orders-over-time:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:orders-over-time:" + loc.String() + ":" + r.URL.RawQuery
 	var cached []dto.AnalyticsTimelinePoint
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
@@ -106,13 +119,13 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365)
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365, h.loc)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	points, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), start, end, groupBy)
+	points, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), loc, start, end, groupBy)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
 		return
@@ -138,20 +151,24 @@ func (h *AnalyticsHandler) OrdersOverTime(w http.ResponseWriter, r *http.Request
 }
 
 func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
-	cacheKey := "analytics:top-products:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:top-products:" + loc.String() + ":" + r.URL.RawQuery
 	var cached []dto.AnalyticsTopProduct
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
-	start, end, limit, err := analyticsTopProductsParams(r)
+	start, end, limit, err := analyticsTopProductsParams(r, h.loc)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	result, err := h.orderRepo.AnalyticsTopProducts(r.Context(), start, end, limit)
+	result, err := h.orderRepo.AnalyticsTopProducts(r.Context(), loc, start, end, limit)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
 		return
@@ -165,14 +182,18 @@ func (h *AnalyticsHandler) TopProducts(w http.ResponseWriter, r *http.Request) {
 // response. All three sections are computed from the same start/end date range
 // so the overview period always matches the timeline and top-products window.
 func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
-	cacheKey := "analytics:dashboard:" + r.URL.RawQuery
+	loc, ok := requestScope(w, r)
+	if !ok {
+		return
+	}
+	cacheKey := "analytics:dashboard:" + loc.String() + ":" + r.URL.RawQuery
 	var cached dto.AnalyticsDashboard
 	if h.cacheGet(r.Context(), cacheKey, &cached) {
 		response.JSON(w, http.StatusOK, cached)
 		return
 	}
 
-	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365)
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365, h.loc)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -187,20 +208,20 @@ func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, _, limit, err := analyticsTopProductsParams(r)
+	_, _, limit, err := analyticsTopProductsParams(r, h.loc)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	overview, err := h.orderRepo.AnalyticsOverview(r.Context(), start, end)
+	overview, err := h.orderRepo.AnalyticsOverview(r.Context(), loc, start, end)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute analytics overview")
 		return
 	}
 	overview.Period = "custom"
 
-	rawPoints, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), start, end, groupBy)
+	rawPoints, err := h.orderRepo.AnalyticsOrdersOverTime(r.Context(), loc, start, end, groupBy)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute orders over time")
 		return
@@ -219,7 +240,7 @@ func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		ordersOverTime = append(ordersOverTime, dto.AnalyticsTimelinePoint{Date: key, Count: 0, Revenue: 0})
 	}
 
-	topProducts, err := h.orderRepo.AnalyticsTopProducts(r.Context(), start, end, limit)
+	topProducts, err := h.orderRepo.AnalyticsTopProducts(r.Context(), loc, start, end, limit)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "Failed to compute top products")
 		return
@@ -235,8 +256,8 @@ func (h *AnalyticsHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, result)
 }
 
-func analyticsTopProductsParams(r *http.Request) (time.Time, time.Time, int, error) {
-	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365)
+func analyticsTopProductsParams(r *http.Request, loc *time.Location) (time.Time, time.Time, int, error) {
+	start, end, err := capDateRange(r.URL.Query().Get("start"), r.URL.Query().Get("end"), 365, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, 0, err
 	}
@@ -298,8 +319,10 @@ func (h *AnalyticsHandler) cacheSet(ctx context.Context, key string, value any) 
 	_ = h.redis.Set(redisCtx, redisKey, payload, 5*time.Minute).Err()
 }
 
-func parseDateRange(startRaw, endRaw string) (time.Time, time.Time, error) {
-	now := time.Now()
+// parseDateRange parses YYYY-MM-DD bounds as calendar days in loc (the store
+// time zone): start is 00:00 and end is 23:59:59.999999999 local time.
+func parseDateRange(startRaw, endRaw string, loc *time.Location) (time.Time, time.Time, error) {
+	now := time.Now().In(loc)
 	if endRaw == "" {
 		endRaw = now.Format("2006-01-02")
 	}
@@ -307,17 +330,18 @@ func parseDateRange(startRaw, endRaw string) (time.Time, time.Time, error) {
 		startRaw = now.AddDate(0, -1, 0).Format("2006-01-02")
 	}
 
-	startDate, err := time.Parse("2006-01-02", startRaw)
+	startDate, err := time.ParseInLocation("2006-01-02", startRaw, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("start must use YYYY-MM-DD format")
 	}
-	endDate, err := time.Parse("2006-01-02", endRaw)
+	endDate, err := time.ParseInLocation("2006-01-02", endRaw, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, fmt.Errorf("end must use YYYY-MM-DD format")
 	}
 
 	start := startDate
-	end := endDate.Add(24*time.Hour - time.Nanosecond)
+	// AddDate, not +24h, so DST-observing zones still end at local midnight.
+	end := endDate.AddDate(0, 0, 1).Add(-time.Nanosecond)
 	if end.Before(start) {
 		return time.Time{}, time.Time{}, fmt.Errorf("end must be greater than or equal to start")
 	}
@@ -325,31 +349,15 @@ func parseDateRange(startRaw, endRaw string) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
-func capDateRange(startRaw, endRaw string, maxDays int) (time.Time, time.Time, error) {
-	now := time.Now()
-	if endRaw == "" {
-		endRaw = now.Format("2006-01-02")
-	}
-	if startRaw == "" {
-		startRaw = now.AddDate(0, -1, 0).Format("2006-01-02")
-	}
-
-	startDate, err := time.Parse("2006-01-02", startRaw)
+// capDateRange is parseDateRange plus a maximum inclusive window in days.
+func capDateRange(startRaw, endRaw string, maxDays int, loc *time.Location) (time.Time, time.Time, error) {
+	start, end, err := parseDateRange(startRaw, endRaw, loc)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("start must use YYYY-MM-DD format")
-	}
-	endDate, err := time.Parse("2006-01-02", endRaw)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("end must use YYYY-MM-DD format")
+		return time.Time{}, time.Time{}, err
 	}
 
-	start := startDate
-	end := endDate.Add(24*time.Hour - time.Nanosecond)
-	if end.Before(start) {
-		return time.Time{}, time.Time{}, fmt.Errorf("end must be greater than or equal to start")
-	}
-
-	inclusiveDays := int(endDate.Sub(startDate).Hours()/24) + 1
+	// Count calendar days; rounding absorbs a 23/25h day in DST zones.
+	inclusiveDays := int(math.Round(end.Sub(start).Hours() / 24))
 	if inclusiveDays > maxDays {
 		return time.Time{}, time.Time{}, fmt.Errorf("date range cannot exceed %d days", maxDays)
 	}

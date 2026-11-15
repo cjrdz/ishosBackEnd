@@ -10,42 +10,53 @@ import (
 	"github.com/cjrdz/ishosBackEnd/internal/apperror"
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 type inventoryRepoStub struct {
-	listFn             func(ctx context.Context) ([]dto.InventoryItem, error)
-	listByTypeFn       func(ctx context.Context, itemType string) ([]dto.InventoryItem, error)
-	listLinkedFn       func(ctx context.Context) ([]dto.InventoryItem, error)
-	findByIDFn         func(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error)
-	findByFlavorIDFn   func(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error)
-	findByProductIDFn  func(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error)
-	createFn           func(ctx context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error)
-	recordAdjustmentFn func(ctx context.Context, input repository.RecordAdjustmentInput) (dto.StockMovement, error)
-	recordEntryFn      func(ctx context.Context, input repository.RecordEntryInput) (dto.StockMovement, error)
-	recordUnitEntryFn  func(ctx context.Context, input repository.RecordUnitEntryInput) (dto.StockMovement, error)
-	restoreForOrderFn  func(ctx context.Context, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error)
-	deductForOrderFn   func(ctx context.Context, orderID uuid.UUID, deductions []repository.StockDeductionInput, createdByID string) ([]dto.StockMovement, error)
+	listFn            func(ctx context.Context) ([]dto.InventoryItem, error)
+	listByTypeFn      func(ctx context.Context, itemType string) ([]dto.InventoryItem, error)
+	listLinkedFn      func(ctx context.Context) ([]dto.InventoryItem, error)
+	findByIDFn        func(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error)
+	findByFlavorIDFn  func(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error)
+	findByProductIDFn func(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error)
+	// findByProductIDLocFn, when set, answers per location (takes precedence).
+	findByProductIDLocFn func(locationID uuid.UUID) (dto.InventoryItem, error)
+	createFn             func(ctx context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error)
+	recordAdjustmentFn   func(ctx context.Context, input repository.RecordAdjustmentInput) (dto.StockMovement, error)
+	recordEntryFn        func(ctx context.Context, input repository.RecordEntryInput) (dto.StockMovement, error)
+	recordUnitEntryFn    func(ctx context.Context, input repository.RecordUnitEntryInput) (dto.StockMovement, error)
+	restoreForOrderFn    func(ctx context.Context, orderID uuid.UUID, createdByID string) ([]dto.StockMovement, error)
+	deductForOrderFn     func(ctx context.Context, orderID uuid.UUID, deductions []repository.StockDeductionInput, createdByID string) ([]dto.StockMovement, error)
 }
 
-func (s *inventoryRepoStub) List(ctx context.Context) ([]dto.InventoryItem, error) {
+func (s *inventoryRepoStub) List(ctx context.Context, _ scope.Location) ([]dto.InventoryItem, error) {
 	if s.listFn != nil {
 		return s.listFn(ctx)
 	}
 	return nil, nil
 }
 
-func (s *inventoryRepoStub) ListByType(ctx context.Context, itemType string) ([]dto.InventoryItem, error) {
+func (s *inventoryRepoStub) ListByType(ctx context.Context, _ scope.Location, itemType string) ([]dto.InventoryItem, error) {
 	if s.listByTypeFn != nil {
 		return s.listByTypeFn(ctx, itemType)
 	}
 	return nil, nil
 }
 
-func (s *inventoryRepoStub) ListLinked(ctx context.Context) ([]dto.InventoryItem, error) {
+func (s *inventoryRepoStub) ListLinked(ctx context.Context, _ scope.Location) ([]dto.InventoryItem, error) {
 	if s.listLinkedFn != nil {
 		return s.listLinkedFn(ctx)
 	}
 	return nil, nil
+}
+
+func (s *inventoryRepoStub) OrderStock(context.Context, uuid.UUID) ([]repository.OrderStockLine, error) {
+	return nil, nil
+}
+
+func (s *inventoryRepoStub) UpdateLowStockThreshold(_ context.Context, id uuid.UUID, threshold int) (dto.InventoryItem, error) {
+	return dto.InventoryItem{ID: id, LowStockThreshold: threshold}, nil
 }
 
 func (s *inventoryRepoStub) FindByID(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error) {
@@ -55,14 +66,17 @@ func (s *inventoryRepoStub) FindByID(ctx context.Context, id uuid.UUID) (dto.Inv
 	return dto.InventoryItem{}, nil
 }
 
-func (s *inventoryRepoStub) FindByFlavorID(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error) {
+func (s *inventoryRepoStub) FindByFlavorID(ctx context.Context, _ uuid.UUID, flavorID uuid.UUID) (dto.InventoryItem, error) {
 	if s.findByFlavorIDFn != nil {
 		return s.findByFlavorIDFn(ctx, flavorID)
 	}
 	return dto.InventoryItem{}, nil
 }
 
-func (s *inventoryRepoStub) FindByProductID(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error) {
+func (s *inventoryRepoStub) FindByProductID(ctx context.Context, locationID, productID uuid.UUID) (dto.InventoryItem, error) {
+	if s.findByProductIDLocFn != nil {
+		return s.findByProductIDLocFn(locationID)
+	}
 	if s.findByProductIDFn != nil {
 		return s.findByProductIDFn(ctx, productID)
 	}
@@ -149,7 +163,7 @@ func TestInventoryService_GetByID_NotFound(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
-	_, err := svc.GetByID(context.Background(), uuid.New())
+	_, err := svc.GetByID(context.Background(), scope.All(), uuid.New())
 	if !errors.Is(err, apperror.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
@@ -161,7 +175,7 @@ func TestInventoryService_CheckStock_NotTracked(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
-	ok, err := svc.CheckStock(context.Background(), uuid.New(), 100)
+	ok, err := svc.CheckStock(context.Background(), uuid.New(), uuid.New(), 100)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +190,7 @@ func TestInventoryService_CheckStock_Insufficient(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
-	ok, err := svc.CheckStock(context.Background(), uuid.New(), 10)
+	ok, err := svc.CheckStock(context.Background(), uuid.New(), uuid.New(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -194,7 +208,7 @@ func TestInventoryService_GetLowStockItems(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
-	items, err := svc.GetLowStockItems(context.Background())
+	items, err := svc.GetLowStockItems(context.Background(), scope.All())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,7 +226,7 @@ func TestInventoryService_GetInventoryStats(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
-	stats, err := svc.GetInventoryStats(context.Background())
+	stats, err := svc.GetInventoryStats(context.Background(), scope.All())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -233,7 +247,7 @@ func TestInventoryService_RecordAdjustment_NegativeStock(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
-	_, err := svc.RecordAdjustment(context.Background(), uuid.New(), -10, "spoilage", "staff-1")
+	_, err := svc.RecordAdjustment(context.Background(), scope.All(), uuid.New(), -10, "spoilage", "staff-1")
 	if !errors.Is(err, ErrInsufficientStock) {
 		t.Fatalf("expected ErrInsufficientStock, got %v", err)
 	}
@@ -248,7 +262,7 @@ func TestInventoryService_RecordEntry_ContainerTypeNotFound(t *testing.T) {
 	}}
 	svc := NewInventoryService(repo, ctRepo)
 
-	_, err := svc.RecordEntry(context.Background(), uuid.New(), uuid.New(), 1, 0, "staff-1")
+	_, err := svc.RecordEntry(context.Background(), uuid.New(), uuid.New(), uuid.New(), 1, 0, "staff-1")
 	if !errors.Is(err, apperror.ErrValidation) {
 		t.Fatalf("expected validation error, got %v", err)
 	}
@@ -273,7 +287,7 @@ func TestInventoryService_RecordEntry_AutoCreatesFlavorInventoryItem(t *testing.
 			if input.CurrentStock != 0 {
 				t.Fatalf("unexpected current_stock %d", input.CurrentStock)
 			}
-			if input.LowStockThreshold != 100 {
+			if input.LowStockThreshold != defaultFlavorLowStockThreshold {
 				t.Fatalf("unexpected threshold %d", input.LowStockThreshold)
 			}
 			if input.FlavorID == nil || *input.FlavorID != flavorID {
@@ -309,7 +323,7 @@ func TestInventoryService_RecordEntry_AutoCreatesFlavorInventoryItem(t *testing.
 	}}
 	svc := NewInventoryService(repo, ctRepo, WithFlavorRepo(flavorRepo))
 
-	movement, err := svc.RecordEntry(context.Background(), flavorID, containerTypeID, 1, 0, "staff-1")
+	movement, err := svc.RecordEntry(context.Background(), uuid.New(), flavorID, containerTypeID, 1, 0, "staff-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -333,7 +347,7 @@ func TestInventoryService_DeductForOrder_SkipsUntracked(t *testing.T) {
 	svc := NewInventoryService(repo, &containerTypeRepoStub{})
 
 	productID := uuid.New()
-	_, err := svc.DeductForOrder(context.Background(), uuid.New(), []dto.OrderItem{
+	_, err := svc.DeductForOrder(context.Background(), uuid.New(), uuid.New(), []dto.OrderItem{
 		{ProductID: productID, Quantity: 2, Product: &dto.Product{ID: productID, Name: "Cup", BallBased: false}},
 	}, "")
 	if err != nil {
@@ -342,24 +356,197 @@ func TestInventoryService_DeductForOrder_SkipsUntracked(t *testing.T) {
 }
 
 func TestInventoryService_CreateUnitInventoryItem(t *testing.T) {
-	called := false
-	repo := &inventoryRepoStub{createFn: func(_ context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error) {
-		called = true
-		if input.Type != "unit_based" {
-			t.Fatalf("expected unit_based, got %s", input.Type)
-		}
-		return dto.InventoryItem{Name: input.Name}, nil
-	}}
-	svc := NewInventoryService(repo, &containerTypeRepoStub{})
+	s1, s2 := uuid.New(), uuid.New()
+	trackedAt := map[uuid.UUID]bool{s2: true} // Sucursal 2 already tracks it
+	var createdAt []uuid.UUID
+	repo := &inventoryRepoStub{
+		createFn: func(_ context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error) {
+			if input.Type != "unit_based" {
+				t.Fatalf("expected unit_based, got %s", input.Type)
+			}
+			createdAt = append(createdAt, input.LocationID)
+			return dto.InventoryItem{Name: input.Name, LocationID: input.LocationID}, nil
+		},
+		findByProductIDLocFn: func(locationID uuid.UUID) (dto.InventoryItem, error) {
+			if trackedAt[locationID] {
+				return dto.InventoryItem{LocationID: locationID}, nil
+			}
+			return dto.InventoryItem{}, &apperror.NotFoundError{Resource: "inventory_item"}
+		},
+	}
+	svc := NewInventoryService(repo, &containerTypeRepoStub{},
+		WithLocationIDs(func(context.Context) ([]uuid.UUID, error) { return []uuid.UUID{s1, s2}, nil }))
 
-	item, err := svc.CreateUnitInventoryItem(context.Background(), "Cones", uuid.New(), 10)
+	items, err := svc.CreateUnitInventoryItem(context.Background(), "Cones", uuid.New(), 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !called {
-		t.Fatal("expected repo.Create to be called")
+	if len(createdAt) != 1 || createdAt[0] != s1 {
+		t.Fatalf("expected one row at the untracked location, got %v", createdAt)
 	}
-	if item.Name != "Cones" {
-		t.Fatalf("unexpected item: %+v", item)
+	if len(items) != 1 || items[0].Name != "Cones" || items[0].LocationID != s1 {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+}
+
+func TestEnsureAvailable_SumsFlavourBallsAcrossItems(t *testing.T) {
+	flavorID := uuid.New()
+	itemID := uuid.New()
+	repo := &inventoryRepoStub{
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: itemID, FlavorID: &id, Type: "ball_based", Name: "Mango", CurrentStock: 3}, nil
+		},
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Type: "ball_based", Name: "Mango", CurrentStock: 3}, nil
+		},
+	}
+	svc := NewInventoryService(repo, nil)
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	items := []dto.OrderItem{
+		{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{flavorID.String(), flavorID.String()}}},
+		{Product: cone, Quantity: 2, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}},
+	}
+	err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, items, nil)
+	var stockErr *apperror.InsufficientStockError
+	if !errors.As(err, &stockErr) {
+		t.Fatalf("expected InsufficientStockError, got %v", err)
+	}
+	if stockErr.Needed != 4 || stockErr.Available != 3 || stockErr.Unit != "bola" {
+		t.Fatalf("unexpected stock error: %+v", stockErr)
+	}
+	if !errors.Is(err, apperror.ErrConflict) {
+		t.Fatal("stock errors must map to 409")
+	}
+
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, items[:1], nil); err != nil {
+		t.Fatalf("2 of 3 balls should be available, got %v", err)
+	}
+}
+
+func TestEnsureAvailable_UntrackedIsAlwaysAvailable(t *testing.T) {
+	repo := &inventoryRepoStub{
+		findByProductIDFn: func(_ context.Context, _ uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{}, apperror.ErrNotFound
+		},
+	}
+	svc := NewInventoryService(repo, nil)
+	items := []dto.OrderItem{{Product: &dto.Product{ID: uuid.New()}, Quantity: 50}}
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, items, nil); err != nil {
+		t.Fatalf("untracked products must not be refused, got %v", err)
+	}
+}
+
+func TestStockLevel(t *testing.T) {
+	cases := []struct {
+		stock, min int
+		want       string
+	}{
+		{0, 20, "out"}, {-1, 0, "out"}, {19, 20, "low"}, {20, 20, "ok"}, {100, 100, "ok"}, {5, 0, "ok"},
+	}
+	for _, tc := range cases {
+		if got := StockLevel(tc.stock, tc.min); got != tc.want {
+			t.Errorf("StockLevel(%d, %d) = %q, want %q", tc.stock, tc.min, got, tc.want)
+		}
+	}
+}
+
+func TestUpdateLowStockThreshold_Bounds(t *testing.T) {
+	repo := &inventoryRepoStub{}
+	svc := NewInventoryService(repo, nil)
+	for _, bad := range []int{-1, MaxLowStockThreshold + 1} {
+		if _, err := svc.UpdateLowStockThreshold(context.Background(), scope.All(), uuid.New(), bad); !errors.Is(err, apperror.ErrValidation) {
+			t.Errorf("threshold %d: expected validation error, got %v", bad, err)
+		}
+	}
+}
+
+func TestEnsureAvailable_EditOnlyChecksIncreases(t *testing.T) {
+	flavorID := uuid.New()
+	repo := &inventoryRepoStub{
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: flavorID, FlavorID: &id, Type: "ball_based", Name: "Mango"}, nil
+		},
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Type: "ball_based", Name: "Mango", CurrentStock: 2}, nil
+		},
+	}
+	svc := NewInventoryService(repo, nil)
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	three := []dto.OrderItem{{Product: cone, Quantity: 3, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
+	four := []dto.OrderItem{{Product: cone, Quantity: 4, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, three, three); err != nil {
+		t.Fatalf("unchanged items must not be refused when stock ran low: %v", err)
+	}
+	var stockErr *apperror.InsufficientStockError
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, four, three); !errors.As(err, &stockErr) {
+		t.Fatalf("a larger need must still be checked, got %v", err)
+	}
+}
+
+func TestEnsureAvailable_CountsStockHeldByAcceptedOrders(t *testing.T) {
+	flavorID := uuid.New()
+	itemID := uuid.New()
+	accepted := uuid.New()
+	repo := &inventoryRepoStub{
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: itemID, FlavorID: &id, Type: "ball_based", Name: "Mango"}, nil
+		},
+		findByIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			return dto.InventoryItem{ID: id, Type: "ball_based", Name: "Mango", CurrentStock: 1}, nil
+		},
+	}
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	oneMango := []dto.OrderItem{{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{flavorID.String()}}}}
+	var askedStatuses []string
+	svc := NewInventoryService(repo, nil, WithReservingOrders(func(_ context.Context, _ uuid.UUID, statuses []string) ([]dto.Order, error) {
+		askedStatuses = statuses
+		return []dto.Order{{ID: accepted, Items: oneMango}}, nil
+	}))
+
+	// The last Mango is held by the accepted order: a new one is refused…
+	err := svc.EnsureAvailable(context.Background(), uuid.New(), uuid.Nil, oneMango, nil)
+	var stockErr *apperror.InsufficientStockError
+	if !errors.As(err, &stockErr) || stockErr.Reserved != 1 || stockErr.Available != 0 {
+		t.Fatalf("expected a refusal counting 1 reserved ball, got %v", err)
+	}
+	if len(askedStatuses) != 1 || askedStatuses[0] != "recibida" {
+		t.Fatalf("reservations must come from accepted orders, asked %v", askedStatuses)
+	}
+	// …but the accepted order itself can still be prepared.
+	if err := svc.EnsureAvailable(context.Background(), uuid.New(), accepted, oneMango, nil); err != nil {
+		t.Fatalf("an order must not be blocked by its own reservation: %v", err)
+	}
+}
+
+func TestUnavailable_IncludesFullyReservedItems(t *testing.T) {
+	mango, fresa := uuid.New(), uuid.New()
+	mangoItem, fresaItem := uuid.New(), uuid.New()
+	repo := &inventoryRepoStub{
+		listLinkedFn: func(context.Context) ([]dto.InventoryItem, error) {
+			return []dto.InventoryItem{
+				{ID: mangoItem, FlavorID: &mango, CurrentStock: 2},
+				{ID: fresaItem, FlavorID: &fresa, CurrentStock: 5},
+			}, nil
+		},
+		findByFlavorIDFn: func(_ context.Context, id uuid.UUID) (dto.InventoryItem, error) {
+			if id == mango {
+				return dto.InventoryItem{ID: mangoItem, FlavorID: &id}, nil
+			}
+			return dto.InventoryItem{ID: fresaItem, FlavorID: &id}, nil
+		},
+	}
+	cone := &dto.Product{ID: uuid.New(), BallBased: true}
+	svc := NewInventoryService(repo, nil, WithReservingOrders(func(context.Context, uuid.UUID, []string) ([]dto.Order, error) {
+		return []dto.Order{{ID: uuid.New(), Items: []dto.OrderItem{
+			{Product: cone, Quantity: 2, Customizations: map[string]any{"flavor_ids": []any{mango.String()}}},
+			{Product: cone, Quantity: 1, Customizations: map[string]any{"flavor_ids": []any{fresa.String()}}},
+		}}}, nil
+	}))
+	flavors, _, err := svc.Unavailable(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(flavors) != 1 || flavors[0] != mango {
+		t.Fatalf("only Mango is fully reserved, got %v", flavors)
 	}
 }

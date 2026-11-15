@@ -79,6 +79,12 @@ func (m *InactivityMiddleware) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// Only track tokens the session middleware accepted, so routes with an
+		// optional session cannot be used to fill the tracker with junk tokens.
+		if record, ok := auth.GetRecord(r.Context()); !ok || record == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		timeout := m.timeout(r.Context())
 		if timeout <= 0 {
@@ -92,7 +98,7 @@ func (m *InactivityMiddleware) Middleware(next http.Handler) http.Handler {
 				Msg("session expired due to inactivity")
 			auth.RevokeToken(token)
 			m.tracker.Reset(token)
-			response.WriteOrError(w, nil, &apperror.UnauthorizedError{Reason: "session expired due to inactivity"})
+			response.WriteOrError(w, nil, &apperror.UnauthorizedError{Reason: "Tu sesión se cerró por inactividad. Inicia sesión de nuevo."})
 			return
 		}
 

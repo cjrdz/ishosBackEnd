@@ -13,6 +13,7 @@ import (
 
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
 	"github.com/cjrdz/ishosBackEnd/internal/repository"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // ProductRepository defines the product data access contract.
@@ -29,7 +30,7 @@ type ProductRepository interface {
 
 // OrderRepository defines the order data access contract.
 type OrderRepository interface {
-	ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error)
+	ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	FindByIDWithItems(ctx context.Context, id uuid.UUID) (dto.Order, error)
 	FindByIDWithItemsAndProducts(ctx context.Context, id uuid.UUID) (dto.Order, error)
@@ -37,26 +38,30 @@ type OrderRepository interface {
 	FindByOrderNumberAndPhone(ctx context.Context, orderNumber, customerPhone string) (dto.Order, error)
 	FindRecentByPhone(ctx context.Context, customerPhone string, limit int) ([]dto.Order, error)
 	Create(ctx context.Context, input repository.CreateOrderInput) (dto.Order, error)
-	Approve(ctx context.Context, id uuid.UUID, reviewerID *string) (dto.Order, error)
-	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string) (dto.Order, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	// Approve, Reject and UpdateStatus take the status the caller validated the
+	// transition against; the repository re-checks it under a row lock and
+	// returns apperror.ErrConflict if the order changed concurrently.
+	// Reject also returns any stock the order still holds.
+	Approve(ctx context.Context, id uuid.UUID, reviewerID *string, expectedStatus string) (dto.Order, error)
+	Reject(ctx context.Context, id uuid.UUID, reason string, reviewerID *string, expectedStatus string, restock map[uuid.UUID]int) (dto.Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error)
 	UpdateNotes(ctx context.Context, id uuid.UUID, notes *string) (dto.Order, error)
 	SetArchived(ctx context.Context, id uuid.UUID, archived bool) (dto.Order, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 
 	// Reporting and bulk operations
-	FindByDateRange(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error)
-	FindByDateRangeWithItems(ctx context.Context, start, end time.Time, statuses []string) ([]dto.Order, error)
-	FindOrderItemsByOrderDateRange(ctx context.Context, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error)
-	Purge(ctx context.Context, start, end time.Time, statuses []string) (int, int, error)
+	FindByDateRange(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error)
+	FindByDateRangeWithItems(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) ([]dto.Order, error)
+	FindOrderItemsByOrderDateRange(ctx context.Context, loc scope.Location, start, end time.Time, excludeStatuses []string) ([]dto.OrderItem, error)
+	Purge(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string) (int, int, error)
 
 	// SQL-aggregated analytics (avoid loading full date ranges into memory).
-	AnalyticsOverview(ctx context.Context, start, end time.Time) (dto.AnalyticsOverview, error)
-	AnalyticsOrdersOverTime(ctx context.Context, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error)
-	AnalyticsTopProducts(ctx context.Context, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error)
+	AnalyticsOverview(ctx context.Context, loc scope.Location, start, end time.Time) (dto.AnalyticsOverview, error)
+	AnalyticsOrdersOverTime(ctx context.Context, loc scope.Location, start, end time.Time, groupBy string) ([]dto.AnalyticsTimelinePoint, error)
+	AnalyticsTopProducts(ctx context.Context, loc scope.Location, start, end time.Time, limit int) ([]dto.AnalyticsTopProduct, error)
 
 	// Streaming export rows (CSV) without loading the full date range into memory.
-	StreamOrderExportRows(ctx context.Context, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error
+	StreamOrderExportRows(ctx context.Context, loc scope.Location, start, end time.Time, statuses []string, batchSize int, cb func(dto.ExportOrderRow) error) error
 
 	// Archiving
 	FindEligibleForArchive(ctx context.Context, terminalStatuses []string, cutoff time.Time, limit int) ([]dto.Order, error)
@@ -119,14 +124,15 @@ type OrderStore interface {
 	FindOrderByIdempotencyKey(ctx context.Context, key uuid.UUID) (dto.Order, error)
 	UpdateOrder(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput) (dto.Order, error)
 	// UpdateOrderWithStockAdjustment updates an order and replaces its items, then
-	// applies an inventory adjustment inside the same transaction. Either deductions
-	// or restore is applied; if both are supplied, deductions take precedence.
+	// applies an inventory adjustment inside the same transaction. When restore is
+	// set, the order's outstanding stock is returned first; deductions are then
+	// applied. Set input.ExpectedStatus to guard against concurrent changes.
 	UpdateOrderWithStockAdjustment(ctx context.Context, id uuid.UUID, input repository.StoreUpdateOrderInput, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status string) (dto.Order, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status, expectedStatus string) (dto.Order, error)
 	// UpdateStatusWithStockAdjustment updates an order's status and applies an
-	// inventory adjustment inside the same transaction. Either deductions or restore
-	// is applied; if both are supplied, deductions take precedence.
-	UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
+	// inventory adjustment inside the same transaction: restore first (if set),
+	// then deductions. expectedStatus behaves as in OrderRepository.UpdateStatus.
+	UpdateStatusWithStockAdjustment(ctx context.Context, id uuid.UUID, status, expectedStatus string, deductions []repository.StockDeductionInput, restore bool) (dto.Order, error)
 }
 
 // ContainerTypeRepository defines the container type data access contract.
@@ -147,12 +153,16 @@ type TrackingTokenStore interface {
 
 // InventoryRepository defines the inventory data access contract.
 type InventoryRepository interface {
-	List(ctx context.Context) ([]dto.InventoryItem, error)
-	ListByType(ctx context.Context, itemType string) ([]dto.InventoryItem, error)
-	ListLinked(ctx context.Context) ([]dto.InventoryItem, error)
+	// OrderStock lists what an order took from inventory and still holds.
+	OrderStock(ctx context.Context, orderID uuid.UUID) ([]repository.OrderStockLine, error)
+	// UpdateLowStockThreshold changes only the minimum, never current_stock.
+	UpdateLowStockThreshold(ctx context.Context, id uuid.UUID, threshold int) (dto.InventoryItem, error)
+	List(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)
+	ListByType(ctx context.Context, loc scope.Location, itemType string) ([]dto.InventoryItem, error)
+	ListLinked(ctx context.Context, loc scope.Location) ([]dto.InventoryItem, error)
 	FindByID(ctx context.Context, id uuid.UUID) (dto.InventoryItem, error)
-	FindByFlavorID(ctx context.Context, flavorID uuid.UUID) (dto.InventoryItem, error)
-	FindByProductID(ctx context.Context, productID uuid.UUID) (dto.InventoryItem, error)
+	FindByFlavorID(ctx context.Context, locationID, flavorID uuid.UUID) (dto.InventoryItem, error)
+	FindByProductID(ctx context.Context, locationID, productID uuid.UUID) (dto.InventoryItem, error)
 	Create(ctx context.Context, input repository.CreateInventoryItemInput) (dto.InventoryItem, error)
 	Update(ctx context.Context, id uuid.UUID, input repository.UpdateInventoryItemInput) (dto.InventoryItem, error)
 	Delete(ctx context.Context, id uuid.UUID) error

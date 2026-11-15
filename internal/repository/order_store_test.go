@@ -42,6 +42,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RollsBackOnDeductionFailure(
 
 	// Create an order in "recibida" status (valid predecessor for "en_proceso").
 	order, err := orderRepo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-ST-001",
 		CustomerName:  "Test",
 		CustomerPhone: "555-0001",
@@ -54,6 +55,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RollsBackOnDeductionFailure(
 
 	// Create an inventory item with only 3 units in stock.
 	invItem, err := invRepo.Create(ctx, CreateInventoryItemInput{
+		LocationID:   testLocationID(t, db),
 		Name:         "TestItem-RB",
 		Type:         string(models.InventoryItemTypeUnitBased),
 		CurrentStock: 3,
@@ -61,7 +63,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RollsBackOnDeductionFailure(
 	require.NoError(t, err)
 
 	// Attempt to deduct 10 units (more than available) — this must fail.
-	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), []StockDeductionInput{
+	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), "", []StockDeductionInput{
 		{InventoryItemID: invItem.ID, Quantity: 10},
 	}, false)
 	require.Error(t, err, "expected deduction failure due to insufficient stock")
@@ -94,6 +96,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_CommitsOnSuccess(t *testing.
 	store := NewOrderStore(db, NewProductBunRepository(db), noopEnrichment{})
 
 	order, err := orderRepo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-ST-002",
 		CustomerName:  "Test",
 		CustomerPhone: "555-0002",
@@ -105,13 +108,14 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_CommitsOnSuccess(t *testing.
 	require.NoError(t, err)
 
 	invItem, err := invRepo.Create(ctx, CreateInventoryItemInput{
+		LocationID:   testLocationID(t, db),
 		Name:         "TestItem-OK",
 		Type:         string(models.InventoryItemTypeUnitBased),
 		CurrentStock: 50,
 	})
 	require.NoError(t, err)
 
-	updated, err := store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), []StockDeductionInput{
+	updated, err := store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusEnProceso), "", []StockDeductionInput{
 		{InventoryItemID: invItem.ID, Quantity: 5},
 	}, false)
 	require.NoError(t, err)
@@ -139,6 +143,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RestoreOnCancel(t *testing.T
 
 	// Create order in "en_proceso" (stock already deducted).
 	order, err := orderRepo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
 		OrderNumber:   "ORD-ST-003",
 		CustomerName:  "Test",
 		CustomerPhone: "555-0003",
@@ -150,6 +155,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RestoreOnCancel(t *testing.T
 	require.NoError(t, err)
 
 	invItem, err := invRepo.Create(ctx, CreateInventoryItemInput{
+		LocationID:   testLocationID(t, db),
 		Name:         "TestItem-Restore",
 		Type:         string(models.InventoryItemTypeUnitBased),
 		CurrentStock: 50,
@@ -167,7 +173,7 @@ func TestOrderStore_UpdateStatusWithStockAdjustment_RestoreOnCancel(t *testing.T
 	assert.Equal(t, 45, item.CurrentStock, "precondition: stock deducted to 45")
 
 	// Now cancel the order — stock should be restored atomically.
-	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusCancelada), nil, true)
+	_, err = store.UpdateStatusWithStockAdjustment(ctx, order.ID, string(models.OrderStatusCancelada), "", nil, true)
 	require.NoError(t, err)
 
 	// Verify stock was restored.
@@ -191,6 +197,7 @@ func TestOrderStore_CreateOrder_DuplicateIdempotencyKey_SecondCallReturnsFirstOr
 	key := uuid.New()
 
 	first, err := store.CreateOrder(ctx, StoreOrderInput{
+		LocationID:     testLocationID(t, db),
 		OrderNumber:    "ORD-IK-001",
 		IdempotencyKey: &key,
 		CustomerName:   "Test",
@@ -206,6 +213,7 @@ func TestOrderStore_CreateOrder_DuplicateIdempotencyKey_SecondCallReturnsFirstOr
 
 	// Second call with the same key must not create a new order.
 	_, err = store.CreateOrder(ctx, StoreOrderInput{
+		LocationID:     testLocationID(t, db),
 		OrderNumber:    "ORD-IK-002",
 		IdempotencyKey: &key,
 		CustomerName:   "Test",
@@ -262,6 +270,7 @@ func TestOrderStore_CreateOrder_ConcurrentDuplicateKeys_OnlyOneOrderPersists(t *
 		go func(idx int) {
 			defer wg.Done()
 			_, errors[idx] = store.CreateOrder(ctx, StoreOrderInput{
+				LocationID:     testLocationID(t, db),
 				OrderNumber:    fmt.Sprintf("ORD-IK-CONC-%d", idx),
 				IdempotencyKey: &key,
 				CustomerName:   "Test",
@@ -303,4 +312,113 @@ func isUniqueViolation(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "duplicate key")
+}
+
+// TestOrderStore_CreateOrder_AppliesOfferBasePrice proves active-offer base
+// prices are charged server-side (the storefront shows them in the cart).
+func TestOrderStore_CreateOrder_AppliesOfferBasePrice(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	productRepo := NewProductBunRepository(db)
+	store := NewOrderStore(db, productRepo, noopEnrichment{})
+
+	offered, _ := createTestProduct(t, ctx, db, "Offer-Product", 5.0)
+	regular, _ := createTestProduct(t, ctx, db, "Regular-Product", 2.0)
+
+	order, err := store.CreateOrder(ctx, StoreOrderInput{
+		LocationID:    testLocationID(t, db),
+		OrderNumber:   "ORD-OF-001",
+		CustomerName:  "Test",
+		CustomerPhone: "555-7101",
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+		Items: []StoreOrderItemInput{
+			{ProductID: offered.ID, Quantity: 2},
+			{ProductID: regular.ID, Quantity: 1},
+		},
+		BasePrices: map[uuid.UUID]float64{offered.ID: 3.5},
+	})
+	require.NoError(t, err)
+	assert.InDelta(t, 2*3.5+2.0, order.TotalAmount, 0.001, "offer price replaces the base price; others unchanged")
+}
+
+// Counter orders start accepted ("recibida") and record who accepted them;
+// online orders start in review.
+func TestOrderStore_CreateOrder_AcceptedCounterOrder(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	store := NewOrderStore(db, NewProductBunRepository(db), noopEnrichment{})
+	product, _ := createTestProduct(t, ctx, db, "Counter-Product", 2.0)
+	staff := "staff-1"
+
+	base := StoreOrderInput{
+		LocationID:    testLocationID(t, db),
+		CustomerName:  "Mostrador",
+		CustomerPhone: "555-8001",
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+		Items:         []StoreOrderItemInput{{ProductID: product.ID, Quantity: 1}},
+	}
+
+	counter := base
+	counter.OrderNumber = "ORD-CTR-001"
+	counter.CreatedByID = &staff
+	counter.Accepted = true
+	created, err := store.CreateOrder(ctx, counter)
+	require.NoError(t, err)
+	assert.Equal(t, string(models.OrderStatusRecibida), created.Status)
+	require.NotNil(t, created.ReviewedByUserID)
+	assert.Equal(t, staff, *created.ReviewedByUserID)
+	assert.Contains(t, created.StatusTimestamps, string(models.OrderStatusRecibida))
+
+	online := base
+	online.OrderNumber = "ORD-WEB-001"
+	created, err = store.CreateOrder(ctx, online)
+	require.NoError(t, err)
+	assert.Equal(t, string(models.OrderStatusPendienteRevision), created.Status)
+	assert.Nil(t, created.ReviewedByUserID)
+}
+
+// TestOrderStore_UpdateOrder_ClearCustomerUnlinks proves that removing the
+// phone on an edit drops the link to the previous customer record.
+func TestOrderStore_UpdateOrder_ClearCustomerUnlinks(t *testing.T) {
+	ctx := context.Background()
+	db := newTestBunDB(t)
+	orderRepo := NewOrderBunRepository(db)
+	store := NewOrderStore(db, NewProductBunRepository(db), noopEnrichment{})
+
+	customer, err := NewCustomerBunRepository(db).Create(ctx, CreateCustomerInput{
+		Name: "Ana", UserType: "user", Phone: "555-0101", Status: "active",
+	})
+	require.NoError(t, err)
+
+	order, err := orderRepo.Create(ctx, CreateOrderInput{
+		LocationID:    testLocationID(t, db),
+		OrderNumber:   "ORD-CC-001",
+		CustomerID:    &customer.ID,
+		CustomerName:  "Ana",
+		CustomerPhone: "555-0101",
+		TotalAmount:   1.0,
+		Status:        string(models.OrderStatusRecibida),
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, order.CustomerID)
+
+	notes := "Sin teléfono"
+	_, err = store.UpdateOrder(ctx, order.ID, StoreUpdateOrderInput{
+		CustomerName:  "Ana",
+		CustomerPhone: "",
+		PaymentMethod: string(models.OrderPaymentMethodEfectivo),
+		OrderType:     string(models.OrderTypeParaLlevar),
+		Notes:         &notes,
+		ClearCustomer: true,
+	})
+	require.NoError(t, err)
+
+	updated, err := orderRepo.FindByID(ctx, order.ID)
+	require.NoError(t, err)
+	assert.Nil(t, updated.CustomerID, "clearing the phone must unlink the customer")
+	assert.Equal(t, "", updated.CustomerPhone)
 }

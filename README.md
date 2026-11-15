@@ -9,13 +9,26 @@ Go + Chi + Bun + PocketBase service. Manages orders, products, employees, custom
 ## Quick Start
 
 ```bash
-cp .env.example .env
-go mod tidy
-make migrate
+# Local Postgres 18 (matches Neon). Docker works too: `make docker-up`.
+podman run -d --name ishos-postgres -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_DB=ishosFactory -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
+  -v ishos-pgdata:/var/lib/postgresql docker.io/library/postgres:18-alpine
+# later sessions: podman start ishos-postgres
+
+cp .env.example .env      # set DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/ishosFactory?sslmode=disable
+make migrate              # versioned, transactional schema bootstrap (safe to re-run)
+make bootstrap-admin      # first admin employee (embedded PocketBase, stored in ./pb_data)
+make seed                 # menu: categories, products, flavors, addons
 go run ./cmd/api
 ```
 
 Check health: `curl http://localhost:8080/health`
+
+PocketBase is embedded as a Go library — there is no separate PocketBase server to install.
+
+> Upgrading from the old Postgres 16 `docker compose` setup: the PG18 image uses a new data path, so an existing
+> `pgdata` volume won't start. Run `make docker-down` (removes the volume) and re-run migrate + seed.
+To seed or migrate another database, export it explicitly: `DATABASE_URL=... make seed` (it wins over `.env`).
 
 ---
 
@@ -84,7 +97,7 @@ docs/                  # Documentation
 ✅ Bun ORM queries (no SQL injection)
 ✅ Transactional audit logging for order and catalog mutations
 ✅ Token revocation (secure logout validates the token first)
-✅ Rate limiting (login + public orders + tracking) with Redis-backed distributed state
+✅ Rate limiting (login + public orders + tracking) (in memory, or shared through Redis/Valkey when `REDIS_URL` is set)
 ✅ HttpOnly cookie auth (no JS-accessible tokens)
 ✅ SameSite=Lax CSRF protection
 ✅ Atomic stock transactions (status + inventory committed together)

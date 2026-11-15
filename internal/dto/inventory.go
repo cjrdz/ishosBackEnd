@@ -8,18 +8,23 @@ import (
 
 type InventoryItem struct {
 	ID                uuid.UUID  `json:"id"`
+	LocationID        uuid.UUID  `json:"location_id"`
 	Name              string     `json:"name"`
 	Type              string     `json:"type"`
 	CurrentStock      int        `json:"current_stock"`
 	LowStockThreshold int        `json:"low_stock_threshold"`
 	ProductID         *uuid.UUID `json:"product_id,omitempty"`
 	FlavorID          *uuid.UUID `json:"flavor_id,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	// Reserved is stock held by accepted orders not yet in preparation
+	// (filled by the inventory dashboard).
+	Reserved  int       `json:"reserved"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type StockMovement struct {
 	ID                 uuid.UUID  `json:"id"`
+	LocationID         uuid.UUID  `json:"location_id"`
 	Type               string     `json:"type"`
 	Quantity           int        `json:"quantity"`
 	QuantityContainers *int       `json:"quantity_containers,omitempty"`

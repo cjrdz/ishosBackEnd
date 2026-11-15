@@ -57,10 +57,17 @@ Minimum production configuration:
 - `R2_SECRET_ACCESS_KEY`
 - `R2_PUBLIC_BASE_URL`
 - `ALLOWED_ORIGINS`
-- `REDIS_URL` — required in production for distributed rate limiting and login lockout state
+- `REDIS_URL` — optional. Without it, rate limits and login lockouts live in memory (fine for one instance; they reset on redeploy). Set it (Redis or Valkey) before running more than one replica.
 - `TRACKING_TOKEN_SECRET` — required in production (do not derive from `DATABASE_URL`)
+- `BFF_SHARED_SECRET` — required in production (≥32 chars); must equal `BFF_SHARED_SECRET` on the frontend
+  (Cloudflare secret / Vercel env) so per-customer rate limits work behind the BFF
+- `ENV=production` — on Railway the service refuses to boot in the `production` environment without it
 
 Operationally important values:
+
+- `STORE_TIMEZONE` (default `America/El_Salvador`) — analytics day/week/month buckets and date filters
+- `R2_ENDPOINT` — account endpoint only (`https://<account-id>.r2.cloudflarestorage.com`); the dashboard's
+  "S3 API" URL ends in `/<bucket>`, which the server strips with a warning
 
 - `PB_DATA_DIR` for embedded PocketBase state
 - `AUTH_TOKEN_TTL_HOURS`
@@ -79,9 +86,12 @@ Operationally important values:
 
 ## Database guidance
 
-- Prefer the direct Neon host, not the pooler host, for the API service.
+- Use the **direct** Neon host, not the `-pooler` host: migrations and background jobs rely on
+  Postgres advisory locks, which PgBouncer transaction pooling breaks.
 - Run with SSL enabled.
-- Keep schema migration and runtime schema checks enabled.
+- Schema bootstrap (`cmd/migrate`, also run at server start) is versioned (`schema_version` table) and
+  runs in one transaction under an advisory lock, so an interrupted first boot rolls back cleanly.
+  Bump `schemaVersion` in `internal/database/bun_migrate.go` when adding a schema step.
 
 ## PocketBase persistence
 
@@ -115,7 +125,10 @@ curl https://<host>/api/v1/settings/store/public
 ### Railway
 
 - start command: `./server`
-- mount `pb_data` on a persistent volume
+- mount `pb_data` on a persistent volume (`PB_DATA_DIR=/app/pb_data`)
+- healthcheck path: `/health`
+- deploys from GitHub `main`; variable changes trigger a redeploy unless staged with
+  `railway variable set --skip-deploys` (deleting a variable always redeploys)
 
 ### Render
 

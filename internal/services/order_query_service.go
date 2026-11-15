@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/cjrdz/ishosBackEnd/internal/dto"
+	"github.com/cjrdz/ishosBackEnd/internal/scope"
 )
 
 // OrderQueryService provides read-only order queries with error normalization.
@@ -23,8 +24,8 @@ func NewOrderQueryService(orderRepo OrderRepository) *OrderQueryService {
 
 // ListPaginated retrieves paginated orders by status.
 // archived=false returns active orders; archived=true returns only archived orders.
-func (s *OrderQueryService) ListPaginated(ctx context.Context, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
-	return s.orderRepo.ListPaginated(ctx, status, archived, page, limit)
+func (s *OrderQueryService) ListPaginated(ctx context.Context, loc scope.Location, status string, archived bool, page, limit int) ([]dto.Order, int, error) {
+	return s.orderRepo.ListPaginated(ctx, loc, status, archived, page, limit)
 }
 
 // GetByIDWithItems retrieves an order by ID with its items loaded.

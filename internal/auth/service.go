@@ -43,10 +43,10 @@ type Service interface {
 	GetRecord(ctx context.Context, id string) (*core.Record, error)
 
 	// CreateEmployee creates a new employee (admin operation).
-	CreateEmployee(ctx context.Context, email, password, name, phone, role string, disabled bool) (*core.Record, error)
+	CreateEmployee(ctx context.Context, email, password, name, phone, role, locationID string, disabled bool) (*core.Record, error)
 
 	// UpdateEmployee updates an employee (admin operation).
-	UpdateEmployee(ctx context.Context, id string, email, password, name, phone, role *string, disabled *bool) (*core.Record, error)
+	UpdateEmployee(ctx context.Context, id string, email, password, name, phone, role, locationID *string, disabled *bool) (*core.Record, error)
 
 	// DeactivateEmployee disables an account.
 	DeactivateEmployee(ctx context.Context, id string) error
@@ -244,8 +244,8 @@ func (s *ServiceImpl) GetRecord(ctx context.Context, id string) (*core.Record, e
 }
 
 // CreateEmployee creates a new employee.
-func (s *ServiceImpl) CreateEmployee(ctx context.Context, email, password, name, phone, role string, disabled bool) (*core.Record, error) {
-	record, err := s.pb.CreateEmployee(email, password, name, phone, role, disabled)
+func (s *ServiceImpl) CreateEmployee(ctx context.Context, email, password, name, phone, role, locationID string, disabled bool) (*core.Record, error) {
+	record, err := s.pb.CreateEmployee(email, password, name, phone, role, locationID, disabled)
 	if err != nil {
 		return nil, fmt.Errorf("create employee: %w", err)
 	}
@@ -253,8 +253,8 @@ func (s *ServiceImpl) CreateEmployee(ctx context.Context, email, password, name,
 }
 
 // UpdateEmployee updates an employee.
-func (s *ServiceImpl) UpdateEmployee(ctx context.Context, id string, email, password, name, phone, role *string, disabled *bool) (*core.Record, error) {
-	record, err := s.pb.UpdateEmployee(id, email, password, name, phone, role, disabled)
+func (s *ServiceImpl) UpdateEmployee(ctx context.Context, id string, email, password, name, phone, role, locationID *string, disabled *bool) (*core.Record, error) {
+	record, err := s.pb.UpdateEmployee(id, email, password, name, phone, role, locationID, disabled)
 	if err != nil {
 		return nil, fmt.Errorf("update employee: %w", err)
 	}
